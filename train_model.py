@@ -3,6 +3,11 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
 import joblib
+import os
+
+# Ensure required directories exist
+for d in ["models", "results", "reports", "logs"]:
+    os.makedirs(d, exist_ok=True)
 
 def load_dataset(file="training_dataset.csv"):
     df = pd.read_csv(file)

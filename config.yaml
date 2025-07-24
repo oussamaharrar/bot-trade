@@ -1,0 +1,16 @@
+coins:
+  - BTC/USDT
+  - ETH/USDT
+  - SOL/USDT
+  - BNB/USDT
+  - C/USDT
+
+max_trades_before_retrain: 100
+strategy: "ml"  # or "rule"
+debug_mode: true
+report_format: "pdf"
+output_dirs:
+  models: "models/"
+  results: "results/"
+  reports: "reports/"
+  logs: "logs/"

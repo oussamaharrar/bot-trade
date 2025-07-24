@@ -2,6 +2,11 @@ import pandas as pd
 import os
 import json
 from datetime import datetime
+import os
+
+# Ensure required directories exist
+for d in ["models", "results", "reports", "logs"]:
+    os.makedirs(d, exist_ok=True)
 
 def simulate_wallet(actions, initial_usdt=None, fee=0.001):
     state_path = os.path.join(os.path.dirname(__file__), "latest_state.json")
