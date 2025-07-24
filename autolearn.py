@@ -7,7 +7,6 @@ import os
 from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
-import os
 
 # Ensure required directories exist
 for d in ["models", "results", "reports", "logs"]:
@@ -15,7 +14,9 @@ for d in ["models", "results", "reports", "logs"]:
 
 # === Setup model directory ===
 MODEL_DIR = "models"
+REPORTS_DIR = "reports"
 os.makedirs(MODEL_DIR, exist_ok=True)
+os.makedirs(REPORTS_DIR, exist_ok=True)
 
 # Load dataset
 df = pd.read_csv("training_dataset.csv")
@@ -107,7 +108,8 @@ plt.title("Confusion Matrix")
 plt.xlabel("Predicted")
 plt.ylabel("Actual")
 plt.tight_layout()
-plt.show()
+plt.savefig(os.path.join(REPORTS_DIR, f"confusion_matrix_{timestamp}.png"))
+plt.close()
 
 # Feature Importance Plot
 importances = model.feature_importances_
@@ -123,7 +125,8 @@ plt.title("Feature Importance (Decision Tree)")
 plt.xlabel("Importance Score")
 plt.ylabel("Feature")
 plt.tight_layout()
-plt.show()
+plt.savefig(os.path.join(REPORTS_DIR, f"feature_importance_{timestamp}.png"))
+plt.close()
 
 # Plot F1 Score over time
 try:
@@ -139,7 +142,8 @@ try:
     plt.xticks(rotation=45)
     plt.grid(True)
     plt.tight_layout()
-    plt.show()
+    plt.savefig(os.path.join(REPORTS_DIR, f"f1_trend_{timestamp}.png"))
+    plt.close()
 except Exception as e:
     print(f"⚠️ Could not plot F1 Score over time: {e}")
     
@@ -162,6 +166,7 @@ try:
     plt.xticks(rotation=45)
     plt.grid(True)
     plt.tight_layout()
-    plt.show()
+    plt.savefig(os.path.join(REPORTS_DIR, f"evaluation_over_time_{timestamp}.png"))
+    plt.close()
 except Exception as e:
     print(f"⚠️ Could not plot evaluation chart: {e}")

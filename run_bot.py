@@ -1,51 +1,86 @@
-import subprocess
 import os
-import yaml
+import subprocess
 from datetime import datetime
+import yaml
+import pandas as pd
 
-# Create required folders if missing
-for d in ["models", "results", "reports", "logs"]:
+CONFIG_PATH = 'config.yaml'
+
+with open(CONFIG_PATH, 'r') as f:
+    CONFIG = yaml.safe_load(f)
+
+MODEL_DIR = CONFIG['output_dirs']['models']
+RESULTS_DIR = CONFIG['output_dirs']['results']
+REPORTS_DIR = CONFIG['output_dirs']['reports']
+LOG_DIR = CONFIG['output_dirs']['logs']
+MAX_TRADES = CONFIG.get('max_trades_before_retrain', 100)
+STRATEGY = CONFIG.get('strategy', 'ml')
+
+for d in [MODEL_DIR, RESULTS_DIR, REPORTS_DIR, LOG_DIR]:
     os.makedirs(d, exist_ok=True)
 
-# Load config
-with open("config.yaml", "r") as f:
-    config = yaml.safe_load(f)
+ERROR_LOG = os.path.join(LOG_DIR, 'errors.log')
+EVAL_LOG = 'model_evaluation_log.csv'
 
-max_trades = config.get("max_trades_before_retrain", 100)
+def log_error(context: str, err: Exception):
+    msg = f"[{datetime.now()}] {context}: {err}\n"
+    with open(ERROR_LOG, 'a') as f:
+        f.write(msg)
+    print(f"❌ {context}: {err}")
 
-def print_banner():
-    print("\n" + "="*50)
-    print("🚀 Starting AI-Driven Trading Bot Runner")
-    print("="*50 + "\n")
 
-def run_step(name, cmd):
-    print(f"▶️ {name}...")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"❌ Error in {name}: {result.stderr}")
-        with open("logs/errors.log", "a") as logf:
-            logf.write(f"[{datetime.now()}] {name} failed:\n{result.stderr}\n\n")
-    else:
-        print(f"✅ {name} completed.\n")
-
-def get_trade_count():
+def run_step(name: str, cmd: list[str]):
+    print(f"▶ {name}")
     try:
-        trades = os.listdir("results")
-        return sum(1 for f in trades if f.endswith(".csv"))
-    except:
-        return 0
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            log_error(name, res.stderr.strip())
+        else:
+            if CONFIG.get('debug_mode', False):
+                print(res.stdout)
+            print(f"✅ {name} done\n")
+    except Exception as e:
+        log_error(name, e)
 
-# ==== EXECUTION SEQUENCE ====
 
-print_banner()
+def trade_count() -> int:
+    files = [f for f in os.listdir(RESULTS_DIR) if f.startswith('run_') and f.endswith('.csv')]
+    return len(files)
 
-run_step("Running bot logic", ["python", "bot_loop_ml.py"])
 
-# Check if it's time to retrain
-if get_trade_count() >= max_trades:
-    run_step("Training model (autolearn.py)", ["python", "autolearn.py"])
-    run_step("Evaluating model", ["python", "evaluate_model.py"])
-else:
-    print(f"ℹ️ Model retraining not triggered — only {get_trade_count()} trades logged.\n")
+def clean_eval_log():
+    if not os.path.exists(EVAL_LOG):
+        return
+    try:
+        df = pd.read_csv(EVAL_LOG)
+        required = ['timestamp','accuracy','f1_score','f1_delta','num_samples','model_path']
+        df = df[[c for c in required if c in df.columns]].dropna()
+        df.to_csv(EVAL_LOG, index=False)
+    except Exception as e:
+        log_error('clean_eval_log', e)
 
-print("✅ All done. You may review reports/ and models/ now.")
+
+def maybe_retrain():
+    if trade_count() and trade_count() % MAX_TRADES == 0:
+        run_step('Training model', ['python', 'autolearn.py'])
+        clean_eval_log()
+        run_step('Evaluating model', ['python', 'evaluate_model.py'])
+    else:
+        print(f"ℹ️ Trades logged: {trade_count()}. Retrain at {MAX_TRADES} trades")
+
+
+def main():
+    print('\n' + '='*60)
+    print('🚀 Running trading bot')
+    print('='*60)
+    try:
+        script = 'bot_loop_ml.py' if STRATEGY == 'ml' else 'bot_loop.py'
+        run_step('Running trading logic', ['python', script])
+        maybe_retrain()
+    except Exception as e:
+        log_error('main', e)
+    print('✅ Run complete. Check reports/ and models/')
+
+
+if __name__ == '__main__':
+    main()
