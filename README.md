@@ -2,7 +2,7 @@
 
 An intelligent, modular trading bot that uses rule-based and machine learning strategies, automated retraining, live evaluation, and full reporting — all orchestrated via a unified command system.
 
----
+--- 
 
 ## 📁 Project Structure
 
