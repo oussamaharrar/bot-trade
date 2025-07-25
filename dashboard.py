@@ -26,6 +26,27 @@ class Dashboard(cmd.Cmd):
         for f in sorted(os.listdir('models')):
             print(f)
 
+    def do_train_rl(self, arg):
+        subprocess.run(['python', 'train_rl.py'])
+
+    def do_run_rl(self, arg):
+        subprocess.run(['python', 'run_rl_agent.py'])
+
+    def do_eval_rl(self, arg):
+        subprocess.run(['python', 'evaluate_model.py'])
+
+    def do_switch_strategy(self, arg):
+        if arg not in ['ml', 'rule', 'rl']:
+            print('Usage: switch_strategy [ml|rule|rl]')
+            return
+        import yaml
+        with open('config.yaml', 'r') as f:
+            cfg = yaml.safe_load(f)
+        cfg['strategy'] = arg
+        with open('config.yaml', 'w') as f:
+            yaml.dump(cfg, f)
+        print(f'Strategy switched to {arg}')
+
     def do_edit_file(self, arg):
         if not arg:
             print('Usage: edit_file <path>')

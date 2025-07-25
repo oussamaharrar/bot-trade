@@ -2,9 +2,14 @@ import pandas as pd
 import ta
 
 def add_strategy_features(df: pd.DataFrame) -> pd.DataFrame:
-    # Ensure necessary columns exist
-    if 'close' not in df or 'volume' not in df:
-        raise ValueError("DataFrame must contain 'close' and 'volume' columns")
+    """Add common trading indicators used by various strategies."""
+    if 'close' not in df:
+        if 'price' in df:
+            df = df.rename(columns={'price': 'close'})
+        else:
+            raise ValueError("DataFrame must contain 'close' column")
+    if 'volume' not in df:
+        df['volume'] = 1.0
 
     df = df.copy()
 

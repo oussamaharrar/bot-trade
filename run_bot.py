@@ -74,7 +74,12 @@ def main():
     print('🚀 Running trading bot')
     print('='*60)
     try:
-        script = 'bot_loop_ml.py' if STRATEGY == 'ml' else 'bot_loop.py'
+        if STRATEGY == 'ml':
+            script = 'bot_loop_ml.py'
+        elif STRATEGY == 'rl':
+            script = 'run_rl_agent.py'
+        else:
+            script = 'bot_loop.py'
         run_step('Running trading logic', ['python', script])
         maybe_retrain()
     except Exception as e:
