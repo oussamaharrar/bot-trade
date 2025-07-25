@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
+import json
 
 # Ensure required directories exist
 for d in ["models", "results", "reports", "logs"]:
@@ -27,6 +28,7 @@ if len(df) < 100:
     exit()
 
 # Prepare features and labels
+df = df.dropna(subset=["pnl_class"])  # remove rows with missing labels
 X = df.drop(columns=["pnl_class"])
 X = X.select_dtypes(include=["number"])
 y = df["pnl_class"]
@@ -67,6 +69,14 @@ timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
 versioned_model_path = os.path.join(MODEL_DIR, f"trained_model_{timestamp}.pkl")
 joblib.dump(model, versioned_model_path)
 print(f"🗂️ Versioned model saved as {versioned_model_path}")
+
+from strategy_features import add_strategy_features
+
+# Load and preprocess
+df = pd.read_csv("training_dataset.csv")
+df = df.dropna(subset=["pnl_class"])
+df = add_strategy_features(df)
+
 
 # Predict and evaluate
 y_pred = model.predict(X_test)
@@ -170,3 +180,23 @@ try:
     plt.close()
 except Exception as e:
     print(f"⚠️ Could not plot evaluation chart: {e}")
+
+
+# Update memory
+
+
+memory_path = "memory/memory.json"
+os.makedirs("memory", exist_ok=True)
+memory = {}
+
+if os.path.exists(memory_path):
+    with open(memory_path, "r") as f:
+        memory = json.load(f)
+
+memory["last_training_accuracy"] = f1
+memory["strategies_performance"]["bollinger_rsi"]["success_rate"] = f1
+memory["strategies_performance"]["bollinger_rsi"]["last_used"] = str(datetime.now())
+
+with open(memory_path, "w") as f:
+    json.dump(memory, f, indent=2)
+
