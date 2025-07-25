@@ -190,13 +190,25 @@ os.makedirs("memory", exist_ok=True)
 memory = {}
 
 if os.path.exists(memory_path):
-    with open(memory_path, "r") as f:
-        memory = json.load(f)
+    try:
+        with open(memory_path, "r") as f:
+            memory = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"⚠️ Could not read {memory_path}: {e}. Using empty memory.")
+
+# Ensure nested dictionaries exist
+memory.setdefault("strategies_performance", {})
+memory["strategies_performance"].setdefault("bollinger_rsi", {})
 
 memory["last_training_accuracy"] = f1
 memory["strategies_performance"]["bollinger_rsi"]["success_rate"] = f1
 memory["strategies_performance"]["bollinger_rsi"]["last_used"] = str(datetime.now())
 
-with open(memory_path, "w") as f:
-    json.dump(memory, f, indent=2)
+try:
+    temp_path = memory_path + ".tmp"
+    with open(temp_path, "w") as f:
+        json.dump(memory, f, indent=2)
+    os.replace(temp_path, memory_path)
+except OSError as e:
+    print(f"⚠️ Could not write {memory_path}: {e}")
 
