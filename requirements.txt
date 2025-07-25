@@ -6,3 +6,7 @@ joblib
 fpdf
 pyyaml
 ccxt
+stable-baselines3
+gymnasium
+torch
+ta

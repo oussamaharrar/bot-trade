@@ -2,7 +2,6 @@
 
 An intelligent, modular trading bot that uses rule-based and machine learning strategies, automated retraining, live evaluation, and full reporting — all orchestrated via a unified command system.
 
----
 
 ## 📁 Project Structure
 
@@ -14,6 +13,9 @@ bot-trade/
 ├── config.yaml # Configurations for coin, thresholds, etc.
 ├── market_data.py # Binance data fetcher (via ccxt)
 ├── ml_strategy.py # ML-based strategy with auto-fallback
+├── env_trading.py # Gym environment for RL
+├── train_rl.py # Train PPO/DQN agent
+├── run_rl_agent.py # Run trained RL agent
 ├── results_logger.py # Logs trades and feeds training dataset
 ├── training_dataset.csv # Cumulative dataset for ML training
 ├── requirements.txt # Dependencies
@@ -31,6 +33,7 @@ Edit
 ## 🧠 Strategy
 
 - **ML strategy** using `DecisionTreeClassifier`
+- **RL strategy** using `Stable-Baselines3` (PPO)
 - Strategy input features: `price_change`, `coin_delta`, `usdt_delta`, `value_delta`, etc.
 - Auto retrain after configurable trade threshold
 - Feature mismatch recovery included
@@ -55,6 +58,7 @@ coins:
   - SOL/USDT
 max_trades_before_retrain: 100
 strategy: "ml"  # or "rule"
+# set to "rl" to use the reinforcement learning agent
 debug_mode: true
 report_format: "pdf"
 output_dirs:
@@ -99,4 +103,4 @@ Add .env support if integrating with real exchange (Binance/Bybit/etc.)
 👨‍💻 Maintainer
 Built and improved by: @oussamaharrar
 
-Powered with ❤️ by HARVEY-ai (personal assistent) + Codex in Codespaces
+

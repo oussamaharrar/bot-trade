@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
-import os
+import json
 
 # Ensure required directories exist
 for d in ["models", "results", "reports", "logs"]:
@@ -15,7 +15,9 @@ for d in ["models", "results", "reports", "logs"]:
 
 # === Setup model directory ===
 MODEL_DIR = "models"
+REPORTS_DIR = "reports"
 os.makedirs(MODEL_DIR, exist_ok=True)
+os.makedirs(REPORTS_DIR, exist_ok=True)
 
 # Load dataset
 df = pd.read_csv("training_dataset.csv")
@@ -26,6 +28,7 @@ if len(df) < 100:
     exit()
 
 # Prepare features and labels
+df = df.dropna(subset=["pnl_class"])  # remove rows with missing labels
 X = df.drop(columns=["pnl_class"])
 X = X.select_dtypes(include=["number"])
 y = df["pnl_class"]
@@ -67,6 +70,14 @@ versioned_model_path = os.path.join(MODEL_DIR, f"trained_model_{timestamp}.pkl")
 joblib.dump(model, versioned_model_path)
 print(f"🗂️ Versioned model saved as {versioned_model_path}")
 
+from strategy_features import add_strategy_features
+
+# Load and preprocess
+df = pd.read_csv("training_dataset.csv")
+df = df.dropna(subset=["pnl_class"])
+df = add_strategy_features(df)
+
+
 # Predict and evaluate
 y_pred = model.predict(X_test)
 accuracy = accuracy_score(y_test, y_pred)
@@ -107,7 +118,8 @@ plt.title("Confusion Matrix")
 plt.xlabel("Predicted")
 plt.ylabel("Actual")
 plt.tight_layout()
-plt.show()
+plt.savefig(os.path.join(REPORTS_DIR, f"confusion_matrix_{timestamp}.png"))
+plt.close()
 
 # Feature Importance Plot
 importances = model.feature_importances_
@@ -123,7 +135,8 @@ plt.title("Feature Importance (Decision Tree)")
 plt.xlabel("Importance Score")
 plt.ylabel("Feature")
 plt.tight_layout()
-plt.show()
+plt.savefig(os.path.join(REPORTS_DIR, f"feature_importance_{timestamp}.png"))
+plt.close()
 
 # Plot F1 Score over time
 try:
@@ -139,7 +152,8 @@ try:
     plt.xticks(rotation=45)
     plt.grid(True)
     plt.tight_layout()
-    plt.show()
+    plt.savefig(os.path.join(REPORTS_DIR, f"f1_trend_{timestamp}.png"))
+    plt.close()
 except Exception as e:
     print(f"⚠️ Could not plot F1 Score over time: {e}")
     
@@ -162,6 +176,27 @@ try:
     plt.xticks(rotation=45)
     plt.grid(True)
     plt.tight_layout()
-    plt.show()
+    plt.savefig(os.path.join(REPORTS_DIR, f"evaluation_over_time_{timestamp}.png"))
+    plt.close()
 except Exception as e:
     print(f"⚠️ Could not plot evaluation chart: {e}")
+
+
+# Update memory
+
+
+memory_path = "memory/memory.json"
+os.makedirs("memory", exist_ok=True)
+memory = {}
+
+if os.path.exists(memory_path):
+    with open(memory_path, "r") as f:
+        memory = json.load(f)
+
+memory["last_training_accuracy"] = f1
+memory["strategies_performance"]["bollinger_rsi"]["success_rate"] = f1
+memory["strategies_performance"]["bollinger_rsi"]["last_used"] = str(datetime.now())
+
+with open(memory_path, "w") as f:
+    json.dump(memory, f, indent=2)
+

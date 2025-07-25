@@ -6,9 +6,13 @@ coins:
   - C/USDT
 
 max_trades_before_retrain: 100
-strategy: "ml"  # or "rule"
+strategy: "ml"  # or "rule" or "rl"
 debug_mode: true
 report_format: "pdf"
+default_coin: "C/USDT"
+thresholds:
+  buy: 0.6
+  sell: 0.4
 output_dirs:
   models: "models/"
   results: "results/"

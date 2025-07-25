@@ -33,3 +33,4 @@ def apply_strategy(df):
             signals.append((df['timestamp'][i], current_price, "HOLD"))
 
     return signals
+

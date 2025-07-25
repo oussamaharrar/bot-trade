@@ -2,11 +2,11 @@ import pandas as pd
 import os
 import json
 from datetime import datetime
-import os
 
 # Ensure required directories exist
 for d in ["models", "results", "reports", "logs"]:
     os.makedirs(d, exist_ok=True)
+ 
 
 def simulate_wallet(actions, initial_usdt=None, fee=0.001):
     state_path = os.path.join(os.path.dirname(__file__), "latest_state.json")
@@ -18,6 +18,9 @@ def simulate_wallet(actions, initial_usdt=None, fee=0.001):
     else:
         initial_usdt = 1000.0
         state = {}
+
+    if not actions:
+        raise ValueError("No actions were logged to simulate wallet.")
 
     usdt = initial_usdt
     coin = 0.0
@@ -88,8 +91,9 @@ def simulate_wallet(actions, initial_usdt=None, fee=0.001):
 
     # Append to training dataset
     dataset_path = os.path.join(os.path.dirname(__file__), "training_dataset.csv")
+    os.makedirs(os.path.dirname(dataset_path), exist_ok=True)
     df["price_change"] = df["price"].pct_change().fillna(0)
-    df["coin_delta"] = df["price"].diff().fillna(0)
+    df["coin_delta"] = df["coin_value"].diff().fillna(0)
     df["usdt_delta"] = df["usdt"].diff().fillna(0)
     df["value_delta"] = df["price_change"] + df["coin_delta"] + df["usdt_delta"]
     df["pnl_class"] = df["pnl"].apply(lambda x: 1 if x > 0 else (0 if x < 0 else -1))
