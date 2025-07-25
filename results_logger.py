@@ -2,7 +2,6 @@ import pandas as pd
 import os
 import json
 from datetime import datetime
-import os
 
 # Ensure required directories exist
 for d in ["models", "results", "reports", "logs"]:
@@ -19,6 +18,9 @@ def simulate_wallet(actions, initial_usdt=None, fee=0.001):
     else:
         initial_usdt = 1000.0
         state = {}
+
+    if not actions:
+        raise ValueError("No actions were logged to simulate wallet.")
 
     usdt = initial_usdt
     coin = 0.0
