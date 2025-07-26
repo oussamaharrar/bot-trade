@@ -1,12 +1,32 @@
+# === Core ===
 pandas
+numpy
 scikit-learn
 matplotlib
 seaborn
-joblib
-fpdf
-pyyaml
-ccxt
-stable-baselines3
-gymnasium
-torch
 ta
+ccxt
+
+# === ML Classifiers ===
+xgboost
+lightgbm
+imblearn  # For SMOTE
+
+# === RL Agents ===
+gymnasium
+stable-baselines3
+tensorboard
+torch  # PyTorch backend
+
+# === Dashboard ===
+streamlit
+plotly
+PyYAML
+
+# === DevOps & Reports ===
+fpdf
+joblib
+python-dotenv
+parquet
+pyarrow  # For reading parquet
+watchdog  # Optional: for auto-refresh
