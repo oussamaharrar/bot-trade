@@ -1,30 +1,22 @@
 import os
 import subprocess
 import cmd
+import shutil
+import pandas as pd
+
+MODEL_DIR = 'models'
+RESULTS_DIR = 'results'
+LOG_DIR = 'logs'
+MEMORY_DIR = 'memory'
+REPORTS_DIR = 'reports'
+EVAL_LOG = 'model_evaluation_log.csv'
 
 class Dashboard(cmd.Cmd):
     intro = 'Bot Dashboard. type help or ? to list commands.'
     prompt = '(bot) '
 
-    def do_update_model(self, arg):
+    def do_train(self, arg):
         subprocess.run(['python', 'autolearn.py'])
-
-    def do_view_logs(self, arg):
-        log_file = os.path.join('logs', 'errors.log')
-        if os.path.exists(log_file):
-            subprocess.run(['tail', '-n', '20', log_file])
-        else:
-            print('No logs found.')
-
-    def do_generate_report(self, arg):
-        subprocess.run(['python', 'evaluate_model.py'])
-
-    def do_retrain_ai(self, arg):
-        subprocess.run(['python', 'autolearn.py'])
-
-    def do_list_models(self, arg):
-        for f in sorted(os.listdir('models')):
-            print(f)
 
     def do_train_rl(self, arg):
         subprocess.run(['python', 'train_rl.py'])
@@ -32,59 +24,37 @@ class Dashboard(cmd.Cmd):
     def do_run_rl(self, arg):
         subprocess.run(['python', 'run_rl_agent.py'])
 
-    def do_eval_rl(self, arg):
+    def do_eval(self, arg):
         subprocess.run(['python', 'evaluate_model.py'])
 
-    def do_switch_strategy(self, arg):
-        if arg not in ['ml', 'rule', 'rl']:
-            print('Usage: switch_strategy [ml|rule|rl]')
-            return
-        import yaml
-        with open('config.yaml', 'r') as f:
-            cfg = yaml.safe_load(f)
-        cfg['strategy'] = arg
-        with open('config.yaml', 'w') as f:
-            yaml.dump(cfg, f)
-        print(f'Strategy switched to {arg}')
+    def do_eval_full(self, arg):
+        subprocess.run(['python', 'evaluate_model_metrics.py'])
 
-    def do_edit_file(self, arg):
-        if not arg:
-            print('Usage: edit_file <path>')
-            return
-        subprocess.run(['nano', arg])
+    def do_reset(self, arg):
+        for d in [MODEL_DIR, RESULTS_DIR, LOG_DIR, MEMORY_DIR]:
+            if os.path.isdir(d):
+                shutil.rmtree(d)
+            os.makedirs(d, exist_ok=True)
+        print('Workspace reset')
 
-    def do_patch_line(self, arg):
-        parts = arg.split()
-        if len(parts) < 3:
-            print('Usage: patch_line <file> <line> <text>')
-            return
-        file, line = parts[0], int(parts[1])
-        text = ' '.join(parts[2:])
-        try:
-            with open(file, 'r') as f:
-                lines = f.read().splitlines()
-            if 1 <= line <= len(lines):
-                lines[line-1] = text
-                with open(file, 'w') as f:
-                    f.write('\n'.join(lines) + '\n')
-                print(f'Patched {file}:{line}')
-            else:
-                print('Line number out of range')
-        except Exception as e:
-            print(f'Error: {e}')
-
-    def do_move_file(self, arg):
-        parts = arg.split()
-        if len(parts) != 2:
-            print('Usage: move_file <src> <dest_dir>')
-            return
-        src, dest = parts
-        os.makedirs(dest, exist_ok=True)
-        try:
-            os.rename(src, os.path.join(dest, os.path.basename(src)))
-            print('File moved')
-        except Exception as e:
-            print(f'Error: {e}')
+    def do_stats(self, arg):
+        best_model = None
+        if os.path.exists(EVAL_LOG):
+            df = pd.read_csv(EVAL_LOG)
+            if not df.empty:
+                best_row = df.sort_values('f1_score', ascending=False).iloc[0]
+                best_model = best_row.get('model_path')
+                print(f"Best model: {best_model} (F1: {best_row['f1_score']:.4f})")
+                print('F1 history:')
+                print(df[['timestamp','f1_score']].tail())
+        state_file = os.path.join(RESULTS_DIR, 'latest_state.json')
+        if os.path.exists(state_file):
+            with open(state_file) as f:
+                import json
+                state = json.load(f)
+            print(f"Last PnL: {state.get('final_value')}")
+        elif best_model is None:
+            print('No stats available.')
 
     def do_exit(self, arg):
         'Exit the dashboard'
