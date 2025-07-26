@@ -2,7 +2,6 @@ import pandas as pd
 import os
 import json
 from datetime import datetime
-import os
 
 # Ensure required directories exist
 for d in ["models", "results", "reports", "logs"]:
@@ -70,7 +69,10 @@ def simulate_wallet(actions, initial_usdt=None, fee=0.001):
 
         logs.append((ts, price, signal, usdt, coin * price, total, note, pnl, status))
 
-    final_value = usdt + coin * actions[-1][1]
+    if actions:
+        final_value = usdt + coin * actions[-1][1]
+    else:
+        final_value = usdt
 
     df = pd.DataFrame(logs, columns=[
         "timestamp", "price", "signal", "usdt", "coin_value",
