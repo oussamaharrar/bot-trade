@@ -8,7 +8,7 @@ An intelligent, modular trading bot that uses rule-based and machine learning st
 bot-trade/
 ├── run_bot.py # Main orchestrator: runs strategy, logs, trains, evaluates
 ├── dashboard.py # CLI dashboard for maintenance & control
-├── autolearn.py # Trains the model (DecisionTreeClassifier)
+├── autolearn.py # Auto-trains RandomForest/XGBoost/LightGBM models
 ├── evaluate_model.py # Evaluation + trend charts + PDF report generation
 ├── config.yaml # Configurations for coin, thresholds, etc.
 ├── market_data.py # Binance data fetcher (via ccxt)
@@ -32,7 +32,7 @@ Edit
 
 ## 🧠 Strategy
 
-- **ML strategy** using `DecisionTreeClassifier`
+ - **ML strategy** selecting the best of `RandomForest`, `XGBoost`, or `LightGBM`
 - **RL strategy** using `Stable-Baselines3` (PPO)
 - Strategy input features: `price_change`, `coin_delta`, `usdt_delta`, `value_delta`, etc.
 - Auto retrain after configurable trade threshold
