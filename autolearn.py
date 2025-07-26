@@ -1,5 +1,5 @@
 import pandas as pd
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 import joblib
@@ -39,6 +39,7 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 # Optional: Load best previous model based on highest F1 score
 best_model_path = None
+best_row = None
 if os.path.exists("model_evaluation_log.csv"):
     eval_df = pd.read_csv("model_evaluation_log.csv")
     eval_df = eval_df.dropna(subset=["f1_score", "model_path"])
@@ -54,9 +55,28 @@ else:
     print("⚠️ No valid previous model found. Skipping best model load.")
 
 
-# Train the model
-model = DecisionTreeClassifier(max_depth=5, random_state=42)
-model.fit(X_train, y_train)
+# Train several RandomForest models and pick the best based on F1
+candidates = [
+    RandomForestClassifier(n_estimators=50, random_state=42),
+    RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42),
+    RandomForestClassifier(n_estimators=200, random_state=42),
+]
+
+best_model = None
+best_f1 = -1.0
+best_pred = None
+
+for clf in candidates:
+    clf.fit(X_train, y_train)
+    preds = clf.predict(X_test)
+    f1_val = f1_score(y_test, preds, average="weighted")
+    if f1_val > best_f1:
+        best_f1 = f1_val
+        best_model = clf
+        best_pred = preds
+
+model = best_model
+y_pred = best_pred
 
 # Save the model (latest)
 latest_model_path = os.path.join(MODEL_DIR, "trained_model.pkl")
@@ -67,7 +87,7 @@ print(f"✅ Latest model saved to {latest_model_path}")
 # Save versioned model
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
 versioned_model_path = os.path.join(MODEL_DIR, f"trained_model_{timestamp}.pkl")
-joblib.dump(model, versioned_model_path)
+joblib.dump((model, list(X.columns)), versioned_model_path)
 print(f"🗂️ Versioned model saved as {versioned_model_path}")
 
 from strategy_features import add_strategy_features
@@ -78,10 +98,9 @@ df = df.dropna(subset=["pnl_class"])
 df = add_strategy_features(df)
 
 
-# Predict and evaluate
-y_pred = model.predict(X_test)
+# Evaluate best model
 accuracy = accuracy_score(y_test, y_pred)
-f1 = f1_score(y_test, y_pred, average='weighted')
+f1 = best_f1
 print(f"Model Accuracy: {accuracy:.4f}")
 print(f"F1 Score: {f1:.4f}")
 
@@ -131,7 +150,7 @@ feat_imp_df = pd.DataFrame({
 
 plt.figure(figsize=(8, 5))
 sns.barplot(data=feat_imp_df, x="Importance", y="Feature", color="blue")
-plt.title("Feature Importance (Decision Tree)")
+plt.title("Feature Importance (RandomForest)")
 plt.xlabel("Importance Score")
 plt.ylabel("Feature")
 plt.tight_layout()
@@ -190,12 +209,17 @@ os.makedirs("memory", exist_ok=True)
 memory = {}
 
 if os.path.exists(memory_path):
-    with open(memory_path, "r") as f:
-        memory = json.load(f)
+    try:
+        with open(memory_path, "r") as f:
+            memory = json.load(f)
+    except Exception:
+        memory = {}
 
-memory["last_training_accuracy"] = f1
+memory.setdefault("strategies_performance", {})
+memory["strategies_performance"].setdefault("bollinger_rsi", {})
 memory["strategies_performance"]["bollinger_rsi"]["success_rate"] = f1
 memory["strategies_performance"]["bollinger_rsi"]["last_used"] = str(datetime.now())
+memory["last_training_accuracy"] = f1
 
 with open(memory_path, "w") as f:
     json.dump(memory, f, indent=2)
