@@ -15,10 +15,12 @@ class TradingEnv(Env):
         stop_loss: float | None = None,
         take_profit: float | None = None,
         max_loss_per_session: float | None = None,
+        use_indicators: bool = True,
         max_consecutive_losses: int | None = None,
     ):
         super().__init__()
         self.original_df = data.copy().reset_index(drop=True)
+        self.use_indicators = use_indicators
         self.df = add_strategy_features(self.original_df)
         self.initial_balance = initial_balance
         self.stop_loss = stop_loss
@@ -46,15 +48,22 @@ class TradingEnv(Env):
         obs = [
             row.get("price", row.get("close", 0.0)),
             row.get("price_change", 0.0),
-            row.get("rsi_14", 0.0),
-            row.get("macd", 0.0),
-            row.get("macd_signal", 0.0),
-            row.get("macd_hist", 0.0),
-            row.get("bollinger_upper_diff", 0.0),
-            row.get("bollinger_lower_diff", 0.0),
+        ]
+        if self.use_indicators:
+            obs.extend([
+                row.get("rsi_14", 0.0),
+                row.get("macd", 0.0),
+                row.get("macd_signal", 0.0),
+                row.get("macd_hist", 0.0),
+                row.get("bollinger_upper_diff", 0.0),
+                row.get("bollinger_lower_diff", 0.0),
+            ])
+        else:
+            obs.extend([0.0] * 6)
+        obs.extend([
             usdt / self.initial_balance,
             (coin * row.get("price", row.get("close", 0.0))) / self.initial_balance,
-        ]
+        ])
         return np.array(obs, dtype=np.float32)
 
     def reset(self, seed: int | None = None, options: dict | None = None):

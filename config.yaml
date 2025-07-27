@@ -18,3 +18,6 @@ output_dirs:
   results: "results/"
   reports: "reports/"
   logs: "logs/"
+rl:
+  agent_type: "PPO"
+  policy: "MlpPolicy"
