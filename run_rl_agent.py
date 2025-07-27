@@ -1,7 +1,7 @@
 import os
 import json
 import pandas as pd
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, A2C, DQN
 
 from env_trading import TradingEnv
 from market_data import fetch_ohlcv
@@ -20,11 +20,24 @@ def load_best_model():
     raise FileNotFoundError("Best model not found. Train the RL agent first.")
 
 
-def main(model_path: str | None = None):
+def main(model_path: str | None = None, agent_type: str | None = None):
     if model_path is None:
         model_path = load_best_model()
+    if agent_type is None:
+        mem_path = os.path.join('memory', 'memory.json')
+        if os.path.exists(mem_path):
+            try:
+                with open(mem_path, 'r') as f:
+                    mem = json.load(f)
+                agent_type = mem.get('rl_agent_type', 'PPO')
+            except Exception:
+                agent_type = 'PPO'
+        else:
+            agent_type = 'PPO'
 
-    model = PPO.load(model_path)
+    cls_map = {'PPO': PPO, 'A2C': A2C, 'DQN': DQN}
+    ModelCls = cls_map.get(agent_type, PPO)
+    model = ModelCls.load(model_path)
     df = fetch_ohlcv()
     df.rename(columns={"close": "price"}, inplace=True)
     df["volume"] = 1.0
@@ -56,6 +69,7 @@ def main(model_path: str | None = None):
     memory['last_rl_reward'] = final_val - env.initial_balance
     memory['last_rl_total_value'] = final_val
     memory['rl_policy'] = os.path.basename(model_path)
+    memory['rl_agent_type'] = agent_type
     os.makedirs('memory', exist_ok=True)
     with open(mem_path, 'w') as f:
         json.dump(memory, f, indent=2)
