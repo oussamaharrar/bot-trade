@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 import pandas as pd
 import joblib
+import json
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix
 import numpy as np
@@ -49,11 +50,23 @@ def evaluate():
     roll_max = cumulative.cummax()
     drawdown = (cumulative - roll_max) / roll_max
     max_drawdown = drawdown.min()
+    # rolling drawdown over 30 periods
+    rolling_max = cumulative.rolling(window=30, min_periods=1).max()
+    rolling_drawdown = ((cumulative - rolling_max) / rolling_max).min()
     win_rate = (test_df['returns'] > 0).mean()
+    # compute pnl for daily average
+    if 'total_value' in test_df.columns:
+        test_df['pnl'] = test_df['total_value'].diff().fillna(0)
+    else:
+        test_df['pnl'] = test_df['returns']
+    test_df['date'] = pd.to_datetime(test_df['timestamp']).dt.date
+    avg_daily_pnl = test_df.groupby('date')['pnl'].sum().mean()
 
     print(f'Sharpe Ratio: {sharpe:.4f}')
     print(f'Max Drawdown: {max_drawdown:.4f}')
+    print(f'Rolling Drawdown: {rolling_drawdown:.4f}')
     print(f'Win Rate: {win_rate:.2%}')
+    print(f'Average Daily PnL: {avg_daily_pnl:.4f}')
 
     log_exists = os.path.exists(EVAL_LOG)
     with open(EVAL_LOG, 'a') as f:
@@ -114,7 +127,9 @@ def evaluate():
     pdf.cell(0, 10, f'F1 Score: {f1:.4f}', ln=1)
     pdf.cell(0, 10, f'Sharpe Ratio: {sharpe:.4f}', ln=1)
     pdf.cell(0, 10, f'Max Drawdown: {max_drawdown:.4f}', ln=1)
+    pdf.cell(0, 10, f'Rolling Drawdown: {rolling_drawdown:.4f}', ln=1)
     pdf.cell(0, 10, f'Win Rate: {win_rate:.2%}', ln=1)
+    pdf.cell(0, 10, f'Average Daily PnL: {avg_daily_pnl:.4f}', ln=1)
     pdf.ln(5)
     pdf.image(cm_path, w=170)
     if trend_path:
@@ -126,6 +141,23 @@ def evaluate():
     report_path = os.path.join(REPORTS_DIR, f'report_{ts}.pdf')
     pdf.output(report_path)
     print(f'Report saved to {report_path}')
+
+    # update memory with evaluation metrics
+    mem_path = os.path.join('memory', 'memory.json')
+    os.makedirs('memory', exist_ok=True)
+    memory = {}
+    if os.path.exists(mem_path):
+        try:
+            with open(mem_path, 'r') as f:
+                memory = json.load(f)
+        except Exception:
+            memory = {}
+    memory['last_eval_timestamp'] = str(datetime.now())
+    memory['last_eval_model'] = os.path.basename(MODEL_PATH)
+    memory['last_eval_rolling_drawdown'] = float(rolling_drawdown)
+    memory['last_eval_avg_daily_pnl'] = float(avg_daily_pnl)
+    with open(mem_path, 'w') as f:
+        json.dump(memory, f, indent=2)
 
 if __name__ == '__main__':
     evaluate()
