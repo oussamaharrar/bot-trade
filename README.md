@@ -122,7 +122,33 @@ If features mismatch during prediction, system retrains on the fly
 🛡️ Security Note
 No real API keys are required for simulation
 
-Add .env support if integrating with real exchange (Binance/Bybit/etc.)
+The bot now loads variables from a `.env` file. Live trading is disabled by
+default (`LIVE_TRADING=false`). Copy `.env.example` to `.env` and adjust values
+if you want to trade on a real exchange.
+
+### Docker
+
+Build and run with Streamlit dashboard exposed on port 8501:
+
+```bash
+docker build -t bot-trade .
+docker run -p 8501:8501 -v $(pwd)/models:/app/models -v $(pwd)/results:/app/results bot-trade
+```
+
+### Makefile Helpers
+
+Common tasks can be run with `make`:
+
+```bash
+make train         # train model
+make evaluate      # evaluate model
+make rl-train      # train RL agent
+```
+
+### Scheduled Retraining
+
+Use `python scripts/schedule.py` to trigger periodic retraining based on the
+`RETRAIN_CRON` environment variable (defaults to daily).
 
 👨‍💻 Maintainer
 Built and improved by: @oussamaharrar
