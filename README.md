@@ -8,7 +8,7 @@ An intelligent, modular trading bot that uses rule-based and machine learning st
 bot-trade/
 ├── run_bot.py # Main orchestrator: runs strategy, logs, trains, evaluates
 ├── dashboard.py # CLI dashboard for maintenance & control
-├── autolearn.py # Trains the model (DecisionTreeClassifier)
+├── autolearn.py # Auto-trains RandomForest/XGBoost/LightGBM models
 ├── evaluate_model.py # Evaluation + trend charts + PDF report generation
 ├── config.yaml # Configurations for coin, thresholds, etc.
 ├── market_data.py # Binance data fetcher (via ccxt)
@@ -29,8 +29,13 @@ bot-trade/
 
 ## 🧠 Strategy
 
+ <<<<<<< codex/remove-template-artifacts-and-document-training-options
 - **ML strategy** using RandomForest, XGBoost or LightGBM models
 - **RL strategy** via Stable-Baselines3 (PPO or DQN)
+ =======
+ - **ML strategy** selecting the best of `RandomForest`, `XGBoost`, or `LightGBM`
+- **RL strategy** using `Stable-Baselines3` (PPO)
+ >>>>>>> codex/refactor-bot-for-reinforcement-learning-support
 - Strategy input features: `price_change`, `coin_delta`, `usdt_delta`, `value_delta`, etc.
 - Auto retrain after configurable trade threshold
 - Feature mismatch recovery included
@@ -123,3 +128,15 @@ Add .env support if integrating with real exchange (Binance/Bybit/etc.)
 Built and improved by: @oussamaharrar
 
 
+
+---
+
+## 🖥️ Streamlit Dashboard
+
+Run an interactive dashboard with:
+
+```bash
+streamlit run dash_ui/app.py
+```
+
+The app lets you tweak risk thresholds and agent settings, start new training or RL runs, monitor logs in real time and download generated models or reports.
