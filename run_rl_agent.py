@@ -77,21 +77,11 @@ def main(model_path: str | None = None, agent_type: str | None = None):
         df_logs["timestamp"] = pd.to_datetime(df_logs["timestamp"])
         df_logs["date"] = df_logs["timestamp"].dt.date
         avg_daily_pnl = df_logs.groupby("date")["pnl"].sum().mean()
-        roll_max = df_logs["total_value"].cummax()
-        drawdown = (df_logs["total_value"] - roll_max) / roll_max
-        rolling_drawdown = float(drawdown.iloc[-1])
-    else:
-        avg_daily_pnl = 0.0
-        rolling_drawdown = 0.0
-
         df_logs["rolling_max"] = df_logs["total_value"].cummax()
         df_logs["rolling_drawdown"] = (
             df_logs["total_value"] - df_logs["rolling_max"]
         ) / df_logs["rolling_max"]
         rolling_drawdown = float(df_logs["rolling_drawdown"].min())
-        avg_daily_pnl = (
-            df_logs.groupby(df_logs["timestamp"].dt.date)["pnl"].sum().mean()
-        )
         print(f"Rolling Drawdown: {rolling_drawdown:.4f}")
         print(f"Average Daily PnL: {avg_daily_pnl:.4f}")
     else:
