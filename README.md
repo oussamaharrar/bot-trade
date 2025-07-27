@@ -24,21 +24,24 @@ bot-trade/
 ├── reports/ # Plots & PDF reports
 ├── logs/ # Runtime & error logs
 
-yaml
-Copy
-Edit
 
 ---
 
 ## 🧠 Strategy
 
-- **ML strategy** using `DecisionTreeClassifier`
-- **RL strategy** using `Stable-Baselines3` (PPO)
+- **ML strategy** using RandomForest, XGBoost or LightGBM models
+- **RL strategy** via Stable-Baselines3 (PPO or DQN)
 - Strategy input features: `price_change`, `coin_delta`, `usdt_delta`, `value_delta`, etc.
 - Auto retrain after configurable trade threshold
 - Feature mismatch recovery included
 
+## 🚀 Training Options
+- `python autolearn.py --model [rf|xgb|lgbm]`
+- `python train_rl.py --agent [ppo|dqn]`
+
+
 ---
+
 
 ## 🛠️ Installation
 
@@ -47,17 +50,15 @@ pip install -r requirements.txt
 Ensure you are using Python 3.9+
 
 ⚙️ Configuration
-Edit config.yaml:
 
-yaml
-Copy
-Edit
 coins:
   - BTC/USDT
   - ETH/USDT
   - SOL/USDT
 max_trades_before_retrain: 100
 strategy: "ml"  # or "rule"
+model_type: rf  # rf|xgb|lgbm
+rl_agent: ppo  # ppo|dqn
 # set to "rl" to use the reinforcement learning agent
 debug_mode: true
 report_format: "pdf"
@@ -69,16 +70,34 @@ output_dirs:
 🚀 Running the Bot
 Run full pipeline:
 
-bash
-Copy
-Edit
 python run_bot.py
 Or interact with CLI Dashboard:
 
-bash
-Copy
-Edit
 python dashboard.py
+### Streamlit Dashboard
+
+```bash
+streamlit run dashboard.py
+```
+### Docker Usage
+
+```bash
+docker build -t bot-trade .
+docker run --rm -it bot-trade
+```
+### Makefile Shortcuts
+
+```bash
+make train      # train ML model
+make train-rl   # train RL agent
+make run        # run bot
+make dashboard  # launch Streamlit
+make docker-build
+make docker-run
+```
+
+
+
 📊 Outputs
 ✅ Logs: results/run_*.csv
 
