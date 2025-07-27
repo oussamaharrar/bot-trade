@@ -15,6 +15,7 @@ class TradingEnv(Env):
         stop_loss: float | None = None,
         take_profit: float | None = None,
         max_loss_per_session: float | None = None,
+        max_consecutive_losses: int | None = None,
     ):
         super().__init__()
         self.original_df = data.copy().reset_index(drop=True)
@@ -23,6 +24,7 @@ class TradingEnv(Env):
         self.stop_loss = stop_loss
         self.take_profit = take_profit
         self.max_loss_per_session = max_loss_per_session
+        self.max_consecutive_losses = max_consecutive_losses
         self.win_streak = 0
         self.loss_streak = 0
         self.risk_pct = 1.0
@@ -99,11 +101,22 @@ class TradingEnv(Env):
         elif self.loss_streak >= 2:
             self.risk_pct = max(0.1, self.risk_pct - 0.1)
 
-        if self.stop_loss and total_value <= self.initial_balance * (1 - self.stop_loss):
+        row = self.df.iloc[self.index]
+        if "bollinger_upper" in row and "bollinger_lower" in row and row.get("close", 0.0):
+            volatility = (row["bollinger_upper"] - row["bollinger_lower"]) / row.get("close", 1.0)
+        else:
+            volatility = 0.0
+
+        dyn_stop = self.stop_loss * (1 + volatility) if self.stop_loss else None
+        dyn_take = self.take_profit * (1 + volatility) if self.take_profit else None
+
+        if dyn_stop and total_value <= self.initial_balance * (1 - dyn_stop):
             done = True
-        if self.take_profit and total_value >= self.initial_balance * (1 + self.take_profit):
+        if dyn_take and total_value >= self.initial_balance * (1 + dyn_take):
             done = True
         if self.max_loss_per_session and total_value <= self.initial_balance * (1 - self.max_loss_per_session):
+            done = True
+        if self.max_consecutive_losses and self.loss_streak >= self.max_consecutive_losses:
             done = True
 
         obs = self._make_obs(self.index, self.usdt, self.coin)

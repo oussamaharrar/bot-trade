@@ -10,7 +10,7 @@ ccxt
 # === ML Classifiers ===
 xgboost
 lightgbm
-imblearn  # For SMOTE
+imbalanced-learn  # For SMOTE and undersampling
 
 # === RL Agents ===
 gymnasium
@@ -30,3 +30,4 @@ python-dotenv
 parquet
 pyarrow  # For reading parquet
 watchdog  # Optional: for auto-refresh
+schedule
