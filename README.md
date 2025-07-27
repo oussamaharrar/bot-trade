@@ -104,3 +104,15 @@ Add .env support if integrating with real exchange (Binance/Bybit/etc.)
 Built and improved by: @oussamaharrar
 
 
+
+---
+
+## 🖥️ Streamlit Dashboard
+
+Run an interactive dashboard with:
+
+```bash
+streamlit run dash_ui/app.py
+```
+
+The app lets you tweak risk thresholds and agent settings, start new training or RL runs, monitor logs in real time and download generated models or reports.
