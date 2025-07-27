@@ -30,4 +30,3 @@ python-dotenv
 parquet
 pyarrow  # For reading parquet
 watchdog  # Optional: for auto-refresh
-schedule

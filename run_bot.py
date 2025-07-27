@@ -3,7 +3,6 @@ import subprocess
 from datetime import datetime
 import yaml
 import pandas as pd
-from env_config import LIVE_TRADING
 
 CONFIG_PATH = 'config.yaml'
 
@@ -74,8 +73,6 @@ def main():
     print('\n' + '='*60)
     print('🚀 Running trading bot')
     print('='*60)
-    if not LIVE_TRADING:
-        print('⚠️  LIVE_TRADING disabled - running in simulation mode')
     try:
         if STRATEGY == 'ml':
             script = 'bot_loop_ml.py'
