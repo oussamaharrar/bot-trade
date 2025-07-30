@@ -79,6 +79,8 @@ bash
 Copy
 Edit
 python dashboard.py
+or launch the Streamlit UI:
+python streamlit_dashboard.py
 📊 Outputs
 ✅ Logs: results/run_*.csv
 
