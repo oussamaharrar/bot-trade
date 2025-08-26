@@ -1,0 +1,47 @@
+# === Core ===
+pandas
+modin[ray]
+numpy
+scikit-learn
+matplotlib
+seaborn
+ta
+ccxt
+tqdm
+psutil
+pyyaml 
+stable-baselines3 
+gymnasium[all] 
+pandas 
+matplotlib 
+scikit-learn 
+seaborn 
+ta
+
+# === ML Classifiers ===
+xgboost
+lightgbm
+imbalanced-learn  # For SMOTE and undersampling
+
+# === RL Agents ===
+gymnasium
+stable-baselines3
+tensorboard
+torch  # PyTorch backend
+
+# === Dashboard ===
+streamlit
+plotly
+PyYAML
+
+# === DevOps & Reports ===
+fpdf
+joblib
+python-dotenv
+parquet
+pyarrow  # For reading parquet
+watchdog  # Optional: for auto-refresh
+schedule
+
+#conda install -n bot-trade -c conda-forge pyarrow
+

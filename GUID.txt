@@ -1,0 +1,30 @@
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+
+
+--- panda probleme 
+
+//
+
+//source activate name_of_my_env
+# On Windows
+activate name_of_my_env
+
+pip install meson cython
+python -m pip install --upgrade pip
+
+pip install --use-pep517 -r requirements.txt
+
+conda : //////////
+conda create -c conda-forge -n bot-trade python pandas
+conda create -n myenv python=3.11
+conda activate myenv
+python -m pip install -r requirements.txt
+python -m ensurepip --upgrade
+
+conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
+
+
+
+example conda ; conda install -n bot-trade scipy

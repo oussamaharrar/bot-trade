@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "E:\bot\train_rl.py", line 627, in <module>
+    main()
+  File "E:\bot\train_rl.py", line 609, in main
+    train_one_file(
+  File "E:\bot\train_rl.py", line 301, in train_one_file
+    print(f"[\U0001f4c2] Loading feather: {file_path}")
+  File "C:\ProgramData\miniconda3\envs\bot-trade\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f4c2' in position 1: character maps to <undefined>

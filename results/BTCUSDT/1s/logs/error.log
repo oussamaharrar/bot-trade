@@ -1,0 +1,47 @@
+2025-08-16 00:17:49 | WARNING | MainProcess | root | [INTERRUPT] KeyboardInterrupt — saving.
+2025-08-16 00:32:13 | WARNING | MainProcess | root | [INTERRUPT] KeyboardInterrupt — saving.
+2025-08-16 00:32:36 | WARNING | MainProcess | root | [INTERRUPT] KeyboardInterrupt — saving.
+2025-08-16 00:35:55 | WARNING | MainProcess | root | [INTERRUPT] KeyboardInterrupt — saving.
+2025-08-16 00:58:37 | WARNING | MainProcess | root | [INTERRUPT] KeyboardInterrupt — saving.
+2025-08-16 01:09:35 | WARNING | MainProcess | root | [INTERRUPT] KeyboardInterrupt — saving.
+2025-08-16 01:14:05 | WARNING | MainProcess | root | [INTERRUPT] KeyboardInterrupt — saving.
+2025-08-16 01:14:05 | WARNING | MainProcess | root | [INTERRUPT] KeyboardInterrupt — saving.
+2025-08-16 02:15:51 | ERROR | MainProcess | root | [ERROR] during learn: 
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\envs\bot-trade\Lib\multiprocessing\connection.py", line 317, in _recv_bytes
+    ov, err = _winapi.ReadFile(self._handle, bsize,
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [WinError 109] The pipe has been ended
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\bot\Train_RL.py", line 241, in train_one_file
+    model.learn(total_timesteps=int(args.total_steps), callback=cb, progress_bar=args.progress)
+  File "C:\ProgramData\miniconda3\envs\bot-trade\Lib\site-packages\stable_baselines3\ppo\ppo.py", line 311, in learn
+    return super().learn(
+           ^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\envs\bot-trade\Lib\site-packages\stable_baselines3\common\on_policy_algorithm.py", line 324, in learn
+    continue_training = self.collect_rollouts(self.env, callback, self.rollout_buffer, n_rollout_steps=self.n_steps)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\envs\bot-trade\Lib\site-packages\stable_baselines3\common\on_policy_algorithm.py", line 218, in collect_rollouts
+    new_obs, rewards, dones, infos = env.step(clipped_actions)
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\envs\bot-trade\Lib\site-packages\stable_baselines3\common\vec_env\base_vec_env.py", line 222, in step
+    return self.step_wait()
+           ^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\envs\bot-trade\Lib\site-packages\stable_baselines3\common\vec_env\vec_normalize.py", line 181, in step_wait
+    obs, rewards, dones, infos = self.venv.step_wait()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\envs\bot-trade\Lib\site-packages\stable_baselines3\common\vec_env\subproc_vec_env.py", line 137, in step_wait
+    results = [remote.recv() for remote in self.remotes]
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\envs\bot-trade\Lib\site-packages\stable_baselines3\common\vec_env\subproc_vec_env.py", line 137, in <listcomp>
+    results = [remote.recv() for remote in self.remotes]
+               ^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\envs\bot-trade\Lib\multiprocessing\connection.py", line 250, in recv
+    buf = self._recv_bytes()
+          ^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\envs\bot-trade\Lib\multiprocessing\connection.py", line 337, in _recv_bytes
+    raise EOFError
+EOFError

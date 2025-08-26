@@ -1,0 +1,56 @@
+# playlist.yaml — توزيع مثالي لاستغلال 4× A100 40GB + 2× Xeon (≈96 نواة)
+# ملاحظة: السكربت train_rl ينفّذ العناصر بالتتابع.
+# لأقصى استغلال (تشغيل متزامن) شغّل 4 أوامر منفصلة (كل أمر لجوب واحد) كما سأرسل لك في الدردشة.
+# هذه القيم موزونة لتوازن استهلاك CPU/GPU وعدم تجاوز الذاكرة:
+# - 1s: n_envs=32, n_steps=2048  => batch_size=65536 (≤ n_envs*n_steps)
+# - 1m: n_envs=16, n_steps=4096  => batch_size=65536
+# يمكنك رفع n_envs لاحقًا إذا لاحظت توفر نوى CPU.
+
+- symbol: BTCUSDT
+  frame: 1s
+  device: 0
+  n_envs: 18
+  n_steps: 8192
+  batch_size: 147456
+  epochs: 8
+  total_steps: 50000000
+  checkpoint_every: 200000
+  net_arch: "pi=[2048,2048,1024];vf=[2048,2048,1024]"
+
+  resume_auto: latest
+
+- symbol: BTCUSDT
+  frame: 1s
+  device: 1
+  n_envs: 18
+  n_steps: 8192
+  batch_size: 147456
+  epochs: 8
+  total_steps: 50000000
+  checkpoint_every: 200000
+  net_arch: "pi=[2048,2048,1024];vf=[2048,2048,1024]"
+  resume_auto: latest
+
+- symbol: BTCUSDT
+  frame: 1m
+  device: 2
+  n_envs: 32
+  n_steps: 8192
+  batch_size: 262144
+  epochs: 6
+  total_steps: 30000000
+  checkpoint_every: 200000
+  net_arch: "pi=[2048,2048,1024];vf=[2048,2048,1024]"
+  resume_auto: latest
+
+- symbol: BTCUSDT
+  frame: 1m
+  device: 3
+  n_envs: 32
+  n_steps: 8192
+  batch_size: 262144
+  epochs: 6
+  total_steps: 30000000
+  checkpoint_every: 200000
+  net_arch: "pi=[2048,2048,1024];vf=[2048,2048,1024]"
+  resume_auto: latest

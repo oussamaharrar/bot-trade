@@ -1,0 +1,24 @@
+{
+  "frames": {
+    "12h": {
+      "last_reward": 15456.3974609375,
+      "last_training": "20250802_104348",
+      "last_file": "BTCUSDT-12h-2017-08-17_to_2024-12-31.feather",
+      "last_step": 5386,
+      "total_sessions": 2
+    },
+    "15m": {
+      "last_reward": -623.1902465820312,
+      "last_training": "20250803_220728",
+      "last_file": "BTCUSDT-15m-2021-01-01_to_2021-01-31.feather",
+      "last_step": 2975,
+      "total_sessions": 84
+    }
+  },
+  "sessions": {
+    "BTCUSDT:1m": {
+      "last_step": 50000,
+      "updated_at": "2025-08-26T05:41:06.979823"
+    }
+  }
+}

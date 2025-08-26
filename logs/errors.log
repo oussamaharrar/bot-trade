@@ -1,0 +1,38 @@
+[2025-07-27 21:02:15.977338] Running trading logic: INFO:root:[\U0001f7e1] Fetching data...
+INFO:root:[\U0001f916] Applying ML strategy...
+[2025-07-27 21:04:24.072155] Running trading logic: INFO:root:[\U0001f7e1] Fetching data...
+INFO:root:[\U0001f916] Applying ML strategy...
+C:\Users\Administrator\AppData\Local\Programs\Python\Python313\Lib\site-packages\sklearn\base.py:380: InconsistentVersionWarning: Trying to unpickle estimator DecisionTreeClassifier from version 1.7.1 when using version 1.6.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+  warnings.warn(
+INFO:root:\u26a0\ufe0f Model loading failed or incompatible: Missing features: ['price', 'usdt', 'coin_value', 'total_value']
+INFO:root:\U0001f504 Re-training model with autolearn.py...
+INFO:matplotlib.font_manager:generated new fontManager
+C:\Users\Administrator\AppData\Local\Programs\Python\Python313\Lib\site-packages\xgboost\training.py:183: UserWarning: [21:04:06] WARNING: C:\actions-runner\_work\xgboost\xgboost\src\learner.cc:738: 
+Parameters: { "use_label_encoder" } are not used.
+
+  bst.update(dtrain, iteration=i, fobj=obj)
+C:\Users\Administrator\AppData\Local\Programs\Python\Python313\Lib\site-packages\sklearn\utils\validation.py:2739: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+INFO:root:\u2705 Latest model saved to models\trained_model.pkl
+INFO:root:Previous best F1: 1.0000
+INFO:root:\U0001f4c8 Evaluation logged to model_evaluation_log.csv
+INFO:root:Model Accuracy: 0.9752
+INFO:root:F1 Score: 0.9749 using LightGBM
+Traceback (most recent call last):
+  File "C:\Users\Administrator\desktop\bot_trade\ml_strategy.py", line 24, in apply_ml_strategy
+    raise ValueError(f"Missing features: {missing}")
+ValueError: Missing features: ['price', 'usdt', 'coin_value', 'total_value']
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Administrator\desktop\bot_trade\bot_loop_ml.py", line 22, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\Administrator\desktop\bot_trade\bot_loop_ml.py", line 11, in main
+    actions = apply_ml_strategy(df)
+  File "C:\Users\Administrator\desktop\bot_trade\ml_strategy.py", line 29, in apply_ml_strategy
+    model, expected_columns = joblib.load("models/trained_model.pkl")
+    ^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: too many values to unpack (expected 2)

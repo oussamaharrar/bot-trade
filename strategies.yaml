@@ -1,0 +1,12 @@
+strategies:
+  - name: "bollinger_rsi"
+    features: ["bollinger_upper_diff", "bollinger_lower_diff", "rsi_14"]
+    logic: "BUY if close < lower_band and RSI < 30, SELL if close > upper_band and RSI > 70"
+    accuracy: 0.91
+    enabled: true
+
+  - name: "macd_crossover"
+    features: ["macd", "macd_signal", "macd_hist"]
+    logic: "BUY if macd crosses above signal line, SELL if crosses below"
+    accuracy: 0.87
+    enabled: true

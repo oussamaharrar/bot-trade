@@ -1,0 +1,138 @@
+import argparse, os
+from typing import Optional, Dict, Any
+import torch
+from .rl_paths import (
+    DEFAULT_AGENTS_DIR, DEFAULT_RESULTS_DIR, DEFAULT_REPORTS_DIR,
+    DEFAULT_MEMORY_FILE, DEFAULT_KB_FILE
+)
+
+def _parse_list(s: str):
+    s = (s or "").strip().strip("[]")
+    if not s:
+        return []
+    return [int(x.strip()) for x in s.split(",") if x.strip()]
+
+def parse_net_arch(s: str) -> Dict[str, Any]:
+    pi, vf = [1024, 1024], [1024, 1024]
+    s = (s or "").strip()
+    if s:
+        for part in s.split(";"):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                k, v = k.strip().lower(), v.strip()
+                if k in ("pi", "vf"):
+                    lst = _parse_list(v)
+                    if lst:
+                        if k == "pi": pi = lst
+                        else: vf = lst
+    return dict(net_arch=dict(pi=pi, vf=vf))
+
+def parse_activation(name: str):
+    import torch.nn as nn
+    return {
+        "relu": nn.ReLU,
+        "tanh": nn.Tanh,
+        "elu": nn.ELU,
+        "gelu": nn.GELU,
+        "leakyrelu": nn.LeakyReLU,
+    }.get((name or "relu").strip().lower(), nn.ReLU)
+
+def build_policy_kwargs(net_arch_str: str, activation: str, ortho_init: bool) -> Dict[str, Any]:
+    kw = parse_net_arch(net_arch_str)
+    kw["activation_fn"] = parse_activation(activation)
+    kw["ortho_init"] = bool(ortho_init)
+    return kw
+
+def parse_args():
+    ap = argparse.ArgumentParser("train_rl — orchestrator")
+    ap.add_argument("--symbol", type=str, default="BTCUSDT")
+    ap.add_argument("--frame", type=str, default="1m")
+    ap.add_argument("--policy", type=str, default="MlpPolicy")
+    ap.add_argument("--device", type=int, default=0)
+    ap.add_argument("--n-envs", type=int, default=16)
+    ap.add_argument("--n-steps", type=int, default=4096)
+    ap.add_argument("--batch-size", type=int, default=65536)
+    ap.add_argument("--epochs", type=int, default=3)
+    ap.add_argument("--total-steps", type=int, default=3_000_000)
+    ap.add_argument("--learning-rate", type=float, default=3e-4)
+    ap.add_argument("--gamma", type=float, default=0.99)
+    ap.add_argument("--gae-lambda", type=float, default=0.95)
+    ap.add_argument("--clip-range", type=float, default=0.2)
+    ap.add_argument("--ent-coef", type=float, default=0.0)
+    ap.add_argument("--vf-coef", type=float, default=0.5)
+    ap.add_argument("--max-grad-norm", type=float, default=0.5)
+    ap.add_argument("--sde", action="store_true")
+    ap.add_argument("--net-arch", type=str, default="pi=[1024,1024];vf=[1024,1024]")
+    ap.add_argument("--activation", type=str, default="relu")
+    ap.add_argument("--ortho-init", action="store_true")
+    ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--checkpoint-every", type=int, default=200_000)
+    ap.add_argument("--resume-auto", action="store_true")
+    ap.add_argument("--progress", action="store_true")
+    ap.add_argument("--safe", action="store_true")
+    ap.add_argument("--use-indicators", action="store_true")
+    ap.add_argument("--eval-episodes", type=int, default=3)
+    ap.add_argument("--eval-every-steps", type=int, default=0)
+    ap.add_argument("--log-every-steps", type=int, default=10_000)
+    ap.add_argument("--print-every-sec", type=int, default=10)
+    ap.add_argument("--benchmark-every-steps", type=int, default=50_000)
+    ap.add_argument("--tensorboard", action="store_true")
+    ap.add_argument("--tb-logdir", type=str, default=os.path.join("logs", "tb"))
+    ap.add_argument("--quiet-device-report", action="store_true")
+    ap.add_argument("--torch-threads", type=int, default=6)
+    ap.add_argument("--omp-threads", type=int, default=1)
+    ap.add_argument("--mkl-threads", type=int, default=1)
+    ap.add_argument("--cuda-tf32", action="store_true")
+    ap.add_argument("--cudnn-benchmark", action="store_true")
+    ap.add_argument("--sb3-verbose", type=int, default=1, choices=[0,1,2])
+    ap.add_argument("--vecnorm", action="store_true")
+    ap.add_argument("--norm-obs", action="store_true")
+    ap.add_argument("--norm-reward", action="store_true")
+    ap.add_argument("--clip-obs", type=float, default=10.0)
+    ap.add_argument("--clip-reward", type=float, default=10.0)
+    ap.add_argument("--agents-dir", type=str, default=DEFAULT_AGENTS_DIR)
+    ap.add_argument("--results-dir", type=str, default=DEFAULT_RESULTS_DIR)
+    ap.add_argument("--reports-dir", type=str, default=DEFAULT_REPORTS_DIR)
+    ap.add_argument("--memory-file", type=str, default=DEFAULT_MEMORY_FILE)
+    ap.add_argument("--kb-file", type=str, default=DEFAULT_KB_FILE)
+    ap.add_argument("--playlist", type=str, default=None)
+    ap.add_argument("--mp-start", type=str, default="spawn", choices=["spawn", "forkserver", "fork"])
+    args = ap.parse_args()
+    args.use_sde = bool(getattr(args, "sde", False))
+    args.policy_kwargs = build_policy_kwargs(args.net_arch, args.activation, args.ortho_init)
+    os.environ["OMP_NUM_THREADS"] = str(max(1, int(args.omp_threads)))
+    os.environ["MKL_NUM_THREADS"] = str(max(1, int(args.mkl_threads)))
+    try: torch.set_num_threads(max(1, int(args.torch_threads)))
+    except Exception: pass
+    if torch.cuda.is_available():
+        n = torch.cuda.device_count()
+        idx = max(0, min(int(args.device), n - 1))
+        args.device, args.device_str = idx, f"cuda:{idx}"
+        if args.cuda_tf32:
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+        if args.cudnn_benchmark:
+            torch.backends.cudnn.benchmark = True
+    else:
+        args.device_str = "cpu"
+    try:
+        total_per_rollout = int(args.n_envs) * int(args.n_steps)
+        eff = min(int(args.batch_size), max(total_per_rollout, int(args.n_envs)))
+        eff = (eff // int(args.n_envs)) * int(args.n_envs)
+        args.batch_size_eff = eff if eff > 0 else int(args.n_envs)
+    except Exception:
+        args.batch_size_eff = int(args.batch_size)
+    return args
+
+def finalize_args(args, is_continuous: Optional[bool] = None):
+    if is_continuous is False:
+        args.sde = False
+        args.use_sde = False
+    try:
+        total_per_rollout = int(args.n_envs) * int(args.n_steps)
+        eff = min(int(getattr(args, "batch_size", 0) or 0), max(total_per_rollout, int(args.n_envs)))
+        eff = (eff // int(args.n_envs)) * int(args.n_envs)
+        args.batch_size_eff = eff if eff > 0 else int(args.n_envs)
+    except Exception:
+        pass
+    return args

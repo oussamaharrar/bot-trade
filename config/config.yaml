@@ -1,0 +1,214 @@
+# =========================
+# bot_trade — config.yaml
+# آخر تحديث: 2025-08-10
+# =========================
+
+project:
+  seed: 42
+  debug: true
+  dtype: float32
+  paths:
+    data_dir: "data"          # بيانات خام/جاهزة (feather)
+    ready_dir: "data_ready"   # مخرجات prepare_data_ready.py
+    agents_dir: "agents"
+    logs_dir: "logs"
+    results_dir: "results"
+    reports_dir: "reports"
+    memory_dir: "memory"
+  report_formats: ["csv","png","pdf"]  # لما نفعّل تقارير التحليل الآلي:contentReference[oaicite:4]{index=4}
+
+defaults:
+  symbol: "BTCUSDT"
+  frame: "1m"                 # يقرأها Env عند الإنشاء (fallback):contentReference[oaicite:5]{index=5}
+  split_by_year_1s: false     # لو أردت تقسيم 1s حسب السنة بدل quantiles
+  save_per_symbol: true       # GroupBy(save per symbol) كما اتفقنا
+  fill_missing_safe_zero: true # ملء الأعمدة الناقصة بصفر آمنًا
+
+# ————— تهيئة التدريب التعزيزي (SB3 / PPO) —————
+rl:
+  algorithm: "PPO"
+  policy: "MlpPolicy"
+  normalize_obs: true         # VecNormalize (obs فقط)
+  normalize_reward: false
+  # parallel envs لكل عملية (نعدّلها من سكربت التشغيل حسب الـCPU)
+  n_envs:
+    "1s": 24
+    "1m": 20
+    "3m": 16
+    "5m": 16
+  # طول الرول‑آوت لكل فريم (يتحقق Train_RL من القابلية وحجم البيانات)
+  n_steps:
+    "1s": 16384      # 8k–32k مقترح، اخترنا وسطًا أعلى للثواني
+    "1m": 4096
+    "3m": 4096
+    "5m": 4096
+  batch_size: 2048
+  n_epochs: 10
+  gamma: 0.999
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.005 
+  vf_coef: 0.5
+  learning_rate: 2e-4
+  max_grad_norm: 0.5
+  target_kl: null
+  # نقاط حفظ/استئناف
+  checkpoint_every_steps: 500_000
+  keep_last_n: 5
+  resume_if_found: true
+
+# ————— بيئة التداول —————
+env:
+  frame: "${defaults.frame}"  # يُمكن تمريره من CLI؛ هذا الافتراضي يظهر في info:contentReference[oaicite:6]{index=6}
+  symbol: "$(defaults.symbol)" #  
+  max_steps: null             # يكتشف تلقائيًا من طول الملف إذا null:contentReference[oaicite:7]{index=7}
+  initial_balance_usdt: 10000
+  commission_pct: 0.0004
+  slippage_pct: 0.0003
+  spread_pct: 0.0001
+  allow_hold_across_steps: true
+  risk_manager:
+    min_risk: 0.05
+    max_risk: 0.5
+    ema_reward_alpha: 0.05
+    freeze_loss_streak: 6
+    recovery_ema_threshold: 0.0
+    danger_vol_threshold: 0.035
+    notes_in_info: true       # يمرّر أسباب التعديل ضمن info
+  reward:
+    pnl_weight: 1.0
+    vol_penalty_weight: 0.25
+    dd_penalty_weight: 0.35
+    bonus_trend_align: 0.05
+    benchmark_buy_and_hold: true
+  smart_entry_guard:
+    enabled: true             # entry_verifier + simulation_engine:contentReference[oaicite:8]{index=8}
+    simulation_threshold: 0.55
+    allow_if_sim_positive: true
+    cool_down_steps: 0
+
+# ————— الميزات والمؤشرات —————
+indicators:
+  enabled:
+    rsi: true
+    bollinger: true
+    macd: true
+    ema: true
+    sma: true
+    atr: true
+    adx: true
+    donchian: true
+    vortex: true
+    keltner: true
+    obv: true
+    cci: true
+    stochastic: true
+    roc: true
+    ao: true
+  windows:
+    rsi_window: 14
+    bb_window: 20
+    bb_dev: 2.0
+    ema_window: 20
+    sma_window: 50
+    atr_window: 14
+    adx_window: 14
+    donchian_window: 20
+    vi_window: 14
+    kc_window: 20
+    kc_atr_window: 10
+    ao_short_window: 5
+    ao_long_window: 34
+    stoch_window: 14
+    stoch_smooth_window: 3
+
+signals:
+  # سيجنتشرات جاهزة كما في modules: trend/mean‑reversion/breakout + ML اختياري:contentReference[oaicite:9]{index=9}
+  use_entry_signals: true
+  use_freeze_signals: true
+  use_danger_signals: true
+  use_recovery_signals: true
+  # Mapping اختياري لتأثير الإشارات داخل الـ reward/risk
+  weights:
+    trend_follow: 1.0
+    mean_reversion: 0.5
+    breakout_buy: 0.7
+    breakout_sell: 0.7
+    ml_signal: 0.6
+
+ai_core:
+  enable_self_improver: true
+  knowledge_base_path: "memory/knowledge_base_full.json"
+  post_training_analysis: true   # tools/analyze_risk_and_training.py hook:contentReference[oaicite:10]{index=10}
+  update_config_from_hints: true # قراءة tuning_hints.json للجلسة التالية:contentReference[oaicite:11]{index=11}
+
+data_ready:
+  output_dir: "data_ready"
+  format: "feather"          # feather فقط (بدون CSV)
+  float_dtype: "float32"
+  # سياسة الدمج والاستخراج:
+  merge:
+    "1s":
+      method: "quantiles"    # بديله "year" — غيّر لـ split-by-year بسهولة
+      parts: 8
+    "1m":
+      method: "single_file"
+    "3m":
+      method: "single_file"
+    "5m":
+      method: "single_file"
+
+evaluation:
+  do_eval_every: 1_000_000
+  eval_episodes: 3
+  save_trades_csv: true
+  save_reward_curve_png: true
+  metrics: ["sharpe","maxdd","winrate"]
+
+tmux_runner:
+  use_gpu_affinity: true
+  per_process_env:
+    OMP_NUM_THREADS: 8
+    PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+  # مثال التشغيل الموازي (مرشد فقط؛ التنفيذ من سكربت tmux)
+  plans:
+    - name: "1s_duo"
+      gpus: [0,1]
+      frame: "1s"
+      seeds: [11,22]
+      shards: [0,1]
+    - name: "1m_duo"
+      gpus: [2,3]
+      frame: "1m"
+      seeds: [33,44]
+      shards: [0,1]
+
+data:
+  raw_dir: "data"           # مكان البيانات الخام (كما وصفت)
+  out_dir: "data_ready"     # مكان الإخراج الجديد
+  frames: ["1s","1m","3m","5m"]
+  group_by_symbol: true     # حفظ لكل Symbol على حدة
+  enforce_float32: true     # كل أعمدة الأسعار/الأحجام تُحفظ float32
+  fill_missing_with_zero: true
+
+  split:
+    "1s":
+      mode: "year"     # بدّلها إلى "year" لو عايز التقسيم بالسنة
+      parts: 8              # عدد الأجزاء عند mode=quantiles
+      # لو mode=year يتم تجاهل parts
+
+  # أسماء الأعمدة التي نضمن موجودة بالنتيجة (ترتيب يعكس بايبلايننا)
+  enforce_columns:
+    - timestamp
+    - datetime
+    - symbol
+    - frame
+    - open
+    - high
+    - low
+    - close
+    - volume
+    - quote_volume
+    - num_trades
+    - taker_buy_base
+    - taker_buy_quote
