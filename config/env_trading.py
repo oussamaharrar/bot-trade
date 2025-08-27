@@ -74,7 +74,20 @@ class TradingEnv(Env):
         self.max_consecutive_losses = max_consecutive_losses
         self.max_steps = int(max_steps)
 
-        self.risk_engine = RiskManager()
+        rm_cfg = (self.config or {}).get("risk_manager", {})
+        risk_log = None
+        try:
+            if writers is not None and hasattr(writers, "paths"):
+                risk_log = writers.paths.get("risk_csv")
+        except Exception:
+            pass
+        self.risk_engine = RiskManager(
+            dynamic_sizing=rm_cfg.get("dynamic_sizing", True),
+            min_pct=rm_cfg.get("min_pct", 0.1),
+            max_pct=rm_cfg.get("max_pct", 1.0),
+            max_drawdown_stop=rm_cfg.get("max_drawdown_stop", 0.3),
+            log_path=risk_log,
+        )
         self.reward_tracker = RewardSignalTracker()
         self.current_signals: Dict[str, int] = {}
 

@@ -5,27 +5,30 @@ import csv
 
 class RiskManager:
     """Dynamic risk manager using reward EMA, volatility, drawdown, and indicator signals."""
+
     def __init__(
         self,
-        max_risk: float = 1.0,
-        min_risk: float = 0.1,
+        dynamic_sizing: bool = True,
+        min_pct: float = 0.1,
+        max_pct: float = 1.0,
+        max_drawdown_stop: float = 0.3,
         ema_alpha: float = 0.05,
         reward_threshold: float = 0.5,
         volatility_threshold: float = 2.0,
-        drawdown_limit: float = 0.3,
         freeze_limit: int = 3,
         unfreeze_patience: int = 5,
         unfreeze_threshold: float = 0.1,
         log_path: Optional[str] = None,
     ):
         self.logger = logging.getLogger(__name__)
-        self.max_risk = float(max_risk)
-        self.min_risk = float(min_risk)
+        self.dynamic_sizing = bool(dynamic_sizing)
+        self.max_risk = float(max_pct)
+        self.min_risk = float(min_pct)
         self.ema_alpha = float(ema_alpha)
         self.ema_reward = 0.0
         self.reward_threshold = float(reward_threshold)
         self.volatility_threshold = float(volatility_threshold)
-        self.drawdown_limit = float(drawdown_limit)
+        self.drawdown_limit = float(max_drawdown_stop)
         self.freeze_limit = int(freeze_limit)
         self.unfreeze_patience = int(unfreeze_patience)
         self.unfreeze_threshold = float(unfreeze_threshold)
@@ -63,6 +66,18 @@ class RiskManager:
         recovery_signals: int = 0,
         signals: Optional[Dict] = None
     ) -> Dict:
+        if not self.dynamic_sizing:
+            self.ema_reward = (1 - self.ema_alpha) * self.ema_reward + self.ema_alpha * float(reward)
+            self.max_drawdown = max(self.max_drawdown, float(drawdown))
+            return {
+                "risk_pct": self.max_risk,
+                "danger_mode": False,
+                "freeze_mode": False,
+                "notes": [],
+                "ema_reward": self.ema_reward,
+                "max_drawdown": self.max_drawdown,
+            }
+
         self.ema_reward = (1 - self.ema_alpha) * self.ema_reward + self.ema_alpha * float(reward)
         self.max_drawdown = max(self.max_drawdown, float(drawdown))
 
