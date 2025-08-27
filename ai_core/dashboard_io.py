@@ -1,4 +1,3 @@
-import json
 import os
 import json
 import pandas as pd
@@ -31,7 +30,7 @@ def load_training_metrics(symbol: str, frame: str) -> Dict[str, pd.DataFrame]:
         "train_log": _read_csv(paths.get("train_csv", "")),
         "evaluation": _read_csv(paths.get("eval_csv", "")),
         "step_log": _read_csv(paths.get("step_csv", "")),
-        "reward": _read_csv(paths.get("trades_csv", "")),
+        "reward": _read_csv(paths.get("reward_csv", "")),
     }
 
 

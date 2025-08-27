@@ -88,7 +88,8 @@ class TradingEnv(Env):
             max_drawdown_stop=rm_cfg.get("max_drawdown_stop", 0.3),
             log_path=risk_log,
         )
-        self.reward_tracker = RewardSignalTracker()
+        rw_cfg = (self.config or {}).get("reward_shaping", {})
+        self.reward_tracker = RewardSignalTracker(rw_cfg)
         self.current_signals: Dict[str, int] = {}
 
         # spaces
@@ -273,7 +274,20 @@ class TradingEnv(Env):
             peak = max(self.equity_curve)
             dd = (peak - value) / max(peak, 1e-9)
             self.max_drawdown = max(self.max_drawdown, dd)
-        reward = pnl / max(self.initial_balance, 1e-9)
+        pnl_pct = pnl / max(self.initial_balance, 1e-9)
+        trade_cost = abs(traded_qty) * price * fee / max(self.initial_balance, 1e-9)
+        dwell_pen = 1.0 if self.coin > 0 and action == 0 else 0.0
+        reward, comps = self.reward_tracker.step_reward(
+            pnl_pct,
+            self.equity_curve,
+            atr=row.get("atr"),
+            drawdown=self.max_drawdown,
+            danger=danger,
+            freeze=freeze,
+            trade_cost=trade_cost,
+            dwell_pen=dwell_pen,
+            signal_trend_follow=bool(entry_sigs.get("signal_trend_follow", 0)),
+        )
 
         terminated = False; term_reason = "none"
         if value <= (1.0 - self.max_loss_per_session) * self.initial_balance:
@@ -294,6 +308,10 @@ class TradingEnv(Env):
             "entry_blocked": (decision_reason == "ai_guard"), "decision_reason": decision_reason,
             "term_reason": term_reason,
         }
+        comps["pnl"] = float(pnl_pct)
+        comps["trade_cost"] = float(trade_cost)
+        comps["dwell_pen"] = float(dwell_pen)
+        info["reward_components"] = comps
         if trade_side in ("BUY","SELL") and traded_qty > 0:
             info["trade"] = {"side": trade_side, "price": float(price), "size": float(traded_qty),
                              "pnl": float(pnl), "equity": float(value), "reason": decision_reason}

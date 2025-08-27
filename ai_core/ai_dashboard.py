@@ -1,11 +1,25 @@
 """Streamlit dashboard for monitoring training outputs (read-only)."""
+"""Streamlit dashboard for live training metrics.
+
+Run with:
+    streamlit run ai_core/ai_dashboard.py
+or from project root:
+    streamlit run dashboard.py
+"""
+
 from __future__ import annotations
 
+import sys, pathlib
 from pathlib import Path
 from typing import Dict
 
 import pandas as pd
 import streamlit as st
+
+# allow running from subdirectories without PYTHONPATH tweaks
+root = pathlib.Path(__file__).resolve().parents[1]
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
 
 from ai_core.dashboard_io import (
     load_decisions,
@@ -14,6 +28,34 @@ from ai_core.dashboard_io import (
     load_benchmark,
     load_knowledge,
 )
+
+
+def first_available_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    if df is None or df.empty:
+        return None
+    for c in candidates:
+        if c in df.columns:
+            return c
+    low = [c.lower() for c in df.columns]
+    for cand in candidates:
+        if cand.lower() in low:
+            return df.columns[low.index(cand.lower())]
+    return None
+
+
+def ensure_avg_reward(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df = df.copy()
+    aliases = ["avg_reward", "ep_rew_mean", "mean_reward", "episode_reward", "reward"]
+    col = first_available_column(df, aliases)
+    if col is None:
+        return df
+    if col != "avg_reward":
+        df["avg_reward"] = pd.to_numeric(df[col], errors="coerce")
+    if "avg_reward" in df.columns and "ep_rew_mean" not in df.columns:
+        df["avg_reward"] = df["avg_reward"].rolling(window=100, min_periods=10).mean()
+    return df
 
 
 def _cumulative_pnl(trades: pd.DataFrame) -> pd.Series:
@@ -54,13 +96,24 @@ def main() -> None:
         st.dataframe(metrics["train_log"].tail(20))
 
     reward_df = metrics.get("reward", pd.DataFrame())
-    if not reward_df.empty:
+    if reward_df.empty:
+        reward_df = metrics.get("step_log", pd.DataFrame())
+    if reward_df.empty:
+        reward_df = metrics.get("train_log", pd.DataFrame())
+    reward_df = ensure_avg_reward(reward_df)
+    if not reward_df.empty and "avg_reward" in reward_df.columns:
         st.subheader("Reward curve")
         try:
             reward_df = reward_df.set_index("step")
         except Exception:
             pass
         st.line_chart(reward_df["avg_reward"])
+    elif not reward_df.empty:
+        st.subheader("Reward curve (fallback)")
+        st.info("avg_reward missing; plotting numeric columns")
+        num = reward_df.select_dtypes(include="number")
+        if not num.empty:
+            st.line_chart(num)
 
     if not trades_df.empty:
         st.subheader("Equity curve")

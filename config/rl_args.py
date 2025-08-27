@@ -49,7 +49,7 @@ def parse_args():
     ap.add_argument("--frame", type=str, default="1m")
     ap.add_argument("--policy", type=str, default="MlpPolicy")
     ap.add_argument("--device", type=int, default=0)
-    ap.add_argument("--n-envs", type=int, default=16)
+    ap.add_argument("--n-envs", type=int, default=0)
     ap.add_argument("--n-steps", type=int, default=4096)
     ap.add_argument("--batch-size", type=int, default=65536)
     ap.add_argument("--epochs", type=int, default=3)
@@ -102,6 +102,7 @@ def parse_args():
     args.policy_kwargs = build_policy_kwargs(args.net_arch, args.activation, args.ortho_init)
     os.environ["OMP_NUM_THREADS"] = str(max(1, int(args.omp_threads)))
     os.environ["MKL_NUM_THREADS"] = str(max(1, int(args.mkl_threads)))
+    os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
     try: torch.set_num_threads(max(1, int(args.torch_threads)))
     except Exception: pass
     if torch.cuda.is_available():
