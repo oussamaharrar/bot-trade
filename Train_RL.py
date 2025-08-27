@@ -32,8 +32,10 @@ from config.rl_builders import (
     build_ppo,
     build_callbacks,
 )
-from config.rl_paths import build_paths, ensure_state_files
+from config.rl_paths import build_paths, ensure_state_files, get_paths
 from config.rl_writers import Writers  # Writers bundle (train/eval/...)
+from config.update_manager import UpdateManager
+from config.rl_callbacks import CompositeCallback
 from config.log_setup import create_loggers, setup_worker_logging
 
 # Loader (support both single-file and discover-based flows)
@@ -136,6 +138,9 @@ def train_one_file(args, data_file: str) -> bool:
     logging.info("[PATHS] initialized for %s | %s", args.symbol, args.frame)
 
     writers = Writers(paths, args.frame, args.symbol)
+    # Update manager coordinates all disk writes
+    um_paths = get_paths(args.symbol, args.frame)
+    update_manager = UpdateManager(um_paths, args.symbol, args.frame, cfg=None)
 
     # 2) Device report (optional)
     _maybe_print_device_report(args)
@@ -223,7 +228,7 @@ def train_one_file(args, data_file: str) -> bool:
     # 10) Callbacks (base from rl_builders + optional extras)
     base_callbacks = build_callbacks(paths, writers, args)
     cb = base_callbacks
-    extras = []
+    extras = [CompositeCallback(update_manager, log_every=100)]
     if BenchmarkCallback is not None:
         extras.append(BenchmarkCallback(frame=args.frame, symbol=args.symbol, writers=writers, every_sec=15))
     if getattr(args, "safe", False) and StrictDataSanityCallback is not None:

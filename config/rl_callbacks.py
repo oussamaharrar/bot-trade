@@ -24,6 +24,8 @@ from typing import Optional, Dict, Any
 
 from stable_baselines3.common.callbacks import BaseCallback
 
+from .update_manager import UpdateManager
+
 # Optional dependencies — كلّها اختيارية
 try:  # TensorBoard
     from torch.utils.tensorboard import SummaryWriter  # type: ignore
@@ -393,3 +395,41 @@ class StrictDataSanityCallback(BaseCallback):
             if self.raise_on_issue:
                 raise RuntimeError(msg)
         return True
+
+
+class CompositeCallback(BaseCallback):
+    """Lightweight composite that forwards events to an ``UpdateManager``.
+
+    Parameters
+    ----------
+    update_manager : UpdateManager
+        Instance handling all disk IO in a Windows safe manner.
+    log_every : int
+        Frequency of ``on_step`` forwarding.
+    """
+
+    def __init__(self, update_manager: UpdateManager, log_every: int = 100, verbose: int = 0) -> None:
+        super().__init__(verbose)
+        self.um = update_manager
+        self.log_every = int(max(1, log_every))
+
+    def _on_step(self) -> bool:  # noqa: D401
+        step = int(self.num_timesteps)
+        if step % self.log_every == 0:
+            try:
+                self.um.on_step(step)
+            except Exception:
+                pass
+        return True
+
+    def _on_rollout_end(self) -> None:
+        try:
+            self.um.on_rollout_end()
+        except Exception:
+            pass
+
+    def _on_training_end(self) -> None:
+        try:
+            self.um.on_training_end()
+        except Exception:
+            pass

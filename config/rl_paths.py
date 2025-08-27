@@ -68,6 +68,39 @@ def build_paths(symbol: str, frame: str,
     paths["kb_file"]     = DEFAULT_KB_FILE
     return paths
 
+
+def get_paths(symbol: str, frame: str) -> dict:
+    """Return a simplified dictionary of important file paths.
+
+    The returned dict matches the keys used by :class:`UpdateManager` and
+    other high level utilities. All paths are relative to the repository
+    root and created on demand.
+    """
+
+    paths = build_paths(symbol, frame)
+    # ensure directories required by UpdateManager
+    os.makedirs(paths["logs"], exist_ok=True)
+    os.makedirs(paths["results"], exist_ok=True)
+    os.makedirs(paths["reports"], exist_ok=True)
+
+    out = {
+        "base": paths["results"],
+        "train_csv": paths["train_csv"],
+        "eval_csv": paths["eval_csv"],
+        "trades_csv": paths["trade_csv"],
+        "step_csv": paths["steps_csv"],
+        "logs_dir": paths["logs"],
+        "jsonl_decisions": paths["decisions_jsonl"],
+        "benchmark_log": paths["benchmark_log"],
+        "risk_log": paths["risk_log"],
+        "report_dir": paths["reports"],
+        "perf_dir": os.path.join(paths["results"], "performance"),
+        "best_zip": paths["model_best_zip"],
+    }
+    # create performance directory lazily
+    os.makedirs(out["perf_dir"], exist_ok=True)
+    return out
+
 def setup_logging(paths: dict):
     root = logging.getLogger()
     root.setLevel(logging.INFO)
