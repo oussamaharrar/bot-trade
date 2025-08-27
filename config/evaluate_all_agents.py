@@ -1,7 +1,7 @@
 import os
 import glob
 import pandas as pd
-from evaluate import evaluate_trades
+from .evaluate import evaluate_trades
 
 RESULTS_DIR = "results"
 EVAL_FILE = os.path.join(RESULTS_DIR, "evaluation.csv")
