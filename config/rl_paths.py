@@ -46,11 +46,15 @@ def build_paths(symbol: str, frame: str,
     paths["tb_dir"]          = os.path.join(paths["results"], "tb")
 
         # csv
-    paths["steps_csv"]   = os.path.join(paths["results"], f"steps_{frm}.csv")
-    paths["reward_csv"]  = os.path.join(paths["results"], f"reward_{frm}.csv")
-    paths["train_csv"]   = os.path.join(paths["results"], "train_log.csv")
-    paths["eval_csv"]    = os.path.join(paths["results"], "evaluation.csv")
-    paths["trade_csv"]   = os.path.join(paths["results"], "deep_rl_trades.csv")
+    # all csv logs live inside the dedicated logs directory to avoid
+    # cluttering the results root
+    paths["step_csv"]   = os.path.join(paths["logs"], "step_log.csv")
+    paths["steps_csv"] = paths["step_csv"]  # backward compatible key
+    paths["reward_csv"]  = os.path.join(paths["logs"], "reward.csv")
+    paths["train_csv"]   = os.path.join(paths["logs"], "train_log.csv")
+    paths["eval_csv"]    = os.path.join(paths["logs"], "evaluation.csv")
+    paths["trade_csv"]   = os.path.join(paths["logs"], "deep_rl_trades.csv")
+    paths["trades_csv"]  = paths["trade_csv"]  # legacy alias
 
     # state files (global)
     paths["memory_file"] = DEFAULT_MEMORY_FILE
@@ -154,15 +158,21 @@ def get_paths(symbol: str, frame: str) -> dict:
     agents_dir = _mk(DEFAULT_AGENTS_DIR, sym, frm)
     return {
         "base": base,
-        "train_csv": os.path.join(base, "train_log.csv"),
-        "eval_csv": os.path.join(base, "evaluation.csv"),
-        "trades_csv": os.path.join(base, "deep_rl_trades.csv"),
-        "step_csv": os.path.join(base, "step_log.csv"),
         "logs_dir": logs_dir,
+        # csv logs
+        "train_csv": os.path.join(logs_dir, "train_log.csv"),
+        "eval_csv": os.path.join(logs_dir, "evaluation.csv"),
+        "reward_csv": os.path.join(logs_dir, "reward.csv"),
+        "trade_csv": os.path.join(logs_dir, "deep_rl_trades.csv"),
+        "trades_csv": os.path.join(logs_dir, "deep_rl_trades.csv"),  # legacy alias
+        "step_csv": os.path.join(logs_dir, "step_log.csv"),
+        # misc logs
         "jsonl_decisions": os.path.join(logs_dir, "entry_decisions.jsonl"),
         "benchmark_log": os.path.join(logs_dir, "benchmark.log"),
         "risk_log": os.path.join(logs_dir, "risk.log"),
+        # directories for aggregated reports/metrics
         "report_dir": _mk(DEFAULT_RESULTS_DIR, "reports"),
         "perf_dir": _mk(DEFAULT_RESULTS_DIR, "performance"),
+        # best model location
         "best_zip": os.path.join(agents_dir, "deep_rl_best.zip"),
     }

@@ -127,7 +127,8 @@ class WritersBundle:
         self.reward    = CSVWriter(paths["reward_csv"], header=["ts","frame","symbol","step","avg_reward","ep_rew_mean"])
         self.trades    = CSVWriter(paths["trade_csv"],  header=["ts","frame","symbol","step","side","price","size","pnl","equity","reason"])
         self.benchmark = CSVWriter(paths["benchmark_log"], header=["ts","frame","symbol","step","fps","cpu_percent","ram_gb","gpu0_mb","gpu1_mb","gpu2_mb","gpu3_mb"])
-        self.error     = CSVWriter(os.path.join(self.paths["results"], "error.csv"), header=["ts","step","message"])
+        # store miscellaneous logs inside the dedicated logs directory
+        self.error     = CSVWriter(os.path.join(self.paths.get("logs", self.paths.get("results")), "error.csv"), header=["ts","step","message"])
         self.train     = CSVWriter(self.paths["train_csv"], header=["ts","frame","symbol","file","timesteps","status"]) 
         self.eval      = CSVWriter(self.paths["eval_csv"],  header=["ts","frame","symbol","metric","value"]) 
 

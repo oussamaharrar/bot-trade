@@ -409,7 +409,12 @@ class CompositeCallback(BaseCallback):
         step = int(self.num_timesteps)
         if step % self.step_every == 0:
             try:
-                self.um.on_step(step, {})
+                # funnel periodic step information to the UpdateManager
+                # which in turn is responsible for writing to disk.  The
+                # UpdateManager enforces that only the main process
+                # performs file IO which keeps multi‑processing on
+                # Windows stable.
+                self.um.log_step(step, {})
             except Exception:
                 pass
         return True
