@@ -87,6 +87,17 @@ def main():
             script = 'bot_loop.py'
         run_step('Running trading logic', ['python', script])
         maybe_retrain()
+        if CONFIG.get('knowledge', {}).get('run_after_training', False):
+            try:
+                subprocess.run([
+                    'python',
+                    'tools/knowledge_sync.py',
+                    '--results-dir', 'results',
+                    '--agents-dir', 'agents',
+                    '--out', os.path.join('memory', 'knowledge_base_full.json'),
+                ], check=False)
+            except Exception:
+                pass
     except Exception as e:
         log_error('main', e)
     logging.info('✅ Run complete. Check reports/ and models/')

@@ -139,3 +139,30 @@ def state_paths_from_env() -> dict:
     مفيد لتمريرها إلى Train_RL/Callbacks دون توزيع معرفة المسارات في كل ملف.
     """
     return {"memory_file": DEFAULT_MEMORY_FILE, "kb_file": DEFAULT_KB_FILE}
+
+def get_paths(symbol: str, frame: str) -> dict:
+    """Return hardened relative paths for training artifacts.
+
+    This helper is intentionally light-weight and avoids absolute paths
+    so that the repository remains portable across platforms.  All
+    directories are created on demand with ``exist_ok=True``.
+    """
+    sym = symbol.upper()
+    frm = str(frame)
+    base = _mk(DEFAULT_RESULTS_DIR, sym, frm)
+    logs_dir = _mk(base, "logs")
+    agents_dir = _mk(DEFAULT_AGENTS_DIR, sym, frm)
+    return {
+        "base": base,
+        "train_csv": os.path.join(base, "train_log.csv"),
+        "eval_csv": os.path.join(base, "evaluation.csv"),
+        "trades_csv": os.path.join(base, "deep_rl_trades.csv"),
+        "step_csv": os.path.join(base, "step_log.csv"),
+        "logs_dir": logs_dir,
+        "jsonl_decisions": os.path.join(logs_dir, "entry_decisions.jsonl"),
+        "benchmark_log": os.path.join(logs_dir, "benchmark.log"),
+        "risk_log": os.path.join(logs_dir, "risk.log"),
+        "report_dir": _mk(DEFAULT_RESULTS_DIR, "reports"),
+        "perf_dir": _mk(DEFAULT_RESULTS_DIR, "performance"),
+        "best_zip": os.path.join(agents_dir, "deep_rl_best.zip"),
+    }

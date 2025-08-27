@@ -5,8 +5,6 @@ from typing import Any, Dict, Optional
 import numpy as np
 import pandas as pd
 from gymnasium import Env, spaces
-from multiprocessing import current_process
-from typing import Any, Dict, Optional
 
 from config.risk_manager import RiskManager
 from config.signals.entry_signals import generate_entry_signals
@@ -44,11 +42,6 @@ class TradingEnv(Env):
         self.win_streak = 0; self.loss_streak = 0
         self.prev_value = self.usdt
         self.equity_curve: list[float] = []; self.max_drawdown = 0.0
-
-        # logs
-        logs_dir = self.config.get("logs_dir") or os.path.join("results", self.symbol.upper(), self.frame, "logs")
-        os.makedirs(logs_dir, exist_ok=True)
-        self.decisions_jsonl = os.path.join(logs_dir, "entry_decisions.jsonl")
 
         # ========== Data ==========
         if data is None or len(data) == 0:
@@ -155,16 +148,6 @@ class TradingEnv(Env):
                 return pd.DataFrame({self.price_col: [self._price()]})
 
     def _log_decision(self, payload: Dict[str, Any]) -> None:
-        try:
-            if current_process().name != "MainProcess":
-                return
-            base = {"ts": _now_iso(), "session_id": self.session_id, "frame": self.frame, "symbol": self.current_symbol}
-            base.update(payload or {})
-            os.makedirs(os.path.dirname(self.decisions_jsonl) or ".", exist_ok=True)
-            with open(self.decisions_jsonl, "a", encoding="utf-8") as f:
-                f.write(json.dumps(base, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
         try:
             if self.writers is not None and hasattr(self.writers, "log_decision"):
                 self.writers.log_decision(**payload)

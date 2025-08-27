@@ -393,3 +393,35 @@ class StrictDataSanityCallback(BaseCallback):
             if self.raise_on_issue:
                 raise RuntimeError(msg)
         return True
+
+
+class CompositeCallback(BaseCallback):
+    """Lightweight bridge that forwards SB3 events to UpdateManager."""
+
+    def __init__(self, update_manager, cfg: Optional[Dict[str, Any]] = None, verbose: int = 0):
+        super().__init__(verbose)
+        self.um = update_manager
+        self.cfg = cfg or {}
+        logging_cfg = self.cfg.get("logging", {})
+        self.step_every = int(logging_cfg.get("step_every", 100))
+
+    def _on_step(self) -> bool:
+        step = int(self.num_timesteps)
+        if step % self.step_every == 0:
+            try:
+                self.um.on_step(step, {})
+            except Exception:
+                pass
+        return True
+
+    def _on_rollout_end(self) -> None:
+        try:
+            self.um.on_rollout_end()
+        except Exception:
+            pass
+
+    def _on_training_end(self) -> None:
+        try:
+            self.um.on_training_end()
+        except Exception:
+            pass
