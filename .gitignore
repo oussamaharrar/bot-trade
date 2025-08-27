@@ -1,0 +1,8 @@
+
+# Ignore local envs & artifacts
+venv/
+backUP/
+agents/
+__pycache__/
+BTCUSDT/
+test.py
