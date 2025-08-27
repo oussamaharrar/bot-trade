@@ -273,13 +273,29 @@ def main():
                 except Exception:
                     pass
             time.sleep(2)
-            for popen, _, _ in procs:
-                if popen.poll() is None:
-                    try:
-                        popen.kill()
-                    except Exception:
-                        pass
+        for popen, _, _ in procs:
+            if popen.poll() is None:
+                try:
+                    popen.kill()
+                except Exception:
+                    pass
             print("[✓] All jobs terminated.")
+
+    # optional post-training knowledge sync
+    if args.post_analyze:
+        try:
+            subprocess.run([
+                sys.executable,
+                "tools/knowledge_sync.py",
+                "--results-dir",
+                "results",
+                "--agents-dir",
+                "agents",
+                "--out",
+                os.path.join("memory", "knowledge_base_full.json"),
+            ], check=False)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

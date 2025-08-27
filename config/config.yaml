@@ -212,3 +212,52 @@ data:
     - num_trades
     - taker_buy_base
     - taker_buy_quote
+
+
+# ==== pipeline toggles ====
+logging:
+  step_every: 100
+  rollout_report_every: 1
+
+reports:
+  enable: true
+  every_rollouts: 1
+
+knowledge:
+  enable: true
+  run_after_training: true
+
+dashboard:
+  enable: true
+
+eval:
+  enable: true
+  n_episodes: 5
+  save_best: true
+  metric: "ep_rew_mean"
+
+policy_kwargs:
+  net_arch: [512, 512, 256]
+  activation_fn: "ReLU"
+  ortho_init: true
+
+ppo:
+  n_envs: 16
+  n_steps: 2048
+  batch_size: 8192
+  learning_rate: 0.0003
+  gamma: 0.999
+  gae_lambda: 0.95
+  clip_range: 0.2
+
+risk_manager:
+  dynamic_sizing: true
+  min_pct: 0.1
+  max_pct: 2.0
+  max_drawdown_stop: 0.25
+
+multiprocessing:
+  start_method: "spawn"
+
+writers:
+  mainprocess_only: true

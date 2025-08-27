@@ -32,9 +32,13 @@ from config.rl_builders import (
     build_ppo,
     build_callbacks,
 )
-from config.rl_paths import build_paths, ensure_state_files
+from config.rl_paths import build_paths, ensure_state_files, get_paths
 from config.rl_writers import Writers  # Writers bundle (train/eval/...)
 from config.log_setup import create_loggers, setup_worker_logging
+from config.update_manager import UpdateManager
+from config.rl_callbacks import CompositeCallback
+from config.env_config import get_config
+from stable_baselines3.common.callbacks import EvalCallback
 
 # Loader (support both single-file and discover-based flows)
 try:
@@ -131,10 +135,13 @@ def train_one_file(args, data_file: str) -> bool:
         results_dir=args.results_dir,
         reports_dir=args.reports_dir,
     )
+    paths.update(get_paths(args.symbol, args.frame))
     log_queue, listener, _ = create_loggers(paths["results"], args.frame, args.symbol)
     ensure_state_files(args.memory_file, args.kb_file)
     logging.info("[PATHS] initialized for %s | %s", args.symbol, args.frame)
 
+    cfg = get_config()
+    update_manager = UpdateManager(paths, args.symbol, args.frame, cfg)
     writers = Writers(paths, args.frame, args.symbol)
 
     # 2) Device report (optional)
@@ -163,7 +170,7 @@ def train_one_file(args, data_file: str) -> bool:
         config=None,
         writers=writers,
         safe=args.safe,
-        decisions_jsonl=paths.get("decisions_jsonl"),
+        decisions_jsonl=None,
     )
 
     # 5) VecEnv (DummyVecEnv if n_envs==1 else SubprocVecEnv)
@@ -200,6 +207,26 @@ def train_one_file(args, data_file: str) -> bool:
     # 8) Batch clamping
     clamp_batch(args)
 
+    # 8b) Evaluation environment
+    eval_env_fns = build_env_fns(
+        df,
+        frame=args.frame,
+        symbol=args.symbol,
+        n_envs=1,
+        use_indicators=args.use_indicators,
+        config=None,
+        writers=None,
+        safe=args.safe,
+        decisions_jsonl=None,
+    )
+    eval_env = make_vec_env(
+        eval_env_fns,
+        n_envs=1,
+        start_method=getattr(args, "mp_start", "spawn"),
+        normalize=True,
+        seed=getattr(args, "seed", None),
+    )
+
     # 9) Resume or build fresh model
     model = None
     resume_path = None
@@ -224,6 +251,18 @@ def train_one_file(args, data_file: str) -> bool:
     base_callbacks = build_callbacks(paths, writers, args)
     cb = base_callbacks
     extras = []
+
+    composite_cb = CompositeCallback(update_manager, cfg)
+    extras.append(composite_cb)
+
+    eval_callback = EvalCallback(
+        eval_env,
+        best_model_save_path=os.path.join(paths["agents"], "tmp_best"),
+        n_eval_episodes=int(cfg.get("eval", {}).get("n_episodes", 5)),
+        deterministic=True,
+    )
+    extras.append(eval_callback)
+
     if BenchmarkCallback is not None:
         extras.append(BenchmarkCallback(frame=args.frame, symbol=args.symbol, writers=writers, every_sec=15))
     if getattr(args, "safe", False) and StrictDataSanityCallback is not None:
@@ -231,6 +270,7 @@ def train_one_file(args, data_file: str) -> bool:
     if extras:
         if CallbackList is not None and hasattr(base_callbacks, "callbacks"):
             base_callbacks.callbacks.extend(extras)  # type: ignore[attr-defined]
+            cb = base_callbacks
         else:
             cb = CallbackList([base_callbacks] + extras)  # type: ignore[arg-type]
 
@@ -247,6 +287,11 @@ def train_one_file(args, data_file: str) -> bool:
         logging.exception("[ERROR] during learn: %s", e)
         raise
     finally:
+        update_manager.on_eval_end({
+            "best_model_path": getattr(eval_callback, "best_model_path", None),
+            "metric": getattr(eval_callback, "best_mean_reward", None),
+        })
+        update_manager.on_training_end()
         # Save model and VecNormalize
         try:
             model.save(paths["model_zip"])  # final
@@ -282,6 +327,22 @@ def train_one_file(args, data_file: str) -> bool:
             writers.eval.write([now, args.frame, args.symbol, "ep_rew_mean", avg])
     except Exception:
         pass
+
+    if cfg.get("knowledge", {}).get("run_after_training", False):
+        try:
+            import subprocess
+            subprocess.run([
+                sys.executable,
+                "tools/knowledge_sync.py",
+                "--results-dir",
+                paths.get("results", "results"),
+                "--agents-dir",
+                paths.get("agents", "agents"),
+                "--out",
+                os.path.join("memory", "knowledge_base_full.json"),
+            ], check=False)
+        except Exception as e:
+            logging.warning("[KNOWLEDGE] sync failed: %s", e)
 
     return True
 
