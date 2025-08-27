@@ -38,6 +38,7 @@ from config.log_setup import create_loggers, setup_worker_logging
 from config.update_manager import UpdateManager
 from config.rl_callbacks import CompositeCallback
 from config.env_config import get_config
+import shutil
 from stable_baselines3.common.callbacks import EvalCallback
 
 # Loader (support both single-file and discover-based flows)
@@ -123,6 +124,35 @@ def _maybe_print_device_report(args):
 
 
 # =============================
+# EvalCallback with automatic best-model copy
+# =============================
+
+
+class EvalSaveCallback(EvalCallback):
+    """EvalCallback that mirrors the best model to ``target_path`` each time it improves."""
+
+    def __init__(self, eval_env, target_path: str, **kwargs):
+        save_dir = os.path.dirname(target_path)
+        os.makedirs(save_dir, exist_ok=True)
+        super().__init__(eval_env, best_model_save_path=save_dir, **kwargs)
+        self._target_path = target_path
+        self._last_mtime = 0.0
+
+    def _on_step(self) -> bool:  # type: ignore[override]
+        result = super()._on_step()
+        src = getattr(self, "best_model_path", None)
+        if src and os.path.exists(src):
+            try:
+                mtime = os.path.getmtime(src)
+                if mtime > self._last_mtime:
+                    shutil.copy(src, self._target_path)
+                    self._last_mtime = mtime
+            except Exception:
+                pass
+        return result
+
+
+# =============================
 # Single-file training job
 # =============================
 
@@ -142,6 +172,34 @@ def train_one_file(args, data_file: str) -> bool:
 
     cfg = get_config()
     update_manager = UpdateManager(paths, args.symbol, args.frame, cfg)
+
+    # merge CLI overrides into cfg surface
+    ppo_cfg = cfg.setdefault("ppo", {})
+    ppo_cfg.update({
+        "n_envs": int(args.n_envs),
+        "n_steps": int(args.n_steps),
+        "batch_size": int(args.batch_size),
+        "learning_rate": float(args.learning_rate),
+        "gamma": float(args.gamma),
+        "gae_lambda": float(args.gae_lambda),
+        "clip_range": float(args.clip_range),
+        "n_epochs": int(args.epochs),
+    })
+    pol_cfg = cfg.setdefault("policy_kwargs", {})
+    pol_cfg.update({
+        "net_arch": args.policy_kwargs.get("net_arch"),
+        "activation_fn": getattr(args.policy_kwargs.get("activation_fn"), "__name__", "relu"),
+        "ortho_init": bool(args.policy_kwargs.get("ortho_init", False)),
+    })
+    eval_cfg = cfg.setdefault("eval", {})
+    eval_cfg["enable"] = bool(eval_cfg.get("enable", True))
+    eval_cfg["n_episodes"] = int(getattr(args, "eval_episodes", eval_cfg.get("n_episodes", 5)))
+    if int(getattr(args, "eval_every_steps", 0)) > 0:
+        eval_cfg["eval_freq"] = int(args.eval_every_steps)
+    eval_cfg.setdefault("eval_freq", max(int(args.n_steps), 1000))
+    eval_cfg.setdefault("save_best", True)
+    log_cfg = cfg.setdefault("logging", {})
+    log_cfg["step_every"] = int(getattr(args, "log_every_steps", log_cfg.get("step_every", 100)))
     writers = Writers(paths, args.frame, args.symbol)
 
     # 2) Device report (optional)
@@ -255,13 +313,16 @@ def train_one_file(args, data_file: str) -> bool:
     composite_cb = CompositeCallback(update_manager, cfg)
     extras.append(composite_cb)
 
-    eval_callback = EvalCallback(
-        eval_env,
-        best_model_save_path=os.path.join(paths["agents"], "tmp_best"),
-        n_eval_episodes=int(cfg.get("eval", {}).get("n_episodes", 5)),
-        deterministic=True,
-    )
-    extras.append(eval_callback)
+    eval_cb: Optional[EvalCallback] = None
+    if cfg.get("eval", {}).get("enable", True):
+        eval_cb = EvalSaveCallback(
+            eval_env,
+            target_path=paths["model_best_zip"],
+            n_eval_episodes=int(cfg["eval"].get("n_episodes", 5)),
+            eval_freq=int(cfg["eval"].get("eval_freq", int(args.n_steps))),
+            deterministic=True,
+        )
+        extras.append(eval_cb)
 
     if BenchmarkCallback is not None:
         extras.append(BenchmarkCallback(frame=args.frame, symbol=args.symbol, writers=writers, every_sec=15))
@@ -288,8 +349,8 @@ def train_one_file(args, data_file: str) -> bool:
         raise
     finally:
         update_manager.on_eval_end({
-            "best_model_path": getattr(eval_callback, "best_model_path", None),
-            "metric": getattr(eval_callback, "best_mean_reward", None),
+            "best_model_path": getattr(eval_cb, "best_model_path", None),
+            "metric": getattr(eval_cb, "best_mean_reward", None),
         })
         update_manager.on_training_end()
         # Save model and VecNormalize
@@ -343,6 +404,13 @@ def train_one_file(args, data_file: str) -> bool:
             ], check=False)
         except Exception as e:
             logging.warning("[KNOWLEDGE] sync failed: %s", e)
+
+    if cfg.get("reports", {}).get("enable", False):
+        try:
+            from tools.generate_markdown_report import generate_summary
+            generate_summary(paths, args.symbol, args.frame)
+        except Exception as e:
+            logging.warning("[REPORT] generation failed: %s", e)
 
     return True
 

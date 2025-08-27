@@ -1,47 +1,18 @@
-# === Core ===
-pandas
-modin[ray]
-numpy
-scikit-learn
-matplotlib
-seaborn
-ta
-ccxt
-tqdm
-psutil
-pyyaml 
-stable-baselines3 
-gymnasium[all] 
-pandas 
-matplotlib 
-scikit-learn 
-seaborn 
-ta
-
-# === ML Classifiers ===
-xgboost
-lightgbm
-imbalanced-learn  # For SMOTE and undersampling
-
-# === RL Agents ===
-gymnasium
-stable-baselines3
-tensorboard
-torch  # PyTorch backend
-
-# === Dashboard ===
-streamlit
-plotly
-PyYAML
-
-# === DevOps & Reports ===
-fpdf
-joblib
-python-dotenv
-parquet
-pyarrow  # For reading parquet
-watchdog  # Optional: for auto-refresh
-schedule
-
-#conda install -n bot-trade -c conda-forge pyarrow
-
+torch>=2.1.0
+stable-baselines3>=2.3.0
+gymnasium>=0.29.1
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.4.0
+scipy>=1.11.0
+pyarrow>=15.0.0
+ta>=0.11.0
+matplotlib>=3.8.0
+seaborn>=0.13.0
+streamlit>=1.36.0
+plotly>=5.20.0
+tensorboard>=2.16.0
+tqdm>=4.66.0
+psutil>=5.9.0
+pyyaml>=6.0.1
+rich>=13.7.0

@@ -43,16 +43,17 @@ def main():
     args = p.parse_args()
 
     kb: Dict[str, Dict] = {}
-    for sym in os.listdir(args.results_dir):
-        sym_dir = os.path.join(args.results_dir, sym)
-        if not os.path.isdir(sym_dir):
-            continue
-        for frame in os.listdir(sym_dir):
-            frame_dir = os.path.join(sym_dir, frame)
-            if not os.path.isdir(frame_dir):
+    if os.path.exists(args.results_dir):
+        for sym in os.listdir(args.results_dir):
+            sym_dir = os.path.join(args.results_dir, sym)
+            if not os.path.isdir(sym_dir):
                 continue
-            key = f"{sym}:{frame}"
-            kb[key] = summarize_dir(frame_dir)
+            for frame in os.listdir(sym_dir):
+                frame_dir = os.path.join(sym_dir, frame)
+                if not os.path.isdir(frame_dir):
+                    continue
+                key = f"{sym}:{frame}"
+                kb[key] = summarize_dir(frame_dir)
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:

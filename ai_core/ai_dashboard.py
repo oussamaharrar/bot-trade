@@ -1,82 +1,97 @@
-# ai_core/ai_dashboard.py
-# Minimal CLI/Report dashboard over KB + session artifacts
+"""Streamlit dashboard for monitoring training outputs (read-only)."""
 from __future__ import annotations
-import os, json
-from typing import Dict, Any
 
-KB_PATH = os.getenv("KB_FILE", os.path.join("memory", "knowledge_base_full.json"))
-PDF_REPORT = os.path.join("reports", "ai_report.pdf")
+from pathlib import Path
+from typing import Dict
+
+import pandas as pd
+import streamlit as st
+
+from ai_core.dashboard_io import (
+    load_decisions,
+    load_training_metrics,
+    load_trades,
+    load_benchmark,
+    load_knowledge,
+)
 
 
-def _load_json(path: str) -> Dict[str, Any]:
+def _cumulative_pnl(trades: pd.DataFrame) -> pd.Series:
+    if trades is None or trades.empty:
+        return pd.Series(dtype=float)
     try:
-        if not os.path.exists(path):
-            return {}
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        pnl = trades.get("pnl")
+        if pnl is None:
+            return pd.Series(dtype=float)
+        return pnl.cumsum()
     except Exception:
-        return {}
+        return pd.Series(dtype=float)
 
 
-def _ensure_dirs() -> None:
-    try:
-        os.makedirs(os.path.dirname(PDF_REPORT), exist_ok=True)
-    except Exception:
-        pass
+def main() -> None:
+    st.set_page_config(page_title="Bot-Trade Dashboard", layout="wide")
+    st.title("Bot-Trade Dashboard")
+
+    with st.sidebar:
+        base = st.text_input("Results root", "results")
+        symbol = st.text_input("Symbol", "BTCUSDT").upper()
+        frame = st.text_input("Frame", "1m")
+        refresh = st.number_input("Refresh (sec)", min_value=2, max_value=60, value=5)
+        st.write("Reading from", Path(base) / symbol / frame)
+        try:  # streamlit >=1.19
+            st.autorefresh(interval=int(refresh * 1000), key="refresh")
+        except Exception:
+            pass
+
+    metrics: Dict[str, pd.DataFrame] = load_training_metrics(symbol, frame)
+    trades_df = load_trades(symbol, frame)
+    benchmark_df = load_benchmark(symbol, frame)
+    decisions_df = load_decisions(symbol, frame)
+    knowledge = load_knowledge()
+
+    if not metrics.get("train_log", pd.DataFrame()).empty:
+        st.subheader("Training log (tail)")
+        st.dataframe(metrics["train_log"].tail(20))
+
+    reward_df = metrics.get("reward", pd.DataFrame())
+    if not reward_df.empty:
+        st.subheader("Reward curve")
+        try:
+            reward_df = reward_df.set_index("step")
+        except Exception:
+            pass
+        st.line_chart(reward_df["avg_reward"])
+
+    if not trades_df.empty:
+        st.subheader("Equity curve")
+        pnl_series = _cumulative_pnl(trades_df)
+        if not pnl_series.empty:
+            st.line_chart(pnl_series)
+        st.subheader("Recent trades")
+        st.dataframe(trades_df.tail(50))
+
+    if not decisions_df.empty:
+        st.subheader("Recent entry decisions")
+        st.dataframe(decisions_df.tail(20))
+
+    if not benchmark_df.empty:
+        st.subheader("System benchmark (tail)")
+        st.dataframe(benchmark_df.tail(20))
+
+    # Knowledge base quick view
+    if knowledge:
+        st.subheader("Top signals (win_rate >= 0.5, n>=50)")
+        sigs = knowledge.get("signals_memory", {})
+        rows = []
+        for name, stats in sigs.items():
+            count = float(stats.get("count", 0))
+            win = float(stats.get("win_rate", 0))
+            if count >= 50 and win >= 0.5:
+                rows.append({"signal": name, "win_rate": win, "count": count})
+        if rows:
+            df = pd.DataFrame(rows).sort_values("win_rate", ascending=False)
+            st.table(df)
 
 
-def cli_summary(kb: Dict[str, Any]) -> None:
-    strat = kb.get("strategy_memory", {})
-    sigs = kb.get("signals_memory", {})
-    print("===== Top Frames by reward_mean =====")
-    topf = sorted(((k, v.get("reward_mean", 0.0)) for k, v in strat.items()), key=lambda x: x[1], reverse=True)[:5]
-    for k, m in topf:
-        print(f"  {k:>6}: reward_mean={m:.4f}")
-    print("===== Top Signals by win_rate (min 50) =====")
-    tops = sorted(((k, v.get("win_rate", 0.0), v.get("count", 0.0)) for k, v in sigs.items()), key=lambda x: x[1], reverse=True)
-    for k, wr, c in tops:
-        if float(c) < 50:
-            continue
-        print(f"  {k:>18}: win_rate={wr:.3f} (n={int(c)})")
-
-
-def pdf_report(kb: Dict[str, Any], out_path: str = PDF_REPORT) -> bool:
-    try:
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.lib.pagesizes import A4
-    except Exception:
-        return False
-    _ensure_dirs()
-    doc = SimpleDocTemplate(out_path, pagesize=A4)
-    styles = getSampleStyleSheet()
-    story = []
-    story.append(Paragraph("AI Dashboard Report", styles["Title"]))
-    story.append(Spacer(1, 12))
-    strat = kb.get("strategy_memory", {})
-    sigs = kb.get("signals_memory", {})
-    # Frames
-    story.append(Paragraph("Top Frames by reward_mean", styles["Heading2"]))
-    topf = sorted(((k, v.get("reward_mean", 0.0)) for k, v in strat.items()), key=lambda x: x[1], reverse=True)[:10]
-    for k, m in topf:
-        story.append(Paragraph(f"{k}: reward_mean={m:.4f}", styles["Normal"]))
-    story.append(Spacer(1, 12))
-    # Signals
-    story.append(Paragraph("Signals by win_rate (min 50)", styles["Heading2"]))
-    tops = sorted(((k, v.get("win_rate", 0.0), v.get("count", 0.0)) for k, v in sigs.items()), key=lambda x: x[1], reverse=True)
-    for k, wr, c in tops:
-        if float(c) < 50:
-            continue
-        story.append(Paragraph(f"{k}: win_rate={wr:.3f} (n={int(c)})", styles["Normal"]))
-    try:
-        doc.build(story)
-        return True
-    except Exception:
-        return False
-
-
-if __name__ == "__main__":
-    kb = _load_json(KB_PATH)
-    cli_summary(kb)
-    ok = pdf_report(kb)
-    print("PDF:", "created" if ok else "skipped (reportlab missing)")
+if __name__ == "__main__":  # pragma: no cover
+    main()
