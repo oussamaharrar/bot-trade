@@ -12,8 +12,8 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-from env_trading import TradingEnv
-from evaluate import evaluate_trades
+from config.env_trading import TradingEnv
+from config.evaluate import evaluate_trades
 
 # Configure root logger
 logging.basicConfig(level=logging.INFO)

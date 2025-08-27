@@ -9,9 +9,9 @@ import yaml
 from stable_baselines3 import PPO, A2C, DQN
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import numpy as np
-from env_trading import TradingEnv
+from config.env_trading import TradingEnv
 
-CONFIG_PATH = "config.yaml"
+CONFIG_PATH = os.path.join('config', 'config.yaml')
 if os.path.exists(CONFIG_PATH):     
     with open(CONFIG_PATH, 'r') as f:
         CONFIG = yaml.safe_load(f)
