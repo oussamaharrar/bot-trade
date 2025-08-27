@@ -20,8 +20,26 @@ from __future__ import annotations
 import os, sys, time, json, logging, datetime as dt
 from typing import Any, Dict, Optional
 
+import math
+import psutil
 import numpy as np
+import pandas as pd
 import torch
+
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+try:
+    torch.set_num_threads(1)
+except Exception:
+    pass
+if torch.cuda.is_available():
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        torch.set_float32_matmul_precision("high")
+    except Exception:
+        pass
 
 # === Args/Builders/Paths/Logging/Data ===
 from config.rl_args import parse_args, finalize_args
@@ -101,6 +119,29 @@ def clamp_batch(args):
     return args
 
 
+def auto_shape_resources(args):
+    """Auto-derive n_envs/n_steps/batch_size based on hardware when unset."""
+    cpu_cores = os.cpu_count() or 2
+    gpu = torch.cuda.is_available()
+    if getattr(args, "n_envs", 0) <= 0:
+        if gpu:
+            args.n_envs = 4
+        else:
+            args.n_envs = min(max(2, cpu_cores // 2), 16)
+    if gpu and args.n_envs < 4:
+        args.n_envs = 4
+    if getattr(args, "batch_size", 0) > args.n_envs * args.n_steps:
+        logging.warning("[PPO] batch_size (%d) > n_envs*n_steps (%d) — clipping", args.batch_size, args.n_envs * args.n_steps)
+        args.batch_size = args.n_envs * args.n_steps
+    clamp_batch(args)
+    try:
+        ram_gb = psutil.virtual_memory().total / (1024**3)
+    except Exception:
+        ram_gb = float('nan')
+    logging.info("[AUTO] cpu_cores=%s ram_gb=%.1f n_envs=%s n_steps=%s batch_size=%s", cpu_cores, ram_gb, args.n_envs, args.n_steps, args.batch_size)
+    return args
+
+
 def _maybe_print_device_report(args):
     if getattr(args, "quiet_device_report", False):
         return
@@ -129,14 +170,20 @@ def _maybe_print_device_report(args):
 
 
 class EvalSaveCallback(EvalCallback):
-    """EvalCallback that mirrors the best model to ``target_path`` each time it improves."""
+    """EvalCallback that mirrors the best model and guards learning rate."""
 
-    def __init__(self, eval_env, target_path: str, **kwargs):
+    def __init__(self, eval_env, target_path: str, patience: int = 3, lr_factor: float = 0.5, lr_limit: int = 2, **kwargs):
         save_dir = os.path.dirname(target_path)
         os.makedirs(save_dir, exist_ok=True)
         super().__init__(eval_env, best_model_save_path=save_dir, **kwargs)
         self._target_path = target_path
         self._last_mtime = 0.0
+        self._patience = int(patience)
+        self._lr_factor = float(lr_factor)
+        self._lr_limit = int(lr_limit)
+        self._no_improve = 0
+        self._lr_updates = 0
+        self._best_metric = -float("inf")
 
     def _on_step(self) -> bool:  # type: ignore[override]
         result = super()._on_step()
@@ -149,6 +196,26 @@ class EvalSaveCallback(EvalCallback):
                     self._last_mtime = mtime
             except Exception:
                 pass
+        if self.eval_freq and self.n_calls % self.eval_freq == 0:
+            cur = getattr(self, "last_mean_reward", None)
+            if cur is not None:
+                if cur > self._best_metric:
+                    self._best_metric = cur
+                    self._no_improve = 0
+                else:
+                    self._no_improve += 1
+                    if self._no_improve >= self._patience:
+                        if self._lr_updates < self._lr_limit:
+                            try:
+                                for g in self.model.policy.optimizer.param_groups:
+                                    g["lr"] *= self._lr_factor
+                                self._lr_updates += 1
+                                logging.warning("[Eval] LR reduced to %s", self.model.policy.optimizer.param_groups[0]["lr"])
+                            except Exception:
+                                pass
+                            self._no_improve = 0
+                        else:
+                            logging.warning("[Eval] no-improvement")
         return result
 
 
@@ -218,6 +285,19 @@ def train_one_file(args, data_file: str) -> bool:
             safe=args.safe,
         )
 
+    cur_cfg = cfg.get("curriculum", {})
+    if cur_cfg.get("enable"):
+        metric = cur_cfg.get("regime_metric", "volatility")
+        series = None
+        if metric == "volatility" and "close" in df.columns:
+            series = df["close"].pct_change().rolling(30).std()
+        elif metric == "atr" and "atr" in df.columns:
+            series = pd.to_numeric(df["atr"], errors="coerce")
+        if series is not None:
+            start_q = float(cur_cfg.get("start_quantile", 0.3))
+            thr = series.quantile(start_q)
+            df = df.loc[series <= thr]
+
     # 4) Build env constructors
     env_fns = build_env_fns(
         df,
@@ -225,7 +305,7 @@ def train_one_file(args, data_file: str) -> bool:
         symbol=args.symbol,
         n_envs=int(args.n_envs),
         use_indicators=args.use_indicators,
-        config=None,
+        config=cfg,
         writers=writers,
         safe=args.safe,
         decisions_jsonl=None,
@@ -272,7 +352,7 @@ def train_one_file(args, data_file: str) -> bool:
         symbol=args.symbol,
         n_envs=1,
         use_indicators=args.use_indicators,
-        config=None,
+        config=cfg,
         writers=None,
         safe=args.safe,
         decisions_jsonl=None,
@@ -302,6 +382,18 @@ def train_one_file(args, data_file: str) -> bool:
             logging.error("[RESUME] failed to load: %s. Building fresh model.", e)
 
     if model is None:
+        sched = cfg.get("ppo", {}).get("lr_schedule", "constant")
+        if sched != "constant" and not callable(args.learning_rate):
+            warm = int(cfg["ppo"].get("warmup_steps", 0))
+            base_lr = float(args.learning_rate)
+            total = int(args.total_steps)
+            def lr_schedule(progress):
+                step = (1 - progress) * total
+                if step < warm:
+                    return base_lr * step / max(1, warm)
+                pct = (step - warm) / max(1, total - warm)
+                return 0.5 * base_lr * (1 + math.cos(math.pi * pct))
+            args.learning_rate = lr_schedule
         model = build_ppo(args, vec_env, is_discrete)
         logging.info("[PPO] Built new model (device=%s, use_sde=%s)", args.device_str, bool(args.sde and not is_discrete))
 
@@ -321,6 +413,9 @@ def train_one_file(args, data_file: str) -> bool:
             n_eval_episodes=int(cfg["eval"].get("n_episodes", 5)),
             eval_freq=int(cfg["eval"].get("eval_freq", int(args.n_steps))),
             deterministic=True,
+            patience=int(cfg["eval"].get("patience_eval_rounds", 3)),
+            lr_factor=float(cfg["eval"].get("lr_decay_factor", 0.5)),
+            lr_limit=int(cfg["eval"].get("lr_decay_limit", 2)),
         )
         extras.append(eval_cb)
 
@@ -348,11 +443,12 @@ def train_one_file(args, data_file: str) -> bool:
         logging.exception("[ERROR] during learn: %s", e)
         raise
     finally:
-        update_manager.on_eval_end({
+        summary = {
             "best_model_path": getattr(eval_cb, "best_model_path", None),
             "metric": getattr(eval_cb, "best_mean_reward", None),
-        })
-        update_manager.on_training_end()
+        }
+        update_manager.on_eval_end(summary)
+        update_manager.on_training_end(summary)
         # Save model and VecNormalize
         try:
             model.save(paths["model_zip"])  # final
@@ -412,6 +508,17 @@ def train_one_file(args, data_file: str) -> bool:
         except Exception as e:
             logging.warning("[REPORT] generation failed: %s", e)
 
+    if cfg.get("self_learning", {}).get("enable", False):
+        try:
+            from ai_core.self_improver import propose_config_updates, apply_updates_to_config
+            updates = propose_config_updates()
+            if cfg["self_learning"].get("writeback_config", False):
+                apply_updates_to_config(updates)
+            else:
+                logging.info("[SELF_LEARN] proposed updates: %s", list(updates.keys()))
+        except Exception as e:
+            logging.warning("[SELF_LEARN] failed: %s", e)
+
     return True
 
 
@@ -421,6 +528,7 @@ def train_one_file(args, data_file: str) -> bool:
 
 def main():
     args = parse_args()
+    args = auto_shape_resources(args)
     args = validate_args(args)
     args = finalize_args(args, is_continuous=None)  # allow builders to decide SDE later
 

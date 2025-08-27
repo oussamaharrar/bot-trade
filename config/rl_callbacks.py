@@ -407,14 +407,18 @@ class CompositeCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         step = int(self.num_timesteps)
-        if step % self.step_every == 0:
+        metrics = {}
+        infos = self.locals.get("infos")
+        try:
+            first = infos[0] if isinstance(infos, (list, tuple)) and infos else {}
+            comps = first.get("reward_components", {})
+            if isinstance(comps, dict):
+                metrics.update(comps)
+        except Exception:
+            pass
+        if step % self.step_every == 0 or metrics:
             try:
-                # funnel periodic step information to the UpdateManager
-                # which in turn is responsible for writing to disk.  The
-                # UpdateManager enforces that only the main process
-                # performs file IO which keeps multi‑processing on
-                # Windows stable.
-                self.um.log_step(step, {})
+                self.um.log_step(step, metrics)
             except Exception:
                 pass
         return True
