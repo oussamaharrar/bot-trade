@@ -4,6 +4,9 @@ import json
 from typing import Dict
 
 import pandas as pd
+import yaml
+
+from .knowledge_hub import ingest_text, summarize, propose_config_edits
 
 
 def summarize_dir(dir_path: str) -> Dict:
@@ -37,15 +40,18 @@ def summarize_dir(dir_path: str) -> Dict:
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--results-dir", required=True)
-    p.add_argument("--agents-dir", required=True)
-    p.add_argument("--out", required=True)
+    p.add_argument("--results", required=True)
+    p.add_argument("--agents", required=True)
+    p.add_argument("--to", required=True)
+    p.add_argument("--rebuild-index", action="store_true")
+    p.add_argument("--summarize", action="store_true")
+    p.add_argument("--propose-config", action="store_true")
     args = p.parse_args()
 
     kb: Dict[str, Dict] = {}
-    if os.path.exists(args.results_dir):
-        for sym in os.listdir(args.results_dir):
-            sym_dir = os.path.join(args.results_dir, sym)
+    if os.path.exists(args.results):
+        for sym in os.listdir(args.results):
+            sym_dir = os.path.join(args.results, sym)
             if not os.path.isdir(sym_dir):
                 continue
             for frame in os.listdir(sym_dir):
@@ -53,11 +59,24 @@ def main():
                 if not os.path.isdir(frame_dir):
                     continue
                 key = f"{sym}:{frame}"
-                kb[key] = summarize_dir(frame_dir)
+                summ = summarize_dir(frame_dir)
+                kb[key] = summ
+                ingest_text(json.dumps(summ), {"symbol": sym, "frame": frame, "type": "run_summary"})
+                if args.summarize:
+                    summarize(sym, frame, last_n=20)
 
-    os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-    with open(args.out, "w", encoding="utf-8") as f:
+    os.makedirs(os.path.dirname(args.to) or ".", exist_ok=True)
+    with open(args.to, "w", encoding="utf-8") as f:
         json.dump(kb, f, indent=2)
+
+    if args.propose_config:
+        cfg_path = os.path.join('config', 'config.yaml')
+        with open(cfg_path, 'r', encoding='utf-8') as fh:
+            cfg = yaml.safe_load(fh) or {}
+        props = propose_config_edits(cfg)
+        if props:
+            with open(os.path.join('config', 'config.proposals.yaml'), 'w', encoding='utf-8') as fh:
+                fh.write(yaml.safe_dump({'proposals': props}))
 
 
 if __name__ == "__main__":

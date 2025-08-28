@@ -59,6 +59,12 @@ from config.rl_callbacks import CompositeCallback
 from config.env_config import get_config
 import shutil
 from stable_baselines3.common.callbacks import EvalCallback
+from tools.run_state import load_state as load_run_state, save_state as save_run_state
+from ai_core.portfolio import (
+    load_state as load_portfolio_state,
+    save_state as save_portfolio_state,
+    reset_with_balance,
+)
 
 # Loader (support both single-file and discover-based flows)
 try:
@@ -308,6 +314,13 @@ def train_one_file(args, data_file: str) -> bool:
     log_cfg["step_every"] = int(getattr(args, "log_every_steps", log_cfg.get("step_every", 100)))
     writers = Writers(paths, args.frame, args.symbol)
 
+    # ==== resume state / portfolio ====
+    run_state = load_run_state()
+    portfolio_cfg = cfg.get("portfolio", {})
+    port_state = load_portfolio_state(args.symbol, args.frame)
+    if not port_state and portfolio_cfg.get("enable"):
+        port_state = reset_with_balance(args.symbol, args.frame, portfolio_cfg.get("balance_start", 0.0))
+
     if getattr(args, "spawn_monitors", True):
         _spawn_monitors(args)
 
@@ -533,12 +546,14 @@ def train_one_file(args, data_file: str) -> bool:
             subprocess.run([
                 sys.executable,
                 "tools/knowledge_sync.py",
-                "--results-dir",
+                "--results",
                 paths.get("results", "results"),
-                "--agents-dir",
+                "--agents",
                 paths.get("agents", "agents"),
-                "--out",
-                os.path.join("memory", "knowledge_base_full.json"),
+                "--to",
+                os.path.join("memory", "knowledge", "summary.json"),
+                "--summarize",
+                "--propose-config",
             ], check=False)
         except Exception as e:
             logging.warning("[KNOWLEDGE] sync failed: %s", e)
@@ -560,6 +575,18 @@ def train_one_file(args, data_file: str) -> bool:
                 logging.info("[SELF_LEARN] proposed updates: %s", list(updates.keys()))
         except Exception as e:
             logging.warning("[SELF_LEARN] failed: %s", e)
+
+    # save run/portfolio state
+    try:
+        save_run_state({
+            "symbol": args.symbol,
+            "frame": args.frame,
+            "last_step": int(getattr(model, "num_timesteps", 0)),
+        })
+        if portfolio_cfg.get("enable"):
+            save_portfolio_state(args.symbol, args.frame, port_state)
+    except Exception:
+        pass
 
     return True
 

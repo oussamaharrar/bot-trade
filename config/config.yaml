@@ -326,3 +326,32 @@ analytics:
   equity_aliases: ["equity","pnl","cum_pnl","balance"]
   penalties_aliases: ["penalty","risk_penalty","slippage_penalty","time_penalty","vol_penalty"]
   signals_min_support: 20
+
+resume:
+  enable: true
+  strict_offsets: true
+  rng: true
+
+knowledge:
+  enable: true
+  build_embeddings: true
+  summarize_every: 600   # seconds
+  propose_config: true
+  apply_proposals: false
+
+portfolio:
+  enable: true
+  balance_start: 1000.0
+  equity_guard_band: 0.1
+  snapshot_every: 300  # seconds to write portfolio snapshots
+
+risk_manager:
+  dynamic_sizing: true
+  max_drawdown_stop: 0.25
+  reduce_size_below_equity: 0.2
+
+export:
+  images_out: "exports/{symbol}/{frame}/live"
+  rollwin: 200
+  svg: false
+  limit_rows: 200000

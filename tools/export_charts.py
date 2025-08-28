@@ -34,6 +34,9 @@ CHARTS = [
     "trades",
     "signals",
     "tables",
+    "exposure",
+    "fees",
+    "positions",
 ]
 
 
@@ -84,6 +87,18 @@ def export(base, symbol, frame, out_dir, charts, limit, rollwin, svg=False):
         png = os.path.join(out_dir,'kpis_table.png')
         table_to_image(pd.DataFrame({'kpi':['sharpe','maxdd'], 'value':[compute_sharpe(eq), dd.max() if not dd.empty else 0]}), png)
         if svg: table_to_image(pd.DataFrame({'kpi':['sharpe','maxdd'], 'value':[compute_sharpe(eq), dd.max() if not dd.empty else 0]}), maybe_svg(png))
+    if "exposure" in charts and not trades.empty and 'qty' in trades.columns:
+        png = os.path.join(out_dir,'exposure.png')
+        plot_line(trades['qty'].abs().cumsum(), png, 'exposure')
+        if svg: plot_line(trades['qty'].abs().cumsum(), maybe_svg(png), 'exposure')
+    if "fees" in charts and not trades.empty and 'fee' in trades.columns:
+        png = os.path.join(out_dir,'fees.png')
+        plot_line(trades['fee'].cumsum(), png, 'fees')
+        if svg: plot_line(trades['fee'].cumsum(), maybe_svg(png), 'fees')
+    if "positions" in charts and not trades.empty and 'qty' in trades.columns:
+        png = os.path.join(out_dir,'positions_timeline.png')
+        plot_line(trades['qty'].cumsum(), png, 'positions')
+        if svg: plot_line(trades['qty'].cumsum(), maybe_svg(png), 'positions')
     with open(os.path.join(out_dir,'index.json'),'w',encoding='utf-8') as fh:
         json.dump(meta, fh, indent=2)
 
