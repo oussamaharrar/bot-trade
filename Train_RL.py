@@ -314,7 +314,7 @@ def train_one_file(args, data_file: str) -> bool:
     if not port_state and portfolio_cfg.get("enable"):
         port_state = reset_with_balance(args.symbol, args.frame, portfolio_cfg.get("balance_start", 0.0))
 
-    if getattr(args, "spawn_monitors", True):
+    if getattr(args, "spawn_monitors", False):
         _spawn_monitors(args)
 
     # 2) Device report (optional)

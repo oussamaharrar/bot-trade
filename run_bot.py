@@ -2,6 +2,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 import os
 import subprocess
+import argparse
 from datetime import datetime
 import yaml
 import pandas as pd
@@ -72,10 +73,33 @@ def maybe_retrain():
         logging.info(f"ℹ️ Trades logged: {trade_count()}. Retrain at {MAX_TRADES} trades")
 
 
-def main():
+def _spawn_monitors():
+    """Launch auxiliary monitors in separate consoles."""
+    try:
+        from tools.monitor_launch import launch_new_console
+    except Exception as exc:  # pragma: no cover
+        logging.warning("monitor launch helper missing: %s", exc)
+        return
+    tools_dir = os.path.join(os.path.dirname(__file__), "tools")
+    launch_new_console(
+        "RESOURCE-MON",
+        os.path.join(tools_dir, "resource_monitor.py"),
+        ["--base", RESULTS_DIR],
+    )
+    launch_new_console(
+        "REPORTS",
+        os.path.join(tools_dir, "generate_markdown_report.py"),
+        ["--watch"],
+    )
+
+
+def main(args):
     logging.info('\n' + '='*60)
     logging.info('🚀 Running trading bot')
     logging.info('='*60)
+    if args.spawn_monitors:
+        _spawn_monitors()
+
     if not LIVE_TRADING:
         logging.info('⚠️  LIVE_TRADING disabled - running in simulation mode')
     try:
@@ -104,4 +128,12 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--spawn-monitors",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Launch resource and report monitors in separate windows",
+    )
+    cli_args = ap.parse_args()
+    main(cli_args)
