@@ -6,10 +6,12 @@ import os
 import time
 from datetime import datetime
 
-from .analytics_common import (
+from tools.analytics_common import (
     load_reward_df,
     load_trades_df,
     compute_equity,
+    wait_for_first_write,
+    artifact_paths,
 )
 
 import numpy as np
@@ -47,21 +49,23 @@ def main():
     ap.add_argument('--refresh', type=int, default=10)
     ap.add_argument('--stalled-sec', type=int, default=120)
     ap.add_argument('--dd-warn', type=float, default=0.15)
+    ap.add_argument('--no-wait', action='store_true')
     args = ap.parse_args()
 
-    base = os.path.join(args.base, args.symbol, args.frame)
     log_file = os.path.join('exports', args.symbol, args.frame, 'alerts.log')
     os.makedirs(os.path.dirname(log_file), exist_ok=True)
+
+    if not args.no_wait:
+        wait_for_first_write(args.base, args.symbol, args.frame)
+
+    paths = artifact_paths(args.base, args.symbol, args.frame)
 
     while True:
         reward = load_reward_df(args.base, args.symbol, args.frame)
         trades = load_trades_df(args.base, args.symbol, args.frame)
         eq = compute_equity(trades)
         alerts = []
-        if check_stall([
-            os.path.join(base,'train_log.csv'),
-            os.path.join(base,'deep_rl_trades.csv')
-        ], args.stalled_sec):
+        if check_stall(paths, args.stalled_sec):
             alerts.append('training stalled')
         if check_nan_reward(reward):
             alerts.append('NaN reward')

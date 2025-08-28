@@ -4,7 +4,8 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from typing import Optional, Sequence
+import time
+from typing import Optional, Sequence, List
 
 import numpy as np
 import pandas as pd
@@ -47,6 +48,42 @@ def read_jsonl_safely(path: str, limit: Optional[int] = None) -> pd.DataFrame:
         return df
     except Exception:
         return pd.DataFrame()
+
+# ---------------------------------------------------------------------------
+# Artifact helpers
+# ---------------------------------------------------------------------------
+
+def artifact_paths(base: str, symbol: str, frame: str) -> List[str]:
+    """Return candidate artifact paths that indicate training activity."""
+    root = os.path.join(base, symbol, frame)
+    return [
+        os.path.join(root, "train_log.csv"),
+        os.path.join(root, "step_log.csv"),
+        os.path.join(root, "evaluation.csv"),
+        os.path.join(root, "logs", "entry_decisions.jsonl"),
+    ]
+
+
+def wait_for_first_write(
+    base: str,
+    symbol: str,
+    frame: str,
+    timeout: Optional[float] = None,
+    poll: float = 0.5,
+) -> Optional[str]:
+    """Block until any artifact is written (size>0)."""
+    paths = artifact_paths(base, symbol, frame)
+    start = time.monotonic()
+    while True:
+        for p in paths:
+            try:
+                if os.path.exists(p) and os.path.getsize(p) > 0:
+                    return p
+            except Exception:
+                pass
+        if timeout is not None and (time.monotonic() - start) > timeout:
+            return None
+        time.sleep(poll)
 
 # ---------------------------------------------------------------------------
 # Column aliasing utilities

@@ -97,10 +97,11 @@ def parse_args():
     ap.add_argument("--kb-file", type=str, default=DEFAULT_KB_FILE)
     ap.add_argument("--playlist", type=str, default=None)
     ap.add_argument("--mp-start", type=str, default="spawn", choices=["spawn", "forkserver", "fork"])
-    ap.add_argument("--spawn-monitors", dest="spawn_monitors", action="store_true")
-    ap.add_argument("--no-monitors", dest="spawn_monitors", action="store_false")
+    ap.add_argument("--spawn-monitors", action="store_true",
+                    help="Open interactive Monitor Manager in a separate window")
     ap.add_argument("--monitor-refresh", type=int, default=10)
-    ap.set_defaults(spawn_monitors=True)
+    ap.add_argument("--monitor-images-out", type=str,
+                    default="exports/{symbol}/{frame}/live")
     args = ap.parse_args()
     args.use_sde = bool(getattr(args, "sde", False))
     args.policy_kwargs = build_policy_kwargs(args.net_arch, args.activation, args.ortho_init)
