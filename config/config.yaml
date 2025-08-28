@@ -312,15 +312,19 @@ monitors:
   enable: true
   refresh: 10
   images_out: "exports/{symbol}/{frame}/live"
-  rollwin: 200
-  anomaly_watch:
-    enable: true
-    stalled_sec: 120
-    dd_warn: 0.15
-    block_rate_warn: 0.4
+  spawn_on_train: true
+  manager_only: true
+resources:
+  enable: true
+  refresh: 1
+anomaly:
+  refresh: 10
+  stalled_sec: 120
+  dd_warn: 0.15
+  block_rate_warn: 0.40
 export:
   svg: false
-  limit_rows: 200000
+  limit_rows: 250000
 analytics:
   reward_aliases: ["avg_reward","ep_rew_mean","mean_reward","episode_reward","reward"]
   equity_aliases: ["equity","pnl","cum_pnl","balance"]
@@ -349,9 +353,3 @@ risk_manager:
   dynamic_sizing: true
   max_drawdown_stop: 0.25
   reduce_size_below_equity: 0.2
-
-export:
-  images_out: "exports/{symbol}/{frame}/live"
-  rollwin: 200
-  svg: false
-  limit_rows: 200000

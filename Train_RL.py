@@ -172,41 +172,34 @@ def _maybe_print_device_report(args):
 
 
 def _spawn_monitors(args) -> None:
-    """Launch live ticker and CLI console in background terminals."""
-    cmds = [
+    """Launch monitor manager in a new console."""
+    try:
+        from tools.monitor_launch import launch_new_console
+    except Exception as exc:  # pragma: no cover
+        logging.warning("monitor launch helper missing: %s", exc)
+        return
+
+    tools_dir = os.path.join(os.path.dirname(__file__), "tools")
+    script = os.path.join(tools_dir, "monitor_manager.py")
+    images_out = getattr(args, "monitor_images_out", "").format(
+        symbol=args.symbol, frame=args.frame
+    )
+    launch_new_console(
+        "MONITOR-MANAGER",
+        script,
         [
-            sys.executable,
-            os.path.join("tools", "live_ticker.py"),
             "--symbol",
             args.symbol,
             "--frame",
             args.frame,
             "--refresh",
             str(getattr(args, "monitor_refresh", 10)),
+            "--images-out",
+            images_out,
+            "--base",
+            args.results_dir,
         ],
-        [
-            sys.executable,
-            os.path.join("tools", "cli_console.py"),
-            "--symbol",
-            args.symbol,
-            "--frame",
-            args.frame,
-        ],
-    ]
-    for cmd in cmds:
-        try:
-            if sys.platform.startswith("win"):
-                subprocess.Popen(["cmd", "/c", "start"] + cmd)
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", "-a", "Terminal"] + cmd)
-            else:
-                term = os.environ.get("MONITOR_TERM", "x-terminal-emulator")
-                try:
-                    subprocess.Popen([term, "-e"] + cmd)
-                except Exception:
-                    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception as exc:
-            logging.warning("monitor launch failed: %s", exc)
+    )
 
 
 # =============================

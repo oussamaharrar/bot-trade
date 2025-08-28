@@ -6,7 +6,7 @@ import json
 import os
 from datetime import datetime
 
-from .analytics_common import (
+from tools.analytics_common import (
     load_reward_df,
     load_trades_df,
     load_steps_df,
@@ -21,6 +21,7 @@ from .analytics_common import (
     plot_bar,
     table_to_image,
     git_short_hash,
+    wait_for_first_write,
 )
 
 import pandas as pd
@@ -113,7 +114,11 @@ def main():
     ap.add_argument('--svg', action='store_true')
     ap.add_argument('--limit', type=int, default=None)
     ap.add_argument('--rollwin', type=int, default=200)
+    ap.add_argument('--no-wait', action='store_true')
     args = ap.parse_args()
+
+    if not args.no_wait:
+        wait_for_first_write(args.base, args.symbol, args.frame)
 
     charts = [c.strip() for c in args.charts.split(',') if c.strip()]
     export(args.base, args.symbol, args.frame, args.out, charts, args.limit, args.rollwin, svg=args.svg)

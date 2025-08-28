@@ -6,7 +6,7 @@ import os
 import time
 from datetime import datetime
 
-from .analytics_common import (
+from tools.analytics_common import (
     load_reward_df,
     load_trades_df,
     load_steps_df,
@@ -20,6 +20,7 @@ from .analytics_common import (
     plot_area,
     plot_bar,
     table_to_image,
+    wait_for_first_write,
 )
 
 try:
@@ -65,12 +66,15 @@ def maybe_images(base, symbol, frame, outdir, rollwin):
     dd = compute_drawdown(eq)
     pen = penalties_breakdown(steps)
     sig = signals_agg(decisions)
-    plot_line(reward.iloc[:,0].rolling(rollwin).mean(), os.path.join(outdir,'reward.png'), 'reward') if not reward.empty else None
+    if not reward.empty:
+        plot_line(reward.iloc[:,0].rolling(rollwin).mean(), os.path.join(outdir,'reward.png'), 'reward')
     plot_line(eq, os.path.join(outdir,'equity.png'), 'equity')
     plot_line(dd, os.path.join(outdir,'drawdown.png'), 'drawdown')
-    plot_line(pd.Series(dd.tail(rollwin).mean(), index=[0]), os.path.join(outdir,'sharpe.png'), 'sharpe')
+    if not dd.empty:
+        plot_line(pd.Series(dd.tail(rollwin).mean(), index=[0]), os.path.join(outdir,'sharpe.png'), 'sharpe')
     plot_area(pen, os.path.join(outdir,'penalties.png'), 'penalties')
-    plot_bar(sig.set_index('signal'), os.path.join(outdir,'signals_top.png'), 'signals')
+    if not sig.empty:
+        plot_bar(sig.set_index('signal'), os.path.join(outdir,'signals_top.png'), 'signals')
     table_to_image(pd.DataFrame({'kpi':['sharpe','maxdd'], 'value':[compute_sharpe(eq), dd.max() if not dd.empty else 0]}), os.path.join(outdir,'kpis_table.png'))
 
 
@@ -84,10 +88,13 @@ def main():
     ap.add_argument('--rollwin', type=int, default=200)
     ap.add_argument('--ansi', dest='ansi', action='store_true', default=True)
     ap.add_argument('--no-ansi', dest='ansi', action='store_false')
+    ap.add_argument('--no-wait', action='store_true')
     args = ap.parse_args()
 
+    if not args.no_wait:
+        wait_for_first_write(args.base, args.symbol, args.frame)
+
     console = Console() if RICH and args.ansi else None
-    last = ''
     with Live(console=console, refresh_per_second=4) if console else nullcontext():
         while True:
             msg = build_display(args.base, args.symbol, args.frame, args.rollwin)
