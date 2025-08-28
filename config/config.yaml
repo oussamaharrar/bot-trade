@@ -307,3 +307,22 @@ curriculum:
 self_learning:
   enable: true
   writeback_config: false
+
+monitors:
+  enable: true
+  refresh: 10
+  images_out: "exports/{symbol}/{frame}/live"
+  rollwin: 200
+  anomaly_watch:
+    enable: true
+    stalled_sec: 120
+    dd_warn: 0.15
+    block_rate_warn: 0.4
+export:
+  svg: false
+  limit_rows: 200000
+analytics:
+  reward_aliases: ["avg_reward","ep_rew_mean","mean_reward","episode_reward","reward"]
+  equity_aliases: ["equity","pnl","cum_pnl","balance"]
+  penalties_aliases: ["penalty","risk_penalty","slippage_penalty","time_penalty","vol_penalty"]
+  signals_min_support: 20

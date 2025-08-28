@@ -25,6 +25,7 @@ import psutil
 import numpy as np
 import pandas as pd
 import torch
+import subprocess
 
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
@@ -164,6 +165,44 @@ def _maybe_print_device_report(args):
     print("===================================")
 
 
+def _spawn_monitors(args) -> None:
+    """Launch live ticker and CLI console in background terminals."""
+    cmds = [
+        [
+            sys.executable,
+            os.path.join("tools", "live_ticker.py"),
+            "--symbol",
+            args.symbol,
+            "--frame",
+            args.frame,
+            "--refresh",
+            str(getattr(args, "monitor_refresh", 10)),
+        ],
+        [
+            sys.executable,
+            os.path.join("tools", "cli_console.py"),
+            "--symbol",
+            args.symbol,
+            "--frame",
+            args.frame,
+        ],
+    ]
+    for cmd in cmds:
+        try:
+            if sys.platform.startswith("win"):
+                subprocess.Popen(["cmd", "/c", "start"] + cmd)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", "-a", "Terminal"] + cmd)
+            else:
+                term = os.environ.get("MONITOR_TERM", "x-terminal-emulator")
+                try:
+                    subprocess.Popen([term, "-e"] + cmd)
+                except Exception:
+                    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as exc:
+            logging.warning("monitor launch failed: %s", exc)
+
+
 # =============================
 # EvalCallback with automatic best-model copy
 # =============================
@@ -268,6 +307,9 @@ def train_one_file(args, data_file: str) -> bool:
     log_cfg = cfg.setdefault("logging", {})
     log_cfg["step_every"] = int(getattr(args, "log_every_steps", log_cfg.get("step_every", 100)))
     writers = Writers(paths, args.frame, args.symbol)
+
+    if getattr(args, "spawn_monitors", True):
+        _spawn_monitors(args)
 
     # 2) Device report (optional)
     _maybe_print_device_report(args)
