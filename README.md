@@ -35,3 +35,14 @@ df = load_binance_data(data_dir, symbol, data_type="trades", freq="1min")
 ## Files
 - `binance_loader.py`
 - Updated project scripts...
+
+## Monitor windows
+
+Helper scripts can be launched in separate consoles using
+`tools/monitor_launch.launch_new_console`. Configure behaviour with environment
+variables:
+
+- `MONITOR_SHELL=cmd|powershell` – force a specific Windows shell.
+- `MONITOR_USE_CONDA_RUN=1` – wrap commands with `conda run` to ensure the
+  active environment.
+- `MONITOR_DEBUG=1` – print the final command line used for spawning.
