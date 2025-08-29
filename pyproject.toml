@@ -7,6 +7,5 @@ name = "bot-trade"
 version = "0.1.0"
 dependencies = []
 
-[tool.setuptools]
-packages = ["bot_trade"]
-package-dir = {"bot_trade" = "."}
+[tool.setuptools.packages.find]
+include = ["bot_trade*"]
