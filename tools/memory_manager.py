@@ -32,7 +32,7 @@ class MemoryManager:
         ensure_dirs(self.base_dir)
         with lockfile(lock):
             with self.events_file.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(entry) + "\n")
+                fh.write(json.dumps(entry, default=str) + "\n")
 
     def snapshot(self, state: Dict[str, Any]) -> None:
         data = {"updated_at": _ts(), **state}

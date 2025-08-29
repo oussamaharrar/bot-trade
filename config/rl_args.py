@@ -76,9 +76,13 @@ def parse_args():
     ap.add_argument("--log-every-steps", type=int, default=10_000)
     ap.add_argument("--print-every-sec", type=int, default=10)
     ap.add_argument("--benchmark-every-steps", type=int, default=50_000)
+    ap.add_argument("--artifact-every-steps", type=int, default=100_000,
+                    help="Dump periodic artefacts every N steps (default 100k)")
     ap.add_argument("--tensorboard", action="store_true")
     ap.add_argument("--tb-logdir", type=str, default=os.path.join("logs", "tb"))
     ap.add_argument("--quiet-device-report", action="store_true")
+    ap.add_argument("--log-level", type=str, default="INFO",
+                    help="Root logging level (DEBUG, INFO, WARNING, ERROR)")
     ap.add_argument("--torch-threads", type=int, default=6)
     ap.add_argument("--omp-threads", type=int, default=1)
     ap.add_argument("--mkl-threads", type=int, default=1)
@@ -107,6 +111,9 @@ def parse_args():
     ap.add_argument("--monitor-images-out", type=str,
                     default="exports/{symbol}/{frame}/live")
     args = ap.parse_args()
+    level_name = str(getattr(args, "log_level", "INFO")).upper()
+    import logging
+    args.log_level = getattr(logging, level_name, logging.INFO)
     args.use_sde = bool(getattr(args, "sde", False))
     args.policy_kwargs = build_policy_kwargs(args.net_arch, args.activation, args.ortho_init)
     os.environ["OMP_NUM_THREADS"] = str(max(1, int(args.omp_threads)))

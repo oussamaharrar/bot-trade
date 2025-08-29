@@ -84,10 +84,10 @@ def build_cmd(python_bin: str, job: Dict[str, Any], post_analyze: bool) -> List[
         "learning_rate", "gamma", "gae_lambda", "clip_range", "ent_coef",
         "vf_coef", "max_grad_norm", "net_arch", "activation", "seed",
         "checkpoint_every", "eval_episodes", "eval_every_steps", "log_every_steps",
-        "print_every_sec", "benchmark_every_steps", "tb_logdir", "torch_threads",
+        "print_every_sec", "benchmark_every_steps", "artifact_every_steps", "tb_logdir", "torch_threads",
         "omp_threads", "mkl_threads", "clip_obs", "clip_reward", "agents_dir",
         "results_dir", "reports_dir", "memory_file", "kb_file", "playlist", "mp_start",
-        "policy", "net_arch", "activation"
+        "policy", "net_arch", "activation", "log_level"
     }
 
     for k in scalar_keys:
