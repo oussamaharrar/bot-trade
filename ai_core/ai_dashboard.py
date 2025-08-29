@@ -8,19 +8,12 @@ or from project root:
 
 from __future__ import annotations
 
-import sys, pathlib
-from pathlib import Path
 from typing import Dict
 
 import pandas as pd
 import streamlit as st
 
-# allow running from subdirectories without PYTHONPATH tweaks
-root = pathlib.Path(__file__).resolve().parents[1]
-if str(root) not in sys.path:
-    sys.path.insert(0, str(root))
-
-from ai_core.dashboard_io import (
+from .dashboard_io import (
     load_decisions,
     load_training_metrics,
     load_trades,

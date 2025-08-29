@@ -4,7 +4,7 @@ set -euo pipefail
 SESSION="bot-train"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASE_CFG="${ROOT}/config/config.yaml"
-ENTRY="python Train_RL.py"         # عدّل لو عندك اسم مختلف
+ENTRY="python -m bot_trade.train_rl"         # عدّل لو عندك اسم مختلف
 DATE_TAG="$(date +'%Y%m%d_%H%M%S')"
 
 # خرائط التشغيل: GPU/FRAME/SEED/N_ENVS/N_STEPS/BATCH/GAMMA/LR/STACK

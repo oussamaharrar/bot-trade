@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-run_multi_gpu.py — مُشغّل متوازي/تسلسلي يقرأ playlist.yaml ويشغّل Train_RL.py على عدّة GPUs أو بالتتابع.
+run_multi_gpu.py — مُشغّل متوازي/تسلسلي يقرأ playlist.yaml ويشغّل train_rl.py على عدّة GPUs أو بالتتابع.
 
 المزايا:
 - تشغيل كل Job في عملية مستقلة (متزامن) مع تمرير --device الصحيح.
@@ -65,7 +65,7 @@ def _truthy(x: Any) -> bool:
 
 
 def build_cmd(python_bin: str, job: Dict[str, Any], post_analyze: bool) -> List[str]:
-    cmd: List[str] = [python_bin, "-u", "Train_RL.py"]
+    cmd: List[str] = [python_bin, "-u", "-m", "bot_trade.train_rl"]
 
     consumed: set = set()
 
