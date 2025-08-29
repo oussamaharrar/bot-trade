@@ -204,36 +204,83 @@ class BestCheckpointCallback(BaseCallback):
         return True
 
 
-class KnowledgeAndMemoryCallback(BaseCallback):
-    """تحديث KB/Memory كل every خطوة بدون أي تباطؤ ملحوظ."""
+class PeriodicArtifactsCallback(BaseCallback):
+    """Dump memory/knowledge artefacts at a fixed step interval.
 
-    def __init__(self, kb_file: str, memory_file: str, frame: str, symbol: str, every: int = 50_000, verbose: int = 0):
+    Also runs once at training start and end.  The callback only performs
+    light-weight JSON reads/writes in the main process and relies on
+    :class:`UpdateManager` for knowledge-base aggregation when available.
+    """
+
+    def __init__(
+        self,
+        update_manager,
+        memory_file: str,
+        kb_file: str,
+        frame: str,
+        symbol: str,
+        every: int = 100_000,
+        verbose: int = 0,
+    ) -> None:
         super().__init__(verbose)
-        self.kb_file = kb_file
+        self.um = update_manager
         self.memory_file = memory_file
+        self.kb_file = kb_file
         self.frame, self.symbol = frame, symbol
         self.every = int(max(1, every))
+        self._last_dump = -1
+
+    def _init_callback(self) -> None:
+        self._dump(0)
 
     def _on_step(self) -> bool:  # noqa: D401
         step = int(self.num_timesteps)
-        if step % self.every != 0:
-            return True
-        now = dt.datetime.utcnow().isoformat()
+        if step - self._last_dump >= self.every:
+            self._dump(step)
+        return True
 
-        # memory.json — جلسات محدثة
+    def _on_training_end(self) -> None:
+        self._dump(int(self.num_timesteps))
+
+    def _dump(self, step: int) -> None:
+        now = dt.datetime.utcnow().isoformat()
+        # memory snapshot
         try:
-            mem: Dict[str, Any] = {}
+            mem: Dict[str, Any]
             if os.path.exists(self.memory_file):
                 with open(self.memory_file, "r", encoding="utf-8") as f:
                     mem = json.load(f) or {}
+            else:
+                mem = {}
             sess = mem.setdefault("sessions", {})
             key = f"{self.symbol}:{self.frame}"
             sess[key] = {"last_step": step, "updated_at": now}
             with open(self.memory_file, "w", encoding="utf-8") as f:
                 json.dump(mem, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            logging.error("[MEMORY] update failed: %s", e)
-        return True
+            logging.error("[MEMORY] snapshot failed: %s", e)
+
+        # knowledge base update via UpdateManager or direct file append
+        event = {"symbol": self.symbol, "frame": self.frame, "step": step, "ts": now}
+        try:
+            if self.um is not None:
+                self.um.update_knowledge(event)
+            else:
+                kb: list[Any]
+                try:
+                    with open(self.kb_file, "r", encoding="utf-8") as fh:
+                        kb = json.load(fh)
+                    if not isinstance(kb, list):
+                        kb = []
+                except Exception:
+                    kb = []
+                kb.append(event)
+                with open(self.kb_file, "w", encoding="utf-8") as fh:
+                    json.dump(kb, fh, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logging.error("[KB] update failed: %s", e)
+
+        self._last_dump = step
 
 
 class BenchmarkCallback(BaseCallback):

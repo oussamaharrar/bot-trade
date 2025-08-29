@@ -205,12 +205,12 @@ def build_ppo(args, vec_env, is_discrete: bool):
     return model
 
 
-def build_callbacks(paths, writers, args):
+def build_callbacks(paths, writers, args, update_manager=None):
     from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
     from .rl_callbacks import (
         StepsAndRewardCallback,
         BestCheckpointCallback,
-        KnowledgeAndMemoryCallback,
+        PeriodicArtifactsCallback,
     )
     ckpt_cb = CheckpointCallback(
         save_freq=max(1, int(getattr(args, "checkpoint_every", 50_000))),
@@ -219,9 +219,16 @@ def build_callbacks(paths, writers, args):
     )
     best_cb = BestCheckpointCallback(paths, check_every=max(50_000, int(getattr(args, "n_steps", 2048))))
     step_cb = StepsAndRewardCallback(args.frame, args.symbol, writers, log_every=int(getattr(args, "log_every", 2_000)))
-    kb_cb = KnowledgeAndMemoryCallback(args.kb_file, args.memory_file, args.frame, args.symbol, every=int(getattr(args, "kb_every", 50_000)))
+    art_cb = PeriodicArtifactsCallback(
+        update_manager,
+        args.memory_file,
+        args.kb_file,
+        args.frame,
+        args.symbol,
+        every=int(getattr(args, "artifact_every_steps", 100_000)),
+    )
 
-    callbacks = [ckpt_cb, best_cb, step_cb, kb_cb]
+    callbacks = [ckpt_cb, best_cb, step_cb, art_cb]
 
     try:
         from .rl_callbacks import BenchmarkCallback, StrictDataSanityCallback

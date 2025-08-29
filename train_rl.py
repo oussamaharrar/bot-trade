@@ -272,9 +272,18 @@ def train_one_file(args, data_file: str) -> bool:
         reports_dir=args.reports_dir,
     )
     paths.update(get_paths(args.symbol, args.frame))
-    log_queue, listener, _ = create_loggers(paths["results"], args.frame, args.symbol)
+    log_queue, listener, _ = create_loggers(paths["results"], args.frame, args.symbol, level=getattr(args, "log_level", logging.INFO))
     ensure_state_files(args.memory_file, args.kb_file)
     logging.info("[PATHS] initialized for %s | %s", args.symbol, args.frame)
+
+    # Pre-load knowledge base if present
+    try:
+        with open(args.kb_file, "r", encoding="utf-8") as fh:
+            kb_data = json.load(fh)
+        kb_size = len(kb_data) if isinstance(kb_data, list) else len(kb_data.keys())
+        logging.info("[KB] loaded %d entries", kb_size)
+    except Exception:
+        logging.info("[KB] initialized new knowledge base at %s", args.kb_file)
 
     cfg = get_config()
     update_manager = UpdateManager(paths, args.symbol, args.frame, cfg)
@@ -447,7 +456,7 @@ def train_one_file(args, data_file: str) -> bool:
         logging.info("[PPO] Built new model (device=%s, use_sde=%s)", args.device_str, bool(args.sde and not is_discrete))
 
     # 10) Callbacks (base from rl_builders + optional extras)
-    base_callbacks = build_callbacks(paths, writers, args)
+    base_callbacks = build_callbacks(paths, writers, args, update_manager)
     cb = base_callbacks
     extras = []
 
