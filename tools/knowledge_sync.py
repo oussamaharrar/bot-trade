@@ -1,83 +1,74 @@
-import argparse
-import os
+"""Persist run knowledge summaries.
+
+This module provides a small helper to record knowledge artifacts for a run
+so future sessions can learn from previous executions. It writes a detailed
+JSON file for each run and appends a line to ``memory/knowledge/log.jsonl``.
+"""
+from __future__ import annotations
+
+from tools import bootstrap  # noqa: F401  # Import path fixup when run directly
+
 import json
-from typing import Dict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, Iterable
 
-import pandas as pd
-import yaml
-
-from .knowledge_hub import ingest_text, summarize, propose_config_edits
-
-
-def summarize_dir(dir_path: str) -> Dict:
-    summary: Dict[str, any] = {}
-    train_csv = os.path.join(dir_path, "train_log.csv")
-    eval_csv = os.path.join(dir_path, "evaluation.csv")
-    trades_csv = os.path.join(dir_path, "deep_rl_trades.csv")
-    if os.path.exists(train_csv):
-        try:
-            df = pd.read_csv(train_csv)
-            summary["train_rows"] = int(len(df))
-        except Exception:
-            pass
-    if os.path.exists(eval_csv):
-        try:
-            df = pd.read_csv(eval_csv)
-            if not df.empty and "value" in df.columns:
-                summary["best_eval"] = float(df["value"].max())
-        except Exception:
-            pass
-    if os.path.exists(trades_csv):
-        try:
-            df = pd.read_csv(trades_csv)
-            summary["num_trades"] = int(len(df))
-            if "pnl" in df.columns and not df.empty:
-                summary["avg_trade_pnl"] = float(df["pnl"].mean())
-        except Exception:
-            pass
-    return summary
+from tools.paths import DIR_KNOWLEDGE, ensure_dirs
+from tools.runctx import atomic_write_json
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--results", required=True)
-    p.add_argument("--agents", required=True)
-    p.add_argument("--to", required=True)
-    p.add_argument("--rebuild-index", action="store_true")
-    p.add_argument("--summarize", action="store_true")
-    p.add_argument("--propose-config", action="store_true")
-    args = p.parse_args()
+def _ts() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-    kb: Dict[str, Dict] = {}
-    if os.path.exists(args.results):
-        for sym in os.listdir(args.results):
-            sym_dir = os.path.join(args.results, sym)
-            if not os.path.isdir(sym_dir):
-                continue
-            for frame in os.listdir(sym_dir):
-                frame_dir = os.path.join(sym_dir, frame)
-                if not os.path.isdir(frame_dir):
-                    continue
-                key = f"{sym}:{frame}"
-                summ = summarize_dir(frame_dir)
-                kb[key] = summ
-                ingest_text(json.dumps(summ), {"symbol": sym, "frame": frame, "type": "run_summary"})
-                if args.summarize:
-                    summarize(sym, frame, last_n=20)
 
-    os.makedirs(os.path.dirname(args.to) or ".", exist_ok=True)
-    with open(args.to, "w", encoding="utf-8") as f:
-        json.dump(kb, f, indent=2)
+def write_knowledge(run_id: str, summary: str, *, references: Iterable[str] | None = None,
+                    strategies: Iterable[str] | None = None,
+                    hints: Iterable[str] | None = None,
+                    failures: Iterable[str] | None = None,
+                    next_steps: Iterable[str] | None = None) -> Path:
+    """Write structured knowledge for ``run_id``.
 
-    if args.propose_config:
-        cfg_path = os.path.join('config', 'config.yaml')
-        with open(cfg_path, 'r', encoding='utf-8') as fh:
-            cfg = yaml.safe_load(fh) or {}
-        props = propose_config_edits(cfg)
-        if props:
-            with open(os.path.join('config', 'config.proposals.yaml'), 'w', encoding='utf-8') as fh:
-                fh.write(yaml.safe_dump({'proposals': props}))
+    A compact dictionary is stored to ``memory/knowledge/knowledge-{run_id}.json``
+    and an entry is appended to ``memory/knowledge/log.jsonl``.
+    """
+    ensure_dirs(DIR_KNOWLEDGE)
+    data: Dict[str, object] = {
+        "run_id": run_id,
+        "summary": summary,
+        "strategies": list(strategies or []),
+        "hints": list(hints or []),
+        "failures": list(failures or []),
+        "next_steps": list(next_steps or []),
+        "references": list(references or []),
+        "created_at": _ts(),
+    }
+    path = DIR_KNOWLEDGE / f"knowledge-{run_id}.json"
+    atomic_write_json(path, data)
+    log_path = DIR_KNOWLEDGE / "log.jsonl"
+    with log_path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(data) + "\n")
+    return path
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Record a knowledge summary")
+    ap.add_argument("run_id")
+    ap.add_argument("summary")
+    ap.add_argument("--ref", action="append", default=[])
+    ap.add_argument("--strategy", action="append", default=[])
+    ap.add_argument("--hint", action="append", default=[])
+    ap.add_argument("--failure", action="append", default=[])
+    ap.add_argument("--next", action="append", dest="next_step", default=[])
+    args = ap.parse_args()
+
+    write_knowledge(
+        args.run_id,
+        args.summary,
+        references=args.ref,
+        strategies=args.strategy,
+        hints=args.hint,
+        failures=args.failure,
+        next_steps=args.next_step,
+    )

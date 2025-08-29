@@ -1,9 +1,10 @@
 """Batch export of analytics charts and tables."""
 from __future__ import annotations
 
+from tools import bootstrap  # noqa: F401  # Import path fixup when run directly
+
 import argparse
 import json
-import os
 from datetime import datetime
 
 from tools.analytics_common import (
@@ -23,6 +24,7 @@ from tools.analytics_common import (
     git_short_hash,
     wait_for_first_write,
 )
+from tools.paths import results_dir, report_dir
 
 import pandas as pd
 
@@ -41,7 +43,7 @@ CHARTS = [
 ]
 
 
-def export(base, symbol, frame, out_dir, charts, limit, rollwin, svg=False):
+def export(base: str, symbol: str, frame: str, out_dir: str, charts, limit, rollwin, svg: bool = False):
     os.makedirs(out_dir, exist_ok=True)
     reward = load_reward_df(base, symbol, frame, limit)
     trades = load_trades_df(base, symbol, frame, limit)
@@ -108,8 +110,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--symbol', default='BTCUSDT')
     ap.add_argument('--frame', default='1m')
-    ap.add_argument('--base', default='results')
-    ap.add_argument('--out', required=True)
+    ap.add_argument('--base')
+    ap.add_argument('--run-id', required=True)  # NOTE: interface changed here - run_id is required
+    ap.add_argument('--out')
     ap.add_argument('--charts', default=','.join(CHARTS))
     ap.add_argument('--svg', action='store_true')
     ap.add_argument('--limit', type=int, default=None)
@@ -117,11 +120,14 @@ def main():
     ap.add_argument('--no-wait', action='store_true')
     args = ap.parse_args()
 
+    base_dir = args.base or str(results_dir(args.symbol, args.frame))
+    out_dir = args.out or str(report_dir(args.symbol, args.frame, args.run_id))
+
     if not args.no_wait:
-        wait_for_first_write(args.base, args.symbol, args.frame)
+        wait_for_first_write(base_dir, args.symbol, args.frame)
 
     charts = [c.strip() for c in args.charts.split(',') if c.strip()]
-    export(args.base, args.symbol, args.frame, args.out, charts, args.limit, args.rollwin, svg=args.svg)
+    export(base_dir, args.symbol, args.frame, out_dir, charts, args.limit, args.rollwin, svg=args.svg)
 
 
 if __name__ == '__main__':

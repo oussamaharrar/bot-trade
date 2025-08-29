@@ -1,10 +1,11 @@
 """Auto-refreshing CLI ticker showing training KPIs."""
 from __future__ import annotations
 
+from tools import bootstrap  # noqa: F401  # Import path fixup when run directly
+
 import argparse
-import os
-import time
-from datetime import datetime
+import threading
+from datetime import datetime, timezone
 
 from tools.analytics_common import (
     load_reward_df,
@@ -22,6 +23,7 @@ from tools.analytics_common import (
     table_to_image,
     wait_for_first_write,
 )
+from tools.paths import results_dir, logs_dir
 
 try:
     from rich.console import Console
@@ -34,7 +36,7 @@ except Exception:
 import pandas as pd
 
 
-def build_display(base, symbol, frame, rollwin):
+def build_display(base: str, symbol: str, frame: str, rollwin: int) -> str:
     reward = load_reward_df(base, symbol, frame)
     steps = load_steps_df(base, symbol, frame)
     trades = load_trades_df(base, symbol, frame)
@@ -55,7 +57,7 @@ def build_display(base, symbol, frame, rollwin):
     return "\n".join(out_lines)
 
 
-def maybe_images(base, symbol, frame, outdir, rollwin):
+def maybe_images(base: str, symbol: str, frame: str, outdir: str, rollwin: int) -> None:
     if not outdir:
         return
     reward = load_reward_df(base, symbol, frame)
@@ -83,7 +85,8 @@ def main():
     ap.add_argument('--symbol', default='BTCUSDT')
     ap.add_argument('--frame', default='1m')
     ap.add_argument('--refresh', type=int, default=10)
-    ap.add_argument('--base', default='results')
+    ap.add_argument('--base')
+    ap.add_argument('--run-id', required=True)  # NOTE: interface changed here - run_id now required to namespace outputs
     ap.add_argument('--images-out')
     ap.add_argument('--rollwin', type=int, default=200)
     ap.add_argument('--ansi', dest='ansi', action='store_true', default=True)
@@ -91,21 +94,38 @@ def main():
     ap.add_argument('--no-wait', action='store_true')
     args = ap.parse_args()
 
+    base_dir = args.base or str(results_dir(args.symbol, args.frame))
     if not args.no_wait:
-        wait_for_first_write(args.base, args.symbol, args.frame)
+        wait_for_first_write(base_dir, args.symbol, args.frame)
 
     console = Console() if RICH and args.ansi else None
-    with Live(console=console, refresh_per_second=4) if console else nullcontext():
-        while True:
-            msg = build_display(args.base, args.symbol, args.frame, args.rollwin)
-            if console:
-                console.clear()
-                console.print(msg)
-            else:
-                print(msg, flush=True)
-            if args.images_out:
-                maybe_images(args.base, args.symbol, args.frame, args.images_out, args.rollwin)
-            time.sleep(max(1, args.refresh))
+    stop_event = threading.Event()
+    hb_path = logs_dir(args.symbol, args.frame, args.run_id) / "live_ticket_heartbeat.log"
+    hb_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(hb_path, "a", encoding="utf-8") as hb:
+            with Live(console=console, refresh_per_second=4) if console else nullcontext():
+                while not stop_event.is_set():
+                    try:
+                        msg = build_display(base_dir, args.symbol, args.frame, args.rollwin)
+                        if console:
+                            console.clear()
+                            console.print(msg)
+                        else:
+                            print(msg, flush=True)
+                        if args.images_out:
+                            maybe_images(base_dir, args.symbol, args.frame, args.images_out, args.rollwin)
+                    except Exception as exc:  # noqa: BLE001 - want broad safety
+                        err = f"live_ticker error: {exc}"
+                        if console:
+                            console.print(err)
+                        else:
+                            print(err, flush=True)
+                    hb.write(datetime.now(timezone.utc).isoformat() + "\n")
+                    hb.flush()
+                    stop_event.wait(max(1, args.refresh))
+    except KeyboardInterrupt:
+        pass
 
 
 # fallback context manager

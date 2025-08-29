@@ -32,5 +32,8 @@ docker-build:
 	docker build -t $(IMAGE_NAME) .
 
 docker-run:
-	docker run --rm -it $(IMAGE_NAME)
+        docker run --rm -it $(IMAGE_NAME)
+
+devmap:
+        python -m tools.generate_dev_map > docs/bot_map.md
 

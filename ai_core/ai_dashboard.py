@@ -1,5 +1,4 @@
-"""Streamlit dashboard for monitoring training outputs (read-only)."""
-"""Streamlit dashboard for live training metrics.
+"""Streamlit dashboard for monitoring training outputs (read-only).
 
 Run with:
     streamlit run ai_core/ai_dashboard.py
