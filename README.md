@@ -46,3 +46,13 @@ variables:
 - `MONITOR_USE_CONDA_RUN=1` – wrap commands with `conda run` to ensure the
   active environment.
 - `MONITOR_DEBUG=1` – print the final command line used for spawning.
+
+## Memory and resume
+
+Training runs persist state in `memory/` and can resume automatically.
+Invoke training with `--auto-resume` to continue from the latest snapshot.
+Inspect saved state with:
+
+```
+python -m tools.memory_cli --print-latest
+```

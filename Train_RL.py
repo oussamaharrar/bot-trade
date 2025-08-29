@@ -60,6 +60,7 @@ from config.env_config import get_config
 import shutil
 from stable_baselines3.common.callbacks import EvalCallback
 from tools.run_state import load_state as load_run_state, save_state as save_run_state
+from tools.memory_manager import MemoryManager
 from ai_core.portfolio import (
     load_state as load_portfolio_state,
     save_state as save_portfolio_state,
@@ -594,6 +595,9 @@ def main():
     args = validate_args(args)
     args = finalize_args(args, is_continuous=None)  # allow builders to decide SDE later
 
+    mm = MemoryManager()
+    mm.log_event("start", {"args": vars(args)})
+
     # Ensure resume-auto can accept optional value
     if not hasattr(args, "resume_auto"):
         import argparse
@@ -634,6 +638,8 @@ def main():
         raise FileNotFoundError(f"No data files for {args.symbol}-{args.frame}")
     data_file = files[0]
     train_one_file(args, data_file)
+    mm.snapshot({"data_file": data_file})
+    mm.log_event("end", {"status": "ok"})
 
 
 if __name__ == "__main__":

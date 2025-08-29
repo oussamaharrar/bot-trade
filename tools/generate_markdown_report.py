@@ -1,6 +1,8 @@
 """Minimal Markdown report generator for training sessions."""
 from __future__ import annotations
 
+from tools import bootstrap  # noqa: F401  # Import path fixup when run directly
+
 import os
 from datetime import datetime
 from typing import Dict

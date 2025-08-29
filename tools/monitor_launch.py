@@ -8,6 +8,9 @@ import subprocess
 import platform
 import shlex
 from typing import List
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _ps_quote(arg: str) -> str:
@@ -30,9 +33,9 @@ def _cmd_command(parts: List[str]) -> str:
     return " ".join(out)
 
 
-def launch_new_console(title: str, script: str, args: List[str]) -> None:
-    """Launch ``script`` with ``args`` in a new console window."""
-    base_cmd = [sys.executable, script] + list(args)
+def launch_new_console(title: str, module: str, args: List[str]) -> None:
+    """Launch ``module`` with ``args`` in a new console window."""
+    base_cmd = [sys.executable, "-m", module] + list(args)
 
     use_conda = os.environ.get("MONITOR_USE_CONDA_RUN") == "1"
     conda_exe = shutil.which("conda") if use_conda else None
@@ -66,7 +69,7 @@ def launch_new_console(title: str, script: str, args: List[str]) -> None:
                 label = "CMD"
         if debug:
             print(f"[MONITOR] {label}:", " ".join(final_cmd))
-        subprocess.Popen(final_cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
+        subprocess.Popen(final_cmd, creationflags=subprocess.CREATE_NEW_CONSOLE, cwd=ROOT)
         return
 
     if system == "Darwin":
@@ -78,7 +81,7 @@ def launch_new_console(title: str, script: str, args: List[str]) -> None:
         ]
         if debug:
             print("[MONITOR]", osa)
-        subprocess.Popen(osa)
+        subprocess.Popen(osa, cwd=ROOT)
         return
 
     cmd_str = " ".join(shlex.quote(p) for p in base_cmd)
@@ -98,9 +101,9 @@ def launch_new_console(title: str, script: str, args: List[str]) -> None:
                 continue
             if debug:
                 print("[MONITOR]", final_cmd)
-            subprocess.Popen(final_cmd)
+            subprocess.Popen(final_cmd, cwd=ROOT)
             return
 
     if debug:
         print("[MONITOR]", base_cmd)
-    subprocess.Popen(base_cmd)
+    subprocess.Popen(base_cmd, cwd=ROOT)
