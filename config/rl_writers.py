@@ -6,7 +6,7 @@ from datetime import datetime
 # Writers (CSV / JSONL) — Windows-safe, thread-safe
 # Fixes: initialize CSV writer before header write,
 #        accept dict rows mapped to header, add newlines for JSONL,
-#        robust flush/close.
+#        robust flush/close with lazy reopen and idempotent close().
 # ==============================================
 
 def now_iso() -> str:
@@ -26,11 +26,16 @@ class _BaseWriter:
 class CSVWriter(_BaseWriter):
     def __init__(self, path: str, header: Optional[list] = None):
         super().__init__(path, header=header)
-        # 1) open file & csv writer first
-        self._fh = open(self.path, mode="a", encoding="utf-8", newline="")
-        self._csv = csv.writer(self._fh)
-        # 2) write header once if file is empty
-        self._maybe_write_header()
+        self._fh = None
+        self._csv = None
+        self._open()
+
+    def _open(self) -> None:
+        """(Re)open the underlying file handle as needed."""
+        if self._fh is None or self._fh.closed:
+            self._fh = open(self.path, mode="a", encoding="utf-8", newline="")
+            self._csv = csv.writer(self._fh)
+            self._maybe_write_header()
 
     def _maybe_write_header(self) -> None:
         if not self._header:
@@ -52,6 +57,7 @@ class CSVWriter(_BaseWriter):
 
     def write(self, row: Union[dict, Iterable]):
         with self._lock:
+            self._open()
             if isinstance(row, dict):
                 row = self._from_dict(row)
             self._csv.writerow(row)
@@ -60,49 +66,64 @@ class CSVWriter(_BaseWriter):
     def flush(self):
         with self._lock:
             try:
-                self._fh.flush()
+                if self._fh is not None and not self._fh.closed:
+                    self._fh.flush()
             except Exception:
                 pass
 
     def close(self):
         with self._lock:
             try:
-                self._fh.flush()
+                if self._fh is not None and not self._fh.closed:
+                    self._fh.flush()
             except Exception:
                 pass
             try:
-                self._fh.close()
+                if self._fh is not None and not self._fh.closed:
+                    self._fh.close()
             except Exception:
                 pass
+            self._fh = None
+            self._csv = None
 
 class JSONLWriter(_BaseWriter):
     def __init__(self, path: str):
         super().__init__(path, header=None)
-        self._fh = open(self.path, mode="a", encoding="utf-8", newline="\n")
+        self._fh = None
+        self._open()
+
+    def _open(self) -> None:
+        if self._fh is None or self._fh.closed:
+            self._fh = open(self.path, mode="a", encoding="utf-8", newline="\n")
 
     def write(self, obj: dict):
         line = json.dumps(obj, ensure_ascii=False)
         with self._lock:
+            self._open()
             self._fh.write(line + "\n")
             self._fh.flush()
 
     def flush(self):
         with self._lock:
             try:
-                self._fh.flush()
+                if self._fh is not None and not self._fh.closed:
+                    self._fh.flush()
             except Exception:
                 pass
 
     def close(self):
         with self._lock:
             try:
-                self._fh.flush()
+                if self._fh is not None and not self._fh.closed:
+                    self._fh.flush()
             except Exception:
                 pass
             try:
-                self._fh.close()
+                if self._fh is not None and not self._fh.closed:
+                    self._fh.close()
             except Exception:
                 pass
+            self._fh = None
 
 class WritersBundle:
     """
