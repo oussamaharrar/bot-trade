@@ -6,3 +6,5 @@ agents/
 __pycache__/
 BTCUSDT/
 test.py
+bot_trade.egg-info/
+bot_trade/memory/
