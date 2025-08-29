@@ -1,4 +1,0 @@
-  File "E:\bot\train_rl.py", line 622
-    print("
-          ^
-SyntaxError: unterminated string literal (detected at line 622)
