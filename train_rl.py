@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Train_RL.py — Orchestrator for SB3 PPO with unified config/ modules.
+train_rl.py — Orchestrator for SB3 PPO with unified config/ modules.
 - Central logging via config.log_setup
 - Paths/state via config.rl_paths
 - Data via config.loader (no double indicators)
@@ -43,25 +43,25 @@ if torch.cuda.is_available():
         pass
 
 # === Args/Builders/Paths/Logging/Data ===
-from config.rl_args import parse_args, finalize_args
-from config.rl_builders import (
+from bot_trade.config.rl_args import parse_args, finalize_args
+from bot_trade.config.rl_builders import (
     build_env_fns,
     make_vec_env,
     detect_action_space,
     build_ppo,
     build_callbacks,
 )
-from config.rl_paths import build_paths, ensure_state_files, get_paths
-from config.rl_writers import Writers  # Writers bundle (train/eval/...)
-from config.log_setup import create_loggers, setup_worker_logging
-from config.update_manager import UpdateManager
-from config.rl_callbacks import CompositeCallback
-from config.env_config import get_config
+from bot_trade.config.rl_paths import build_paths, ensure_state_files, get_paths
+from bot_trade.config.rl_writers import Writers  # Writers bundle (train/eval/...)
+from bot_trade.config.log_setup import create_loggers, setup_worker_logging
+from bot_trade.config.update_manager import UpdateManager
+from bot_trade.config.rl_callbacks import CompositeCallback
+from bot_trade.config.env_config import get_config
 import shutil
 from stable_baselines3.common.callbacks import EvalCallback
-from tools.run_state import load_state as load_run_state, save_state as save_run_state
-from tools.memory_manager import MemoryManager
-from ai_core.portfolio import (
+from bot_trade.tools.run_state import load_state as load_run_state, save_state as save_run_state
+from bot_trade.tools.memory_manager import MemoryManager
+from bot_trade.ai_core.portfolio import (
     load_state as load_portfolio_state,
     save_state as save_portfolio_state,
     reset_with_balance,
@@ -69,22 +69,22 @@ from ai_core.portfolio import (
 
 # Loader (support both single-file and discover-based flows)
 try:
-    from config.loader import discover_files, read_one, LoadOptions  # preferred
+    from bot_trade.config.loader import discover_files, read_one, LoadOptions  # preferred
     _HAS_READ_ONE = True
 except Exception:
-    from config.loader import discover_files, load_dataset  # fallback signature
+    from bot_trade.config.loader import discover_files, load_dataset  # fallback signature
     _HAS_READ_ONE = False
 
 # (Optional) strategy_features for pre-computing indicators if loader supports it
 try:
-    from config.strategy_features import add_strategy_features
+    from bot_trade.config.strategy_features import add_strategy_features
 except Exception:
     add_strategy_features = None  # pragma: no cover
 
 # Optional extras
 try:
     from stable_baselines3.common.callbacks import CallbackList
-    from config.rl_callbacks import BenchmarkCallback, StrictDataSanityCallback
+    from bot_trade.config.rl_callbacks import BenchmarkCallback, StrictDataSanityCallback
 except Exception:  # pragma: no cover
     BenchmarkCallback = None
     StrictDataSanityCallback = None
@@ -175,7 +175,7 @@ def _maybe_print_device_report(args):
 def _spawn_monitors(args) -> None:
     """Launch monitor manager in a new console."""
     try:
-        from tools.monitor_launch import launch_new_console
+        from bot_trade.tools.monitor_launch import launch_new_console
     except Exception as exc:  # pragma: no cover
         logging.warning("monitor launch helper missing: %s", exc)
         return
@@ -496,9 +496,21 @@ def train_one_file(args, data_file: str) -> bool:
             "best_model_path": getattr(eval_cb, "best_model_path", None),
             "metric": getattr(eval_cb, "best_mean_reward", None),
         }
-        update_manager.on_eval_end(summary)
-        update_manager.on_training_end(summary)
-        # Save model and VecNormalize
+        try:
+            update_manager.on_eval_end(summary)
+        except Exception:
+            pass
+        try:
+            now = dt.datetime.utcnow().isoformat()
+            file_name = os.path.basename(data_file)
+            end_ts = int(getattr(model, "num_timesteps", 0))
+            writers.train.write([now, args.frame, args.symbol, file_name, end_ts, status])
+            ep = getattr(model, "ep_info_buffer", None)
+            if ep and len(ep) > 0:
+                avg = float(np.mean([x.get("r", 0.0) for x in ep]))
+                writers.eval.write([now, args.frame, args.symbol, "ep_rew_mean", avg])
+        except Exception:
+            pass
         try:
             model.save(paths["model_zip"])  # final
             if hasattr(vec_env, "save_running_average"):
@@ -506,40 +518,31 @@ def train_one_file(args, data_file: str) -> bool:
             logging.info("[SAVE] model -> %s | vecnorm -> %s", paths["model_zip"], paths["vecnorm_pkl"])
         except Exception as e:
             logging.error("[SAVE] failed: %s", e)
-        # Stop QueueListener safely
-        try:
-            listener.stop()
-        except Exception:
-            pass
-        # Close env and writers
         try:
             vec_env.close()
         except Exception:
             pass
         try:
+            update_manager.on_training_end(summary)
+        except Exception:
+            pass
+        try:
+            listener.stop()
+        except Exception:
+            pass
+        logging.shutdown()
+        try:
             writers.close()
         except Exception:
             pass
-
-    # Train/Eval summary
-    try:
-        now = dt.datetime.utcnow().isoformat()
-        file_name = os.path.basename(data_file)
-        end_ts = int(getattr(model, "num_timesteps", 0))
-        writers.train.write([now, args.frame, args.symbol, file_name, end_ts, status])
-        ep = getattr(model, "ep_info_buffer", None)
-        if ep and len(ep) > 0:
-            avg = float(np.mean([x.get("r", 0.0) for x in ep]))
-            writers.eval.write([now, args.frame, args.symbol, "ep_rew_mean", avg])
-    except Exception:
-        pass
 
     if cfg.get("knowledge", {}).get("run_after_training", False):
         try:
             import subprocess
             subprocess.run([
                 sys.executable,
-                "tools/knowledge_sync.py",
+                "-m",
+                "bot_trade.tools.knowledge_sync",
                 "--results",
                 paths.get("results", "results"),
                 "--agents",
@@ -554,7 +557,7 @@ def train_one_file(args, data_file: str) -> bool:
 
     if cfg.get("reports", {}).get("enable", False):
         try:
-            from tools.generate_markdown_report import generate_summary
+            from bot_trade.tools.generate_markdown_report import generate_summary
             generate_summary(paths, args.symbol, args.frame)
         except Exception as e:
             logging.warning("[REPORT] generation failed: %s", e)

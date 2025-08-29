@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from typing import Optional, Dict, List
 import csv
 
@@ -41,12 +42,22 @@ class RiskManager:
 
         self.risk_log_path = log_path or os.path.join("logs", "risk.log")
         os.makedirs(os.path.dirname(self.risk_log_path), exist_ok=True)
-        with open(self.risk_log_path, "w", newline="") as f:
+        with open(self.risk_log_path, "w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["reason", "risk_pct", "ema_reward", "drawdown", "freeze_mode"])
+        self._last_multi_log = 0.0
 
     def log_risk_reason(self, reason: str):
-        with open(self.risk_log_path, "a", newline="") as f:
+        level = logging.INFO
+        throttle = 0.0
+        if reason == "Multiple entry signals active":
+            level = logging.DEBUG
+            throttle = 30.0
+            now = time.time()
+            if now - self._last_multi_log < throttle:
+                return
+            self._last_multi_log = now
+        with open(self.risk_log_path, "a", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([
                 reason,
@@ -55,7 +66,7 @@ class RiskManager:
                 f"{self.max_drawdown:.4f}",
                 str(self.freeze_mode)
             ])
-        self.logger.info(f"[RISK_LOG] {reason} | risk={self.current_risk:.3f}")
+        self.logger.log(level, f"[RISK_LOG] {reason} | risk={self.current_risk:.3f}")
 
     def update(
         self,

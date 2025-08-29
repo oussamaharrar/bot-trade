@@ -1,8 +1,13 @@
 import logging
 logging.basicConfig(level=logging.INFO)
-from dotenv import load_dotenv
 import os
 import yaml
+
+try:
+    from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional dependency
+    def load_dotenv(*args, **kwargs):
+        return False
 
 # Load variables from .env if present
 load_dotenv()

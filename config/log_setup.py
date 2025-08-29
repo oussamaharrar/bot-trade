@@ -183,6 +183,7 @@ def stop_logging(log_objs: Optional[LogObjects]) -> None:
         log_objs.listener.stop()
     except Exception:
         pass
+    logging.shutdown()
 
 
 # Convenience helpers ---------------------------------------------------------

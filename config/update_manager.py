@@ -65,20 +65,20 @@ class UpdateManager:
 
         # ------------------------------------------------------------------
         # Step CSV
-        step_path = paths.get("step_csv") or os.path.join(self.logs_dir, "step_log.csv")
-        os.makedirs(os.path.dirname(step_path), exist_ok=True)
-        self._step_fh = open(step_path, "a", encoding="utf-8", newline="")
+        self._step_path = paths.get("step_csv") or os.path.join(self.logs_dir, "step_log.csv")
+        os.makedirs(os.path.dirname(self._step_path), exist_ok=True)
+        self._step_fh = open(self._step_path, "a", encoding="utf-8", newline="")
         self._step_csv = csv.writer(self._step_fh)
-        if os.path.getsize(step_path) == 0:
+        if os.path.getsize(self._step_path) == 0:
             self._step_csv.writerow(["ts", "step", "metric", "value"])
 
         # ------------------------------------------------------------------
         # Performance CSV (aggregated evaluation metrics)
-        perf_path = paths.get("perf_csv") or os.path.join(self.logs_dir, "performance.csv")
-        os.makedirs(os.path.dirname(perf_path), exist_ok=True)
-        self._perf_fh = open(perf_path, "a", encoding="utf-8", newline="")
+        self._perf_path = paths.get("perf_csv") or os.path.join(self.logs_dir, "performance.csv")
+        os.makedirs(os.path.dirname(self._perf_path), exist_ok=True)
+        self._perf_fh = open(self._perf_path, "a", encoding="utf-8", newline="")
         self._perf_csv = csv.writer(self._perf_fh)
-        if os.path.getsize(perf_path) == 0:
+        if os.path.getsize(self._perf_path) == 0:
             self._perf_csv.writerow(["ts", "metric", "value"])
 
         # ------------------------------------------------------------------
@@ -116,6 +116,15 @@ class UpdateManager:
     def on_step(self, step: int, metrics: Optional[Dict[str, Any]] = None) -> None:  # pragma: no cover - legacy
         self.log_step(step, metrics)
 
+    def _ensure_perf_open(self) -> None:
+        if getattr(self, "_perf_fh", None) and not self._perf_fh.closed:
+            return
+        os.makedirs(os.path.dirname(self._perf_path), exist_ok=True)
+        self._perf_fh = open(self._perf_path, "a", encoding="utf-8", newline="")
+        self._perf_csv = csv.writer(self._perf_fh)
+        if os.path.getsize(self._perf_path) == 0:
+            self._perf_csv.writerow(["ts", "metric", "value"])
+
     def update_performance(self, metrics: Dict[str, Any]) -> None:
         """Record aggregated evaluation statistics.
 
@@ -125,6 +134,7 @@ class UpdateManager:
 
         if not metrics:
             return
+        self._ensure_perf_open()
         ts = _utcnow()
         for k, v in metrics.items():
             self._perf_csv.writerow([ts, k, v])
@@ -205,6 +215,23 @@ class UpdateManager:
         """Hook for end-of-rollout events (currently no-op)."""
         return
 
+    def close(self) -> None:
+        """Flush and close file handles. Safe to call multiple times."""
+        for attr in ("_step_fh", "_perf_fh"):
+            fh = getattr(self, attr, None)
+            if fh and not fh.closed:
+                try:
+                    fh.flush()
+                except Exception:
+                    pass
+                try:
+                    fh.close()
+                except Exception:
+                    pass
+            setattr(self, attr, None)
+        self._step_csv = None
+        self._perf_csv = None
+
     def on_training_end(self, summary: Optional[Dict[str, Any]] = None) -> None:
         """Finalize writers and optionally persist the best model."""
         if summary:
@@ -212,15 +239,4 @@ class UpdateManager:
             metric = summary.get("metric")
             if best_path:
                 self.update_best_model(best_path, metric)
-        try:
-            self._step_fh.flush()
-            self._perf_fh.flush()
-        finally:
-            try:
-                self._step_fh.close()
-            except Exception:
-                pass
-            try:
-                self._perf_fh.close()
-            except Exception:
-                pass
+        self.close()
