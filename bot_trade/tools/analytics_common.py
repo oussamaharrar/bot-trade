@@ -1,11 +1,13 @@
 """Common analytics helpers for bot-trade tools."""
 from __future__ import annotations
 
+import csv
 import json
 import os
 import subprocess
 import time
-from typing import Optional, Sequence, List
+from pathlib import Path
+from typing import Optional, Sequence, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -62,6 +64,79 @@ def artifact_paths(base: str, symbol: str, frame: str) -> List[str]:
         os.path.join(root, "evaluation.csv"),
         os.path.join(root, "logs", "entry_decisions.jsonl"),
     ]
+
+
+def _last_first_col(path: Path) -> Optional[str]:
+    """Return first column of last non-empty row in CSV."""
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            last = None
+            for row in csv.reader(fh):
+                if row and row[0].strip():
+                    last = row[0].strip()
+            return last
+    except Exception:
+        return None
+
+
+def read_run_id_from_csv(path: Path) -> Optional[str]:
+    """Read ``run_id`` column from the last row of ``path``."""
+    if not path.exists():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            rows = list(csv.reader(fh))
+        if not rows:
+            return None
+        header, *data = rows
+        if not data:
+            return None
+        last = data[-1]
+        for col in ("run_id", "runId", "session_id", "session", "id", "run"):
+            if col in header:
+                idx = header.index(col)
+                return last[idx] or None
+    except Exception:
+        return None
+    return None
+
+
+def infer_run_id(symbol: str, frame: str, results_root: Path, project_root: Path) -> Tuple[Optional[str], List[Path]]:
+    """Infer latest ``run_id`` for ``symbol``/``frame``.
+
+    Checks ``reward.log`` → ``step_log.csv`` → memory snapshots.
+    Returns ``(run_id, checked_paths)``.
+    """
+    checked: List[Path] = []
+    res_dir = results_root / symbol / frame
+    reward_log = res_dir / "reward.log"
+    if not reward_log.exists():
+        reward_log = res_dir / "logs" / "reward.log"
+    checked.append(reward_log)
+    rid = _last_first_col(reward_log)
+    if rid:
+        return rid, checked
+
+    step_csv = res_dir / "step_log.csv"
+    checked.append(step_csv)
+    rid = read_run_id_from_csv(step_csv)
+    if rid:
+        return rid, checked
+
+    snaps_dir = project_root / "memory" / "snapshots"
+    checked.append(snaps_dir)
+    if snaps_dir.exists():
+        snaps = sorted(snaps_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for p in snaps:
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if data.get("symbol") == symbol and data.get("frame") == frame:
+                rid = data.get("run_id") or data.get("meta", {}).get("run_id")
+                if rid:
+                    return rid, checked
+    return None, checked
 
 
 def wait_for_first_write(

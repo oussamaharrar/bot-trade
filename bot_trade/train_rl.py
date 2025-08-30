@@ -479,6 +479,7 @@ def train_one_file(args, data_file: str) -> bool:
             logging.info("[RESUME] vecnorm file missing: %s", vecnorm_path)
     else:
         logging.info("[VECNORM] no previous running average found.")
+    logging.info("[VECNORM] applied=%s", vecnorm_applied)
 
     # 7) Action space detection
     action_space, is_discrete = detect_action_space(vec_env)
@@ -998,11 +999,30 @@ def main():
         return
 
     # Single-job: pick first matching file
-    files = discover_files(args.frame, args.symbol, data_root=args.data_root)
+    try:
+        files = discover_files(args.frame, args.symbol, data_root=args.data_root)
+    except FileNotFoundError:
+        base = Path(args.data_root) / args.frame
+        pats = [
+            f"{base}/{args.symbol}-{args.frame}-*.feather",
+            f"{base}/{args.symbol}-{args.frame}-*.parquet",
+            f"{base}/{args.symbol}-{args.frame}-*.csv",
+        ]
+        print("[NO DATA] Searched paths:", file=sys.stderr)
+        for p in pats:
+            print(f"  - {p}", file=sys.stderr)
+        raise SystemExit(3)
     if not files:
-        raise FileNotFoundError(
-            f"No data files for {args.symbol}-{args.frame} in {args.data_root}"
-        )
+        base = Path(args.data_root) / args.frame
+        pats = [
+            f"{base}/{args.symbol}-{args.frame}-*.feather",
+            f"{base}/{args.symbol}-{args.frame}-*.parquet",
+            f"{base}/{args.symbol}-{args.frame}-*.csv",
+        ]
+        print("[NO DATA] Searched paths:", file=sys.stderr)
+        for p in pats:
+            print(f"  - {p}", file=sys.stderr)
+        raise SystemExit(3)
     data_file = files[0]
     logging.info("[DATA] using file %s", data_file)
     train_one_file(args, data_file)

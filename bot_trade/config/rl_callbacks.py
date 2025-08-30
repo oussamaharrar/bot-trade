@@ -130,7 +130,7 @@ class StepsAndRewardCallback(BaseCallback):
                     for k, dst in [("pnl", "pnl"), ("trade_cost", "cost"), ("dwell_pen", "cost"), ("danger_pen", "danger_pen"), ("stability", "stability")]:
                         if k in info and dst not in row:
                             row[dst] = info.get(k)
-                if len(row) > 3:
+                if "reward_total" in row:
                     try:
                         self.writers.reward.write_row(row)
                     except Exception:

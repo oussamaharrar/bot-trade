@@ -4,9 +4,9 @@ from __future__ import annotations
 from bot_trade.tools import bootstrap  # noqa: F401  # Import path fixup when run directly
 
 import argparse
-import csv
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -41,51 +41,7 @@ def discover_root(start: Path | None = None) -> Path:
     return start
 
 
-def read_run_id_from_csv(path: Path) -> Optional[str]:
-    if not path.exists():
-        return None
-    try:
-        with path.open("r", encoding="utf-8") as fh:
-            rows = list(csv.reader(fh))
-        if not rows:
-            return None
-        header, *data = rows
-        if not data:
-            return None
-        last = data[-1]
-        for col in ("run_id", "runId", "session_id", "session", "id", "run"):
-            if col in header:
-                idx = header.index(col)
-                return last[idx] or None
-    except Exception:
-        return None
-    return None
-
-
-def auto_run_id(symbol: str, frame: str, root: Path) -> tuple[Optional[str], List[Path]]:
-    checked: List[Path] = []
-    mem_file = root / "memory" / "memory.json"
-    checked.append(mem_file)
-    if mem_file.exists():
-        try:
-            data = json.loads(mem_file.read_text(encoding="utf-8"))
-            rid = data.get("last_run_id")
-            if rid:
-                return rid, checked
-        except Exception:
-            pass
-    res = root / "results" / symbol / frame
-    candidates = [
-        res / "train_log.csv",
-        res / "step_log.csv",
-        res / "deep_rl_evaluation.csv",
-    ]
-    for c in candidates:
-        checked.append(c)
-        rid = read_run_id_from_csv(c)
-        if rid:
-            return rid, checked
-    return None, checked
+from bot_trade.tools.analytics_common import infer_run_id, wait_for_first_write
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -95,6 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--refresh", type=int, default=10)
     ap.add_argument("--images-out")
     ap.add_argument("--base", default=None, help="Project root")
+    ap.add_argument("--data-dir", default=None, help="Results root directory")
     ap.add_argument("--run-id", help="Run identifier")
     ap.add_argument("--no-wait", action="store_true")
     ap.add_argument("--headless", action="store_true")
@@ -118,7 +75,7 @@ def misuse_check() -> bool:
     return False
 
 
-def main(argv: List[str] | None = None) -> None:
+def main(argv: List[str] | None = None) -> int:
     if misuse_check():
         raise SystemExit(2)
 
@@ -127,25 +84,28 @@ def main(argv: List[str] | None = None) -> None:
     headless = args.no_wait or args.headless
 
     root = Path(args.base) if args.base else discover_root()
-    res_dir = root / "results" / args.symbol / args.frame
-    base_dir = str(res_dir)
+    results_root = Path(args.data_dir) if args.data_dir else root / "results"
+    res_dir = results_root / args.symbol / args.frame
+    base_dir = str(results_root)
 
     if not args.run_id:
-        rid, checked = auto_run_id(args.symbol, args.frame, root)
+        rid, checked = infer_run_id(args.symbol, args.frame, results_root, root)
         if rid:
             print(f"Using run_id={rid}", flush=True)
             args.run_id = rid
         else:
+            order = "reward.log → step_log.csv → snapshots"
             files = "\n".join(f"- {p}" for p in checked)
             print(
-                "[ERROR] Could not determine run_id. Checked:\n" + files +
-                f"\nExample: python -m bot_trade.tools.monitor_manager --symbol {args.symbol} --frame {args.frame} --run-id <id>",
+                "[ERROR] Could not determine run_id.\n"
+                f"Search order: {order}\n"
+                f"Checked:\n{files}\n"
+                "Hint: pass --run-id",
                 file=sys.stderr,
             )
             raise SystemExit(2)
 
     if headless:
-        from bot_trade.tools.analytics_common import wait_for_first_write
         if not args.no_wait:
             print("Waiting for first log write...", flush=True)
             wait_for_first_write(base_dir, args.symbol, args.frame)
@@ -158,6 +118,20 @@ def main(argv: List[str] | None = None) -> None:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import re, collections
+
+        def save_fig(fig, name: str) -> None:
+            out = report_dir / f"{name}_{args.run_id}.png"
+            tmp = out.with_suffix(out.suffix + ".tmp")
+            fig.savefig(tmp, bbox_inches="tight")
+            plt.close(fig)
+            os.replace(tmp, out)
+            latest = report_dir / f"{name}.png"
+            try:
+                if latest.exists() or latest.is_symlink():
+                    latest.unlink()
+                os.symlink(out.name, latest)
+            except Exception:
+                shutil.copyfile(out, latest)
 
         def _load_reward(path: Path):
             if not path.exists():
@@ -192,8 +166,7 @@ def main(argv: List[str] | None = None) -> None:
                 if "pnl" in reward_df.columns:
                     ax2 = ax1.twinx()
                     ax2.plot(reward_df["step"], reward_df["pnl"], color="orange", label="pnl")
-                fig.savefig(report_dir / "reward.png", bbox_inches="tight")
-                plt.close(fig)
+                save_fig(fig, "reward")
         except Exception:
             pass
 
@@ -204,18 +177,18 @@ def main(argv: List[str] | None = None) -> None:
                 if cols:
                     fig, ax = plt.subplots()
                     pivot[cols].plot(ax=ax)
-                    fig.savefig(report_dir / "loss.png", bbox_inches="tight")
+                    save_fig(fig, "loss")
                     plt.close(fig)
                 if "explained_variance" in pivot.columns:
                     fig, ax = plt.subplots()
                     ax.plot(pivot.index, pivot["explained_variance"])
-                    fig.savefig(report_dir / "variance.png", bbox_inches="tight")
+                    save_fig(fig, "variance")
                     plt.close(fig)
                 if (step_df["metric"] == "action").any():
                     acts = step_df[step_df["metric"] == "action"]["value"].value_counts().sort_index()
                     fig, ax = plt.subplots()
                     acts.plot(kind="bar", ax=ax)
-                    fig.savefig(report_dir / "actions.png", bbox_inches="tight")
+                    save_fig(fig, "actions")
                     plt.close(fig)
         except Exception:
             pass
@@ -231,15 +204,14 @@ def main(argv: List[str] | None = None) -> None:
                     fig, ax = plt.subplots()
                     items = sorted(counts.items())
                     ax.bar([k for k, _ in items], [v for _, v in items])
-                    fig.savefig(report_dir / "risk_flags.png", bbox_inches="tight")
+                    save_fig(fig, "risk_flags")
                     plt.close(fig)
         except Exception:
             pass
 
         print("Headless refresh done.")
-        sys.exit(0)
+        return 0
 
-    from bot_trade.tools.analytics_common import wait_for_first_write
     from bot_trade.tools.monitor_launch import launch_new_console
 
     img_dir = args.images_out.format(symbol=args.symbol, frame=args.frame) if args.images_out else None
@@ -323,6 +295,7 @@ def main(argv: List[str] | None = None) -> None:
             print(f"Exporting to {out}", flush=True)
         else:
             print("unknown choice", flush=True)
+    return 0
 
 
 if __name__ == "__main__":
