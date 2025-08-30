@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Mapping, Any
+from .rl_paths import logs_dir
 
 # ---------------------------------------------
 # Formats
@@ -54,10 +55,71 @@ DATEFMT = "%Y-%m-%d %H:%M:%S"
 def _ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
+class SizedTimedRotatingFileHandler(logging.handlers.TimedRotatingFileHandler):
+    """Rotate at a time interval or when file grows too large.
+
+    Writes an optional header to newly created files so column names are
+    preserved across rotations.  This is a minimal combination of
+    ``RotatingFileHandler`` and ``TimedRotatingFileHandler`` suitable for our
+    UTF-8 logs.
+    """
+
+    def __init__(
+        self,
+        filename: str | os.PathLike,
+        *,
+        maxBytes: int = 0,
+        when: str = "midnight",
+        interval: int = 1,
+        backupCount: int = 5,
+        encoding: str = "utf-8",
+        header: str | None = None,
+    ) -> None:
+        super().__init__(
+            filename,
+            when=when,
+            interval=interval,
+            backupCount=backupCount,
+            encoding=encoding,
+        )
+        self.maxBytes = maxBytes
+        self.header = header
+        self._write_header()
+
+    def _write_header(self) -> None:
+        if not self.header:
+            return
+        if self.stream is None:
+            self.stream = self._open()
+        if self.stream.tell() == 0:
+            self.stream.write(self.header + "\n")
+            self.stream.flush()
+
+    def shouldRollover(self, record: logging.LogRecord) -> int:  # type: ignore[override]
+        if super().shouldRollover(record):
+            return 1
+        if self.maxBytes > 0:
+            if self.stream is None:
+                self.stream = self._open()
+            self.stream.seek(0, 2)
+            if self.stream.tell() >= self.maxBytes:
+                return 1
+        return 0
+
+    def doRollover(self) -> None:  # type: ignore[override]
+        super().doRollover()
+        self._write_header()
+
+
 def _rotating_file_handler(path: Path, level: int, max_mb: int = 50, backups: int = 5) -> logging.Handler:
     _ensure_parent(path)
-    h = logging.handlers.RotatingFileHandler(
-        path, maxBytes=max_mb * 1024 * 1024, backupCount=backups, encoding="utf-8"
+    header = "ts | level | process | name | message"
+    h = SizedTimedRotatingFileHandler(
+        path,
+        maxBytes=max_mb * 1024 * 1024,
+        backupCount=backups,
+        encoding="utf-8",
+        header=header,
     )
     h.setLevel(level)
     h.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=DATEFMT))
@@ -110,6 +172,7 @@ def setup_logging(
     *,
     level: int = logging.INFO,
     console: bool = True,
+    console_level: Optional[int] = None,
     jsonl_extra: Optional[Mapping[str, Path]] = None,
     max_mb: int = 50,
     backups: int = 5,
@@ -145,7 +208,7 @@ def setup_logging(
     # Optional console
     if console:
         ch = logging.StreamHandler()
-        ch.setLevel(level)
+        ch.setLevel(console_level if console_level is not None else level)
         ch.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=DATEFMT))
         handlers.append(ch)
 
@@ -159,7 +222,7 @@ def setup_logging(
     listener.start()
 
     root = logging.getLogger()
-    root.setLevel(level)
+    root.setLevel(min(level, console_level if console_level is not None else level))
     # replace all existing handlers with one QueueHandler
     root.handlers[:] = [logging.handlers.QueueHandler(log_queue)]
 
@@ -253,8 +316,8 @@ def create_loggers(
     Train_RL.py typically calls:
         log_queue, listener, root_logger = create_loggers(results_dir, frame, symbol)
     """
-    # Our unified API expects a paths mapping with at least "logs".
-    logs_path = Path(results_dir) / "logs"
+    # Canonical logs directory
+    logs_path = logs_dir(symbol, frame)
     paths = {"logs": logs_path}
 
     # Optional: add JSONL streams here if desired (kept empty by default).
@@ -262,8 +325,9 @@ def create_loggers(
 
     log_objs = setup_logging(
         paths=paths,
-        level=level,
+        level=logging.INFO,
         console=console,
+        console_level=level,
         jsonl_extra=jsonl_extra,
     )
 

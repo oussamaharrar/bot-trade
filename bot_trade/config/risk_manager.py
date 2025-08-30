@@ -40,11 +40,12 @@ class RiskManager:
         self.loss_streak = 0
         self.max_drawdown = 0.0
 
-        self.risk_log_path = log_path or os.path.join("logs", "risk.log")
-        os.makedirs(os.path.dirname(self.risk_log_path), exist_ok=True)
-        with open(self.risk_log_path, "w", encoding="utf-8", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["reason", "risk_pct", "ema_reward", "drawdown", "freeze_mode"])
+        self.risk_log_path = log_path
+        if self.risk_log_path:
+            os.makedirs(os.path.dirname(self.risk_log_path), exist_ok=True)
+            with open(self.risk_log_path, "w", encoding="utf-8", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["reason", "risk_pct", "ema_reward", "drawdown", "freeze_mode"])
         self._last_multi_log = 0.0
 
     def log_risk_reason(self, reason: str):
@@ -52,20 +53,21 @@ class RiskManager:
         throttle = 0.0
         if reason == "Multiple entry signals active":
             level = logging.DEBUG
-            throttle = 30.0
+            throttle = 5.0
             now = time.time()
             if now - self._last_multi_log < throttle:
                 return
             self._last_multi_log = now
-        with open(self.risk_log_path, "a", encoding="utf-8", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                reason,
-                f"{self.current_risk:.4f}",
-                f"{self.ema_reward:.4f}",
-                f"{self.max_drawdown:.4f}",
-                str(self.freeze_mode)
-            ])
+        if self.risk_log_path:
+            with open(self.risk_log_path, "a", encoding="utf-8", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    reason,
+                    f"{self.current_risk:.4f}",
+                    f"{self.ema_reward:.4f}",
+                    f"{self.max_drawdown:.4f}",
+                    str(self.freeze_mode)
+                ])
         self.logger.log(level, f"[RISK_LOG] {reason} | risk={self.current_risk:.3f}")
 
     def update(
