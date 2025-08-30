@@ -1,12 +1,12 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "bot-trade"
-version = "0.1.0"
+version = "0.0.0"
+requires-python = ">=3.10"
 dependencies = []
 
-[tool.setuptools]
-packages = ["bot_trade"]
-package-dir = {"bot_trade" = "."}
+[tool.setuptools.packages.find]
+include = ["bot_trade", "bot_trade.*"]

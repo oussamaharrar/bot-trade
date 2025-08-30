@@ -1,6 +1,5 @@
 import argparse, os
 from typing import Optional, Dict, Any
-import torch
 from .rl_paths import (
     DEFAULT_AGENTS_DIR, DEFAULT_RESULTS_DIR, DEFAULT_REPORTS_DIR,
     DEFAULT_MEMORY_FILE, DEFAULT_KB_FILE
@@ -119,32 +118,31 @@ def parse_args():
     os.environ["OMP_NUM_THREADS"] = str(max(1, int(args.omp_threads)))
     os.environ["MKL_NUM_THREADS"] = str(max(1, int(args.mkl_threads)))
     os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
-    try: torch.set_num_threads(max(1, int(args.torch_threads)))
-    except Exception: pass
-    if torch.cuda.is_available():
-        n = torch.cuda.device_count()
-        idx = max(0, min(int(args.device), n - 1))
-        args.device, args.device_str = idx, f"cuda:{idx}"
-        if args.cuda_tf32:
-            torch.backends.cuda.matmul.allow_tf32 = True
-            torch.backends.cudnn.allow_tf32 = True
-        if args.cudnn_benchmark:
-            torch.backends.cudnn.benchmark = True
-    else:
-        args.device_str = "cpu"
-    try:
-        total_per_rollout = int(args.n_envs) * int(args.n_steps)
-        eff = min(int(args.batch_size), max(total_per_rollout, int(args.n_envs)))
-        eff = (eff // int(args.n_envs)) * int(args.n_envs)
-        args.batch_size_eff = eff if eff > 0 else int(args.n_envs)
-    except Exception:
-        args.batch_size_eff = int(args.batch_size)
     return args
 
 def finalize_args(args, is_continuous: Optional[bool] = None):
     if is_continuous is False:
         args.sde = False
         args.use_sde = False
+    try:
+        import torch
+        try:
+            torch.set_num_threads(max(1, int(getattr(args, "torch_threads", 1))))
+        except Exception:
+            pass
+        if torch.cuda.is_available():
+            n = torch.cuda.device_count()
+            idx = max(0, min(int(getattr(args, "device", 0)), n - 1))
+            args.device, args.device_str = idx, f"cuda:{idx}"
+            if getattr(args, "cuda_tf32", False):
+                torch.backends.cuda.matmul.allow_tf32 = True
+                torch.backends.cudnn.allow_tf32 = True
+            if getattr(args, "cudnn_benchmark", False):
+                torch.backends.cudnn.benchmark = True
+        else:
+            args.device_str = "cpu"
+    except Exception:
+        args.device_str = "cpu"
     try:
         total_per_rollout = int(args.n_envs) * int(args.n_steps)
         eff = min(int(getattr(args, "batch_size", 0) or 0), max(total_per_rollout, int(args.n_envs)))

@@ -5,7 +5,7 @@ exposes functions that return pandas DataFrames/Series so other tools
 can reuse the logic.  The command line behaviour is kept for backward
 compatibility."""
 
-from tools import bootstrap  # noqa: F401  # Import path fixup when run directly
+from bot_trade.tools import bootstrap  # noqa: F401  # Import path fixup when run directly
 
 import os
 from typing import Dict
@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from tools.analytics_common import (
+from bot_trade.tools.analytics_common import (
     load_trades_df,
     compute_equity,
     compute_drawdown,

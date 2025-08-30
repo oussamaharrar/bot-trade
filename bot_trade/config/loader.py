@@ -225,7 +225,7 @@ def read_one(path: str, opts: LoadOptions = LoadOptions()) -> pd.DataFrame:
     # ميزات اختيارية
     if opts.add_features:
         try:
-            from config.strategy_features import add_strategy_features
+            from bot_trade.config.strategy_features import add_strategy_features
             df = add_strategy_features(df)
         except Exception as e:
             _logger.warning("[features] add_strategy_features failed: %s", e)

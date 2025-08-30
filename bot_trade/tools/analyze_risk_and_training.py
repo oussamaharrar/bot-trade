@@ -1,4 +1,4 @@
-from tools import bootstrap  # noqa: F401  # Import path fixup when run directly
+from bot_trade.tools import bootstrap  # noqa: F401  # Import path fixup when run directly
 
 import os
 import json
@@ -7,7 +7,7 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 
-from tools.analytics_common import (
+from bot_trade.tools.analytics_common import (
     load_steps_df,
     load_reward_df,
     compute_equity,

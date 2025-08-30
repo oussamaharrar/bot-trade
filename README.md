@@ -28,6 +28,8 @@ pip install -e .
 ```bash
 python -m bot_trade.train_rl --help
 python -m bot_trade.run_multi_gpu --help
+python -m bot_trade.run_bot --help
+python -m bot_trade.run_rl_agent --help
 ```
 
 ## Collaboration

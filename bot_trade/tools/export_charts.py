@@ -1,13 +1,13 @@
 """Batch export of analytics charts and tables."""
 from __future__ import annotations
 
-from tools import bootstrap  # noqa: F401  # Import path fixup when run directly
+from bot_trade.tools import bootstrap  # noqa: F401  # Import path fixup when run directly
 
 import argparse
 import json
 from datetime import datetime
 
-from tools.analytics_common import (
+from bot_trade.tools.analytics_common import (
     load_reward_df,
     load_trades_df,
     load_steps_df,
@@ -24,7 +24,7 @@ from tools.analytics_common import (
     git_short_hash,
     wait_for_first_write,
 )
-from tools.paths import results_dir, report_dir
+from bot_trade.tools.paths import results_dir, report_dir
 
 import pandas as pd
 

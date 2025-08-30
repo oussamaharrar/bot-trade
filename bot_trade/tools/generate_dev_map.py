@@ -1,7 +1,7 @@
 """Generate developer-oriented architecture map in Markdown."""
 from __future__ import annotations
 
-from tools import bootstrap  # noqa: F401  # Import path fixup when run directly
+from bot_trade.tools import bootstrap  # noqa: F401  # Import path fixup when run directly
 
 import argparse
 import inspect

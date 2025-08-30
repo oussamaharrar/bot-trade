@@ -8,6 +8,8 @@
 - `bot_trade.ai_core` – knowledge base, verification, simulation and
   self-improvement engines.
 - `bot_trade.tools` – data conversion, ETL utilities and assorted helpers.
+- CLI entrypoints like `train_rl` and `run_multi_gpu` reside directly under
+  `bot_trade` and are invoked via `python -m bot_trade.<name>`.
 
 ## Logging & shutdown
 

@@ -10,14 +10,14 @@ import json, os, traceback
 from typing import Any, Dict, Iterable, List, Optional
 
 try:
-    from config.signals_bridge import map_human_to_standard
+    from bot_trade.config.signals_bridge import map_human_to_standard
 except Exception:
     # Fallback no-op mapping
     def map_human_to_standard(names: List[str]) -> Dict[str, int]:
         return {str(n): 1 for n in (names or [])}
 
 try:
-    from ai_core.simulation_engine import simulate_entry
+    from bot_trade.ai_core.simulation_engine import simulate_entry
 except Exception:
     # Minimal fallback: always neutral
     def simulate_entry(close_series, signal_time_idx: int, **kwargs) -> int:

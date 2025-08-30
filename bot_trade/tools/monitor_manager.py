@@ -1,14 +1,14 @@
 """Interactive monitor manager for training session."""
 from __future__ import annotations
 
-from tools import bootstrap  # noqa: F401  # Import path fixup when run directly
+from bot_trade.tools import bootstrap  # noqa: F401  # Import path fixup when run directly
 
 import argparse
 from typing import List
 
-from tools.analytics_common import wait_for_first_write
-from tools.monitor_launch import launch_new_console
-from tools.paths import results_dir, report_dir
+from bot_trade.tools.analytics_common import wait_for_first_write
+from bot_trade.tools.monitor_launch import launch_new_console
+from bot_trade.tools.paths import results_dir, report_dir
 
 MENU = """
 === MONITOR MANAGER (symbol={symbol} frame={frame}) ===
