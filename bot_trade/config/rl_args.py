@@ -26,19 +26,19 @@ def parse_net_arch(s: str) -> Dict[str, Any]:
                         else: vf = lst
     return dict(net_arch=dict(pi=pi, vf=vf))
 
-def parse_activation(name: str):
-    import torch.nn as nn
-    return {
+def build_policy_kwargs(net_arch_str: str, activation: str, ortho_init: bool) -> Dict[str, Any]:
+    """Build policy kwargs lazily importing torch."""
+    from torch import nn  # type: ignore
+
+    mapping = {
         "relu": nn.ReLU,
         "tanh": nn.Tanh,
         "elu": nn.ELU,
         "gelu": nn.GELU,
         "leakyrelu": nn.LeakyReLU,
-    }.get((name or "relu").strip().lower(), nn.ReLU)
-
-def build_policy_kwargs(net_arch_str: str, activation: str, ortho_init: bool) -> Dict[str, Any]:
+    }
     kw = parse_net_arch(net_arch_str)
-    kw["activation_fn"] = parse_activation(activation)
+    kw["activation_fn"] = mapping.get((activation or "relu").strip().lower(), nn.ReLU)
     kw["ortho_init"] = bool(ortho_init)
     return kw
 
@@ -123,7 +123,6 @@ def parse_args():
     import logging
     args.log_level = getattr(logging, level_name, logging.INFO)
     args.use_sde = bool(getattr(args, "sde", False))
-    args.policy_kwargs = build_policy_kwargs(args.net_arch, args.activation, args.ortho_init)
     os.environ["OMP_NUM_THREADS"] = str(max(1, int(args.omp_threads)))
     os.environ["MKL_NUM_THREADS"] = str(max(1, int(args.mkl_threads)))
     os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")

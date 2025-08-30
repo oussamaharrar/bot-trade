@@ -17,7 +17,7 @@ Notes:
 """
 
 from __future__ import annotations
-import os, sys, time, json, logging, datetime as dt
+import os, sys, time, json, logging, datetime as dt, math
 from typing import Any, Dict, Optional
 
 from bot_trade.config.rl_paths import dataset_path
@@ -56,22 +56,48 @@ def auto_shape_resources(args):
     """Auto-derive n_envs/n_steps/batch_size based on hardware when unset."""
     cpu_cores = os.cpu_count() or 2
     gpu = torch.cuda.is_available()
-    if getattr(args, "n_envs", 0) <= 0:
+    user_set = getattr(args, "n_envs", None)
+    if user_set is None or int(user_set) <= 0:
         if gpu:
             args.n_envs = 4
         else:
             args.n_envs = min(max(2, cpu_cores // 2), 16)
-    if gpu and args.n_envs < 4:
-        args.n_envs = 4
+        if gpu and args.n_envs < 4:
+            args.n_envs = 4
+        auto = True
+    else:
+        logging.info("[AUTO] disabled (user provided n_envs=%s)", args.n_envs)
+        auto = False
     if getattr(args, "batch_size", 0) > args.n_envs * args.n_steps:
-        logging.warning("[PPO] batch_size (%d) > n_envs*n_steps (%d) — clipping", args.batch_size, args.n_envs * args.n_steps)
+        logging.warning(
+            "[PPO] batch_size (%d) > n_envs*n_steps (%d) — clipping",
+            args.batch_size,
+            args.n_envs * args.n_steps,
+        )
         args.batch_size = args.n_envs * args.n_steps
     clamp_batch(args)
     try:
         ram_gb = psutil.virtual_memory().total / (1024**3)
     except Exception:
-        ram_gb = float('nan')
-    logging.info("[AUTO] cpu_cores=%s ram_gb=%.1f n_envs=%s n_steps=%s batch_size=%s", cpu_cores, ram_gb, args.n_envs, args.n_steps, args.batch_size)
+        ram_gb = float("nan")
+    if auto:
+        logging.info(
+            "[AUTO] cpu_cores=%s ram_gb=%.1f n_envs=%s n_steps=%s batch_size=%s",
+            cpu_cores,
+            ram_gb,
+            args.n_envs,
+            args.n_steps,
+            args.batch_size,
+        )
+    else:
+        logging.info(
+            "cpu_cores=%s ram_gb=%.1f n_envs=%s n_steps=%s batch_size=%s",
+            cpu_cores,
+            ram_gb,
+            args.n_envs,
+            args.n_steps,
+            args.batch_size,
+        )
     return args
 
 
@@ -85,9 +111,11 @@ def _maybe_print_device_report(args):
         for i in range(torch.cuda.device_count()):
             print(f"  [{i}] {torch.cuda.get_device_name(i)}")
         try:
-            idx = max(0, int(args.device))
-            torch.cuda.set_device(idx)
-            print(f"Selected device index: {idx} -> {torch.cuda.get_device_name(idx)}")
+            dev = getattr(args, "device_str", None)
+            if dev and dev.startswith("cuda:"):
+                idx = int(dev.split(":", 1)[1])
+                torch.cuda.set_device(idx)
+                print(f"Selected device index: {idx} -> {torch.cuda.get_device_name(idx)}")
         except Exception:
             pass
     try:
@@ -99,15 +127,13 @@ def _maybe_print_device_report(args):
 
 def _spawn_monitor(args):
     """Launch monitor manager in a detached background process."""
-    import subprocess, shutil
+    import subprocess
 
     root_dir = os.path.abspath(os.path.join(args.results_dir, os.pardir))
-    exe = shutil.which("bot-monitor")
-    if exe:
-        cmd = [exe]
-    else:
-        cmd = [sys.executable, "-m", "bot_trade.tools.monitor_manager"]
-    cmd += [
+    cmd = [
+        sys.executable,
+        "-m",
+        "bot_trade.tools.monitor_manager",
         "--symbol",
         args.symbol,
         "--frame",
@@ -670,31 +696,37 @@ def train_one_file(args, data_file: str) -> bool:
 # =============================
 
 def main():
-    from bot_trade.config.rl_args import parse_args, finalize_args
+    from bot_trade.config.rl_args import parse_args, finalize_args, build_policy_kwargs
     global torch, np, pd, psutil, subprocess, shutil
 
     args = parse_args()
 
-    device_str = normalize_device(getattr(args, "device", None))
+    device_str = normalize_device(getattr(args, "device", None), os.environ)
     try:
         import torch  # type: ignore
     except ModuleNotFoundError:
-        print(
-            "[ERROR] PyTorch is required for training.\n"
-            "For CPU:   conda install pytorch cpuonly -c pytorch\n"
-            "For CUDA:  conda install pytorch pytorch-cuda=11.8 -c pytorch -c nvidia"
-        )
-        raise SystemExit(1)
+        if device_str and device_str.startswith("cuda"):
+            print("[INFO] torch not available, falling back to CPU", flush=True)
+            device_str = "cpu"
+        else:
+            print(
+                "[ERROR] PyTorch is required for training.\n"
+                "For CPU:   conda install pytorch cpuonly -c pytorch\n"
+                "For CUDA:  conda install pytorch pytorch-cuda=11.8 -c pytorch -c nvidia",
+            )
+            raise SystemExit(1)
 
     if device_str is None:
-        device_str = "cuda:0" if torch.cuda.is_available() else "cpu"
+        device_str = (
+            "cuda:0" if torch.cuda.is_available() and os.environ.get("CUDA_VISIBLE_DEVICES", "") != "" else "cpu"
+        )
     elif device_str.startswith("cuda") and not torch.cuda.is_available():
         print("[INFO] CUDA requested but not available; using CPU", flush=True)
         device_str = "cpu"
 
     args.device_str = device_str
-    args.device = int(device_str.split(":", 1)[1]) if device_str.startswith("cuda") else -1
-    logging.info("device=%s", device_str)
+    logging.info("Using device=%s", device_str)
+    args.policy_kwargs = build_policy_kwargs(args.net_arch, args.activation, args.ortho_init)
     global build_env_fns, make_vec_env, detect_action_space, build_ppo, build_callbacks
     global build_paths, ensure_state_files, get_paths
     global Writers, create_loggers, setup_worker_logging, UpdateManager, CompositeCallback, get_config
