@@ -34,9 +34,34 @@ class CSVWriter(_BaseWriter):
     def _open(self) -> None:
         """(Re)open the underlying file handle as needed."""
         if self._fh is None or self._fh.closed:
+            self._sanitize_tail()
             self._fh = open(self.path, mode="a", encoding="utf-8", newline="")
             self._csv = csv.writer(self._fh)
             self._maybe_write_header()
+
+    def _sanitize_tail(self) -> None:
+        """Remove blank/partial trailing lines before appending."""
+        try:
+            if not os.path.exists(self.path):
+                return
+            with open(self.path, "rb+") as fh:
+                fh.seek(0, os.SEEK_END)
+                size = fh.tell()
+                if size == 0:
+                    return
+                pos = size - 1
+                fh.seek(pos)
+                last = fh.read(1)
+                # strip trailing newlines
+                while pos >= 0 and last in b"\r\n":
+                    pos -= 1
+                    fh.seek(pos)
+                    last = fh.read(1)
+                fh.truncate(pos + 1)
+                fh.seek(pos + 1)
+                fh.write(b"\n")
+        except Exception:
+            pass
 
     def _maybe_write_header(self) -> None:
         if not self._header:
@@ -95,7 +120,43 @@ class JSONLWriter(_BaseWriter):
 
     def _open(self) -> None:
         if self._fh is None or self._fh.closed:
+            self._sanitize_tail()
             self._fh = open(self.path, mode="a", encoding="utf-8", newline="\n")
+
+    def _sanitize_tail(self) -> None:
+        """Remove partial trailing line before appending."""
+        try:
+            if not os.path.exists(self.path):
+                return
+            with open(self.path, "rb+") as fh:
+                fh.seek(0, os.SEEK_END)
+                size = fh.tell()
+                if size == 0:
+                    return
+                pos = size - 1
+                fh.seek(pos)
+                last = fh.read(1)
+                if last in b"\r\n":
+                    while pos >= 0 and last in b"\r\n":
+                        pos -= 1
+                        fh.seek(pos)
+                        last = fh.read(1)
+                    fh.truncate(pos + 1)
+                    fh.seek(pos + 1)
+                    fh.write(b"\n")
+                else:
+                    while pos >= 0 and last not in b"\n\r":
+                        pos -= 1
+                        if pos < 0:
+                            break
+                        fh.seek(pos)
+                        last = fh.read(1)
+                    fh.truncate(pos + 1 if pos >= 0 else 0)
+                    if pos >= 0:
+                        fh.seek(pos + 1)
+                        fh.write(b"\n")
+        except Exception:
+            pass
 
     def write(self, obj: dict):
         line = json.dumps(obj, ensure_ascii=False)
@@ -155,9 +216,19 @@ class RewardWriter:
         )
 
     def write_row(self, row: Dict[str, Any]) -> None:
-        """Write a reward record ensuring run_id is present."""
-        data = {"run_id": self.run_id, **row}
-        self._writer.write(data)
+        """Write a reward record tolerating missing components."""
+        base = {
+            "run_id": self.run_id,
+            "ts": row.get("ts", ""),
+            "global_step": row.get("global_step", ""),
+            "env_idx": row.get("env_idx", ""),
+            "reward_total": row.get("reward_total", row.get("reward", "")),
+            "pnl": row.get("pnl", ""),
+            "cost": row.get("cost", ""),
+            "stability": row.get("stability", ""),
+            "danger_pen": row.get("danger_pen", ""),
+        }
+        self._writer.write(base)
 
     def flush(self) -> None:
         self._writer.flush()

@@ -11,7 +11,7 @@ from typing import Any, Dict
 
 from bot_trade.config.rl_paths import get_root, memory_dir
 from bot_trade.tools.paths import ensure_dirs, DIR_MEMORY
-from bot_trade.tools.runctx import atomic_write_json, lockfile
+from bot_trade.tools.runctx import lockfile
 
 
 def _ts() -> str:
@@ -38,7 +38,7 @@ class MemoryManager:
 
     def snapshot(self, state: Dict[str, Any]) -> None:
         data = {"updated_at": _ts(), **state}
-        atomic_write_json(self.state_file, data)
+        atomic_json(self.state_file, data)
 
     def resume(self) -> Dict[str, Any]:
         if self.state_file.exists():
@@ -64,6 +64,13 @@ MEM_DIR = memory_dir()
 MEMORY_FILE = MEM_DIR / "memory.json"
 SNAPSHOTS_DIR = MEM_DIR / "snapshots"
 ensure_dirs(SNAPSHOTS_DIR)
+
+
+def atomic_json(path: Path, data: Dict[str, Any]) -> None:
+    """Atomically write ``data`` as JSON to ``path`` using UTF-8."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def _default_memory(root: Path = PROJECT_ROOT) -> Dict[str, Any]:
@@ -257,19 +264,15 @@ def commit_snapshot(run_id: str, step: int, payload: Dict[str, Any], root: Path 
     payload.setdefault("run_id", run_id)
     payload.setdefault("step", step)
 
-    tmp = SNAPSHOTS_DIR / f"{run_id}-{step}.json.tmp"
     out = SNAPSHOTS_DIR / f"{run_id}-{step}.json"
-    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(out)
+    atomic_json(out, payload)
 
     mem = load_memory(root)
     mem.setdefault("runs", {})[run_id] = payload
     mem["last_run_id"] = run_id
     path = (memory_dir() if root == PROJECT_ROOT else Path(root) / "memory") / "memory.json"
     ensure_dirs(path.parent)
-    tmp2 = path.with_suffix(".tmp")
-    tmp2.write_text(json.dumps(mem, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp2, path)
+    atomic_json(path, mem)
     return out
 
 
