@@ -107,35 +107,38 @@ def _maybe_print_device_report(args):
     print("===================================")
 
 
-def _spawn_monitors(args) -> None:
-    """Launch monitor manager in a new console."""
-    try:
-        from bot_trade.tools.monitor_launch import launch_new_console
-    except Exception as exc:  # pragma: no cover
-        logging.warning("monitor launch helper missing: %s", exc)
-        return
+def _spawn_monitor(args):
+    """Launch monitor manager in a background process."""
+    import subprocess, shutil
 
-    tools_dir = os.path.join(os.path.dirname(__file__), "tools")
-    script = os.path.join(tools_dir, "monitor_manager.py")
     images_out = getattr(args, "monitor_images_out", "").format(
         symbol=args.symbol, frame=args.frame
     )
-    launch_new_console(
-        "MONITOR-MANAGER",
-        script,
-        [
-            "--symbol",
-            args.symbol,
-            "--frame",
-            args.frame,
-            "--refresh",
-            str(getattr(args, "monitor_refresh", 10)),
-            "--images-out",
-            images_out,
-            "--base",
-            args.results_dir,
-        ],
-    )
+    root_dir = os.path.abspath(os.path.join(args.results_dir, os.pardir))
+    exe = shutil.which("bot-monitor")
+    if exe:
+        cmd = [exe]
+    else:
+        cmd = [sys.executable, "-m", "bot_trade.tools.monitor_manager"]
+    cmd += [
+        "--symbol",
+        args.symbol,
+        "--frame",
+        args.frame,
+        "--run-id",
+        args.run_id,
+        "--refresh",
+        str(getattr(args, "monitor_refresh", 10)),
+        "--images-out",
+        images_out,
+        "--base",
+        root_dir,
+    ]
+    try:
+        return subprocess.Popen(cmd)
+    except Exception as exc:  # pragma: no cover
+        logging.warning("monitor launch failed: %s", exc)
+        return None
 
 
 
@@ -222,8 +225,10 @@ def train_one_file(args, data_file: str) -> bool:
     if not port_state and portfolio_cfg.get("enable"):
         port_state = reset_with_balance(args.symbol, args.frame, portfolio_cfg.get("balance_start", 0.0))
 
-    if getattr(args, "spawn_monitors", False):
-        _spawn_monitors(args)
+    mon_proc = _spawn_monitor(args) if getattr(args, "monitor", True) else None
+    if mon_proc:
+        import atexit
+        atexit.register(lambda: mon_proc.terminate())
 
     # 2) Device report (optional)
     _maybe_print_device_report(args)
@@ -612,6 +617,12 @@ def train_one_file(args, data_file: str) -> bool:
             save_portfolio_state(args.symbol, args.frame, port_state)
     except Exception:
         pass
+
+    if mon_proc:
+        try:
+            mon_proc.terminate()
+        except Exception:
+            pass
 
     return True
 
