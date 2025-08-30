@@ -6,10 +6,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict
 
-from bot_trade.tools.paths import DIR_MEMORY, ensure_dirs
+from bot_trade.config.rl_paths import memory_dir
+from bot_trade.tools.paths import ensure_dirs
 from bot_trade.tools.runctx import atomic_write_json
 
-MEMORY_FILE = DIR_MEMORY / "memory.json"
+MEMORY_FILE = memory_dir() / "memory.json"
 
 
 def load() -> Dict:

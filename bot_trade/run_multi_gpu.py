@@ -28,6 +28,8 @@ import json
 import yaml
 import argparse
 import subprocess
+
+from bot_trade.config.rl_paths import memory_dir
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -299,7 +301,7 @@ def main():
                 "--agents-dir",
                 "agents",
                 "--out",
-                os.path.join("memory", "knowledge_base_full.json"),
+                str(memory_dir() / "knowledge_base_full.json"),
             ], check=False)
         except Exception:
             pass

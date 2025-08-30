@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+from bot_trade.config.rl_paths import memory_dir
+
 
 MENU = """
 === MONITOR MANAGER (symbol={symbol} frame={frame}) ===
@@ -66,7 +68,7 @@ def auto_run_id(symbol: str, frame: str, root: Path) -> Optional[str]:
         rid = read_run_id_from_csv(c)
         if rid:
             return rid
-    mem_file = root / "memory" / "memory.json"
+    mem_file = memory_dir() / "memory.json"
     if mem_file.exists():
         try:
             data = json.loads(mem_file.read_text(encoding="utf-8"))

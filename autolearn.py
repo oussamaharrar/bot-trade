@@ -127,18 +127,19 @@ def main():
     plt.savefig(os.path.join(REPORTS_DIR, f"confusion_matrix_{timestamp}.png"))
     plt.close()
 
-    memory_path = os.path.join("memory", "memory.json")
+    from bot_trade.config.rl_paths import ensure_utf8, memory_dir
+
+    memory_path = memory_dir() / "memory.json"
     memory = {}
-    if os.path.exists(memory_path):
+    if memory_path.exists():
         try:
-            with open(memory_path, "r") as f:
-                memory = json.load(f)
+            memory = json.loads(memory_path.read_text(encoding="utf-8"))
         except Exception:
             memory = {}
     memory["last_training_accuracy"] = best_f1
     memory["last_training_model"] = model_name
-    with open(memory_path, "w") as f:
-        json.dump(memory, f, indent=2)
+    with ensure_utf8(memory_path, csv_newline=False) as fh:
+        json.dump(memory, fh, indent=2)
 
     logging.info(f"Model Accuracy: {accuracy:.4f}")
     logging.info(f"F1 Score: {best_f1:.4f} using {model_name}")

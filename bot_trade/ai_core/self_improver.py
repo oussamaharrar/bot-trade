@@ -1,50 +1,53 @@
 # ai_core/self_improver.py
 # Adapt config using both KB (long-term) and latest session analytics
 from __future__ import annotations
-import os, json, yaml
-from typing import Dict, Any
+
 from datetime import datetime
+from pathlib import Path
+from typing import Dict, Any
 
-KB_PATH = "memory/knowledge_base_full.json"
+import json
+import os
+import yaml
+
+from bot_trade.config.rl_paths import ensure_utf8, memory_dir
+
+KB_PATH = memory_dir() / "knowledge_base_full.json"
 CONFIG_PATH = os.getenv("BOT_CONFIG", os.path.join("config", "config.yaml"))
-SUCCESS_PATH = os.path.join("memory", "success_patterns.json")
-FAILURE_PATH = os.path.join("memory", "failure_insights.json")
+SUCCESS_PATH = memory_dir() / "success_patterns.json"
+FAILURE_PATH = memory_dir() / "failure_insights.json"
 
 
-def _load_json(path: str) -> Dict[str, Any]:
+def _load_json(path: Path) -> Dict[str, Any]:
     try:
-        if not os.path.exists(path):
+        if not path.exists():
             return {}
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
 
-def _save_json(path: str, data: Dict[str, Any]) -> None:
+def _save_json(path: Path, data: Dict[str, Any]) -> None:
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        with ensure_utf8(path, csv_newline=False) as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
     except Exception:
         pass
 
 
-def _load_yaml(path: str) -> Dict[str, Any]:
+def _load_yaml(path: Path) -> Dict[str, Any]:
     try:
-        if not os.path.exists(path):
+        if not path.exists():
             return {}
-        with open(path, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except Exception:
         return {}
 
 
-def _save_yaml(path: str, data: Dict[str, Any]) -> None:
+def _save_yaml(path: Path, data: Dict[str, Any]) -> None:
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+        with ensure_utf8(path, csv_newline=False) as fh:
+            yaml.safe_dump(data, fh, sort_keys=False, allow_unicode=True)
     except Exception:
         pass
 

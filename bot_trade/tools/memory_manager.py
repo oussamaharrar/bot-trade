@@ -9,7 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
-from bot_trade.tools.paths import DIR_MEMORY, ROOT, ensure_dirs
+from bot_trade.config.rl_paths import get_root, memory_dir
+from bot_trade.tools.paths import ensure_dirs
 from bot_trade.tools.runctx import atomic_write_json, lockfile
 
 
@@ -58,8 +59,8 @@ class MemoryManager:
 # Memory v2 helpers
 # =============================
 
-PROJECT_ROOT = ROOT.parent
-MEM_DIR = PROJECT_ROOT / "memory"
+PROJECT_ROOT = get_root()
+MEM_DIR = memory_dir()
 MEMORY_FILE = MEM_DIR / "memory.json"
 
 
@@ -76,7 +77,7 @@ def _default_memory(root: Path = PROJECT_ROOT) -> Dict[str, Any]:
 
 def load_memory(root: Path = PROJECT_ROOT) -> Dict[str, Any]:
     """Load memory.json upgrading to schema v2 if needed."""
-    path = Path(root) / "memory" / "memory.json"
+    path = (memory_dir() if root == PROJECT_ROOT else Path(root) / "memory") / "memory.json"
     if not path.exists():
         return _default_memory(root)
     try:
@@ -174,7 +175,7 @@ def commit_snapshot(run_id: str, snapshot: Dict[str, Any], root: Path = PROJECT_
     mem = load_memory(root)
     mem.setdefault("runs", {})[run_id] = snapshot
     mem["last_run_id"] = run_id
-    path = Path(root) / "memory" / "memory.json"
+    path = (memory_dir() if root == PROJECT_ROOT else Path(root) / "memory") / "memory.json"
     ensure_dirs(path.parent)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(mem, ensure_ascii=False, indent=2), encoding="utf-8")

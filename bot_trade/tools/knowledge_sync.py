@@ -13,7 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable
 
-from bot_trade.tools.paths import DIR_KNOWLEDGE, ensure_dirs
+from bot_trade.config.rl_paths import ensure_utf8, memory_dir
+from bot_trade.tools.paths import ensure_dirs
 from bot_trade.tools.runctx import atomic_write_json
 
 
@@ -31,7 +32,8 @@ def write_knowledge(run_id: str, summary: str, *, references: Iterable[str] | No
     A compact dictionary is stored to ``memory/knowledge/knowledge-{run_id}.json``
     and an entry is appended to ``memory/knowledge/log.jsonl``.
     """
-    ensure_dirs(DIR_KNOWLEDGE)
+    dir_knowledge = memory_dir() / "knowledge"
+    ensure_dirs(dir_knowledge)
     data: Dict[str, object] = {
         "run_id": run_id,
         "summary": summary,
@@ -42,10 +44,10 @@ def write_knowledge(run_id: str, summary: str, *, references: Iterable[str] | No
         "references": list(references or []),
         "created_at": _ts(),
     }
-    path = DIR_KNOWLEDGE / f"knowledge-{run_id}.json"
+    path = dir_knowledge / f"knowledge-{run_id}.json"
     atomic_write_json(path, data)
-    log_path = DIR_KNOWLEDGE / "log.jsonl"
-    with log_path.open("a", encoding="utf-8") as fh:
+    log_path = dir_knowledge / "log.jsonl"
+    with ensure_utf8(log_path, csv_newline=False) as fh:
         fh.write(json.dumps(data) + "\n")
     return path
 

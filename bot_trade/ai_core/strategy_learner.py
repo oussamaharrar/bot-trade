@@ -3,28 +3,33 @@
 from __future__ import annotations
 import os, json
 from collections import defaultdict
+from collections import defaultdict
+from pathlib import Path
 from typing import Dict, Any
+
+import json
+import os
 import pandas as pd
 
-KB_FILE = "memory/knowledge_base_full.json"
+from bot_trade.config.rl_paths import ensure_utf8, memory_dir
+
+KB_FILE = memory_dir() / "knowledge_base_full.json"
 STEP_LOG = os.getenv("STEP_LOG", os.path.join("results", "step_log.csv"))
 
 
-def _load_json(path: str) -> Dict[str, Any]:
+def _load_json(path: Path) -> Dict[str, Any]:
     try:
-        if not os.path.exists(path):
+        if not path.exists():
             return {}
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
 
-def _save_json(path: str, data: Dict[str, Any]) -> None:
+def _save_json(path: Path, data: Dict[str, Any]) -> None:
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        with ensure_utf8(path, csv_newline=False) as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
     except Exception:
         pass
 

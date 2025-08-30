@@ -3,9 +3,13 @@
 # 📁 File: tools/session_learning_engine.py
 # 📌 Goal: Analyze failed and successful sessions to extract intelligent recommendations
 
-import pandas as pd
 import json
 import os
+from pathlib import Path
+
+import pandas as pd
+
+from bot_trade.config.rl_paths import ensure_utf8, memory_dir
 
 
 def load_logs():
@@ -48,14 +52,14 @@ def analyze_successes(success_df):
     return patterns
 
 
-def save_json(data, path):
-    with open(path, 'w') as f:
+def save_json(data, path: Path) -> None:
+    with ensure_utf8(path, csv_newline=False) as f:
         json.dump(data, f, indent=2)
 
 
-def save_markdown(failure_data, success_data, path='reports/session_learning_summary.md'):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'w') as f:
+def save_markdown(failure_data, success_data, path: Path = Path('reports/session_learning_summary.md')):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with ensure_utf8(path, csv_newline=False) as f:
         f.write("# 📊 Session Learning Report\n\n")
         f.write("## ❌ Failure Analysis\n")
         for key, value in failure_data.items():
@@ -66,7 +70,7 @@ def save_markdown(failure_data, success_data, path='reports/session_learning_sum
 
 
 def main():
-    os.makedirs('memory', exist_ok=True)
+    mem = memory_dir()
     train_log, risk_log = load_logs()
 
     failed = extract_failed_sessions(train_log)
@@ -75,8 +79,8 @@ def main():
     fail_analysis = analyze_failures(failed, risk_log)
     success_patterns = analyze_successes(success)
 
-    save_json(fail_analysis, 'memory/failure_insights.json')
-    save_json(success_patterns, 'memory/success_patterns.json')
+    save_json(fail_analysis, mem / 'failure_insights.json')
+    save_json(success_patterns, mem / 'success_patterns.json')
     save_markdown(fail_analysis, success_patterns)
 
     print("✅ Session analysis complete. Recommendations saved to memory/ and report to reports/.")

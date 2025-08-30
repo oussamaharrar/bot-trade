@@ -4,9 +4,12 @@ import os
 import subprocess
 import argparse
 from datetime import datetime
-import yaml
+
 import pandas as pd
+import yaml
+
 from env_config import LIVE_TRADING
+from bot_trade.config.rl_paths import memory_dir
 
 CONFIG_PATH = 'config.yaml'
 
@@ -118,7 +121,7 @@ def main(args):
                     'tools/knowledge_sync.py',
                     '--results-dir', 'results',
                     '--agents-dir', 'agents',
-                    '--out', os.path.join('memory', 'knowledge_base_full.json'),
+                    '--out', str(memory_dir() / 'knowledge_base_full.json'),
                 ], check=False)
             except Exception:
                 pass

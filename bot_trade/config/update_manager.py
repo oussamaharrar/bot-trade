@@ -23,6 +23,9 @@ import logging
 import multiprocessing as mp
 import os
 import shutil
+from pathlib import Path
+
+from bot_trade.config.rl_paths import ensure_utf8, memory_dir
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -84,7 +87,7 @@ class UpdateManager:
         # ------------------------------------------------------------------
         # Knowledge aggregation
         self._knowledge_events = os.path.join(self.logs_dir, "knowledge_events.jsonl")
-        self._kb_full = paths.get("kb_file") or os.path.join("memory", "knowledge_base_full.json")
+        self._kb_full = paths.get("kb_file") or str(memory_dir() / "knowledge_base_full.json")
 
     # ------------------------------------------------------------------
     # API methods
@@ -195,15 +198,14 @@ class UpdateManager:
         # Aggregate into knowledge_base_full.json
         kb: list[Any]
         try:
-            with open(self._kb_full, "r", encoding="utf-8") as fh:
-                kb = json.load(fh)
+            kb = json.loads(Path(self._kb_full).read_text(encoding="utf-8"))
             if not isinstance(kb, list):
                 kb = []
         except Exception:
             kb = []
         kb.append(event)
         try:
-            with open(self._kb_full, "w", encoding="utf-8") as fh:
+            with ensure_utf8(self._kb_full, csv_newline=False) as fh:
                 json.dump(kb, fh, ensure_ascii=False, indent=2)
         except Exception as exc:  # pragma: no cover
             logging.warning("[UpdateManager] failed to update knowledge base: %s", exc)

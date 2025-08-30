@@ -1,9 +1,13 @@
 import os
 import json
-import pandas as pd
+import json
+import os
+from pathlib import Path
 from typing import Dict
 
-from bot_trade.config.rl_paths import get_paths
+import pandas as pd
+
+from bot_trade.config.rl_paths import get_paths, memory_dir
 
 
 def _read_csv(path: str) -> pd.DataFrame:
@@ -44,9 +48,10 @@ def load_benchmark(symbol: str, frame: str) -> pd.DataFrame:
     return _read_csv(paths.get("benchmark_log", ""))
 
 
-def load_knowledge(path: str = "memory/knowledge_base_full.json") -> Dict:
+def load_knowledge(path: str | None = None) -> Dict:
+    if path is None:
+        path = memory_dir() / "knowledge_base_full.json"
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return json.loads(Path(path).read_text(encoding="utf-8"))
     except Exception:
         return {}

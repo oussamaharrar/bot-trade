@@ -1,25 +1,26 @@
 import argparse
 import json
 import os
+from pathlib import Path
 from typing import Dict
 
-RUN_STATE_PATH = os.path.join('memory', 'run_state.json')
+from bot_trade.config.rl_paths import ensure_utf8, memory_dir
+
+RUN_STATE_PATH = memory_dir() / 'run_state.json'
 
 
-def load_state(path: str = RUN_STATE_PATH) -> Dict:
-    if not os.path.exists(path):
+def load_state(path: Path = RUN_STATE_PATH) -> Dict:
+    if not path.exists():
         return {}
-    with open(path, 'r', encoding='utf-8') as fh:
-        try:
-            return json.load(fh)
-        except Exception:
-            return {}
+    try:
+        return json.loads(path.read_text(encoding='utf-8'))
+    except Exception:
+        return {}
 
 
-def save_state(state: Dict, path: str = RUN_STATE_PATH) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as fh:
+def save_state(state: Dict, path: Path = RUN_STATE_PATH) -> None:
+    tmp = path.with_suffix('.tmp')
+    with ensure_utf8(tmp, csv_newline=False) as fh:
         json.dump(state, fh, indent=2)
     os.replace(tmp, path)
 

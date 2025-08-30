@@ -2,19 +2,22 @@ import argparse
 import json
 import os
 from typing import Dict, Iterator, Optional
+import argparse
+import json
+import os
+from pathlib import Path
+from typing import Dict, Iterator, Optional
 
-INDEX_PATH = os.path.join('memory', 'state_index.jsonl')
+from bot_trade.config.rl_paths import ensure_utf8, memory_dir
+
+INDEX_PATH = memory_dir() / 'state_index.jsonl'
 
 
-def _atomic_append(path: str, line: str) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + '.tmp'
-    lines = []
-    if os.path.exists(path):
-        with open(path, 'r', encoding='utf-8') as fh:
-            lines = fh.read().splitlines()
+def _atomic_append(path: Path, line: str) -> None:
+    tmp = path.with_suffix('.tmp')
+    lines = path.read_text(encoding='utf-8').splitlines() if path.exists() else []
     lines.append(line)
-    with open(tmp, 'w', encoding='utf-8') as fh:
+    with ensure_utf8(tmp, csv_newline=False) as fh:
         fh.write('\n'.join(lines) + ('\n' if lines else ''))
     os.replace(tmp, path)
 
@@ -25,21 +28,20 @@ def update_index(token: Dict) -> None:
 
 
 def get_resume_token(artifact: str, symbol: str, frame: str) -> Optional[Dict]:
-    if not os.path.exists(INDEX_PATH):
+    if not INDEX_PATH.exists():
         return None
-    with open(INDEX_PATH, 'r', encoding='utf-8') as fh:
-        for line in reversed(fh.read().splitlines()):
-            try:
-                rec = json.loads(line)
-            except Exception:
-                continue
-            if rec.get('artifact') == artifact and rec.get('symbol') == symbol and rec.get('frame') == frame:
-                return rec
+    for line in reversed(INDEX_PATH.read_text(encoding='utf-8').splitlines()):
+        try:
+            rec = json.loads(line)
+        except Exception:
+            continue
+        if rec.get('artifact') == artifact and rec.get('symbol') == symbol and rec.get('frame') == frame:
+            return rec
     return None
 
 
-def tail_from_offset(path: str, byte_offset: Optional[int] = None, line_offset: Optional[int] = None) -> Iterator[str]:
-    with open(path, 'r', encoding='utf-8') as fh:
+def tail_from_offset(path: Path, byte_offset: Optional[int] = None, line_offset: Optional[int] = None) -> Iterator[str]:
+    with path.open('r', encoding='utf-8') as fh:
         if byte_offset is not None:
             fh.seek(max(0, byte_offset))
         elif line_offset is not None:
@@ -53,10 +55,10 @@ def tail_from_offset(path: str, byte_offset: Optional[int] = None, line_offset: 
 
 
 def _cli_show(symbol: Optional[str], frame: Optional[str]):
-    if not os.path.exists(INDEX_PATH):
+    if not INDEX_PATH.exists():
         print('no index found')
         return
-    with open(INDEX_PATH, 'r', encoding='utf-8') as fh:
+    with INDEX_PATH.open('r', encoding='utf-8') as fh:
         for line in fh:
             try:
                 rec = json.loads(line)
