@@ -101,6 +101,12 @@ def parse_args():
     ap.add_argument("--reports-dir", type=str, default=DEFAULT_REPORTS_DIR)
     ap.add_argument("--memory-file", type=str, default=DEFAULT_MEMORY_FILE)
     ap.add_argument("--kb-file", type=str, default=DEFAULT_KB_FILE)
+    ap.add_argument(
+        "--data-root",
+        type=str,
+        default=None,
+        help="Dataset root directory (overrides config)"
+    )
     ap.add_argument("--playlist", type=str, default=None)
     ap.add_argument("--mp-start", type=str, default="spawn", choices=["spawn", "forkserver", "fork"])
     ap.add_argument(
