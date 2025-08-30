@@ -172,7 +172,7 @@ def main(argv: List[str] | None = None) -> None:
         if img_dir:
             msg += f" images->{img_dir}"
         print(msg, flush=True)
-        return
+        sys.exit(0)
 
     from bot_trade.tools.analytics_common import wait_for_first_write
     from bot_trade.tools.monitor_launch import launch_new_console
