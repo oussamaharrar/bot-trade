@@ -1,111 +1,264 @@
-import os, sys, json, logging
-from logging.handlers import RotatingFileHandler
+"""Centralized path helpers for bot_trade.
 
+This module exposes a small set of helpers that resolve all project
+paths relative to a single project root.  The root is determined once
+and cached via :func:`get_root` using the following strategy:
+
+1. If the environment variable ``BOT_TRADE_ROOT`` is set, it is used.
+2. Otherwise we walk upwards from the current working directory and
+   from the location of this file until either ``pyproject.toml`` or
+   ``.git`` is found.
+
+All memory/knowledge artifacts live under ``<ROOT>/memory``.  A legacy
+``bot_trade/memory`` directory is migrated automatically with a one time
+warning when :func:`memory_dir` is first accessed.
 """
-rl_paths.py — توحيد المسارات والملفات العامة للنظام.
-- يدعم Overrides عبر متغيرات البيئة (اختياري):
-  BOT_AGENTS_DIR, BOT_RESULTS_DIR, BOT_REPORTS_DIR, BOT_MEMORY_FILE, BOT_KB_FILE
-- يبني مسارات جلسة التدريب (حسب symbol/frame) ويضيف مخزونًا غنيًا للملفات.
-- يوفّر دوال مساعدة لضمان وجود ملفات الحالة بهيكل افتراضي متوافق مع ai_core.
-"""
 
-DEFAULT_AGENTS_DIR  = os.environ.get("BOT_AGENTS_DIR",  "agents")
-DEFAULT_RESULTS_DIR = os.environ.get("BOT_RESULTS_DIR", "results")
-DEFAULT_REPORTS_DIR = os.environ.get("BOT_REPORTS_DIR", "reports")
-DEFAULT_MEMORY_FILE = os.environ.get("BOT_MEMORY_FILE", os.path.join("memory", "memory.json"))
-DEFAULT_KB_FILE     = os.environ.get("BOT_KB_FILE",     os.path.join("memory", "knowledge_base_full.json"))
+from __future__ import annotations
 
-def _mk(*parts):
+import os
+import shutil
+import sys
+from contextlib import contextmanager
+from functools import lru_cache
+from pathlib import Path
+from typing import Iterator
+
+
+# ---------------------------------------------------------------------------
+# root detection
+# ---------------------------------------------------------------------------
+
+@lru_cache(maxsize=1)
+def get_root() -> Path:
+    """Return the project root directory.
+
+    The value is cached so repeated calls are cheap.
+    """
+
+    env = os.environ.get("BOT_TRADE_ROOT")
+    if env:
+        return Path(env).resolve()
+
+    markers = ("pyproject.toml", ".git")
+
+    def _search(start: Path) -> Path | None:
+        p = start
+        while True:
+            if any((p / m).exists() for m in markers):
+                return p
+            if p.parent == p:
+                return None
+            p = p.parent
+
+    for candidate in (Path.cwd(), Path(__file__).resolve()):
+        found = _search(candidate)
+        if found:
+            return found
+
+    raise RuntimeError("Could not determine project root")
+
+
+# ---------------------------------------------------------------------------
+# directory helpers
+# ---------------------------------------------------------------------------
+
+_legacy_warned = False
+
+
+def _migrate_legacy_memory(dst: Path) -> None:
+    """Move ``bot_trade/memory`` to the new root memory directory."""
+
+    global _legacy_warned
+    if _legacy_warned:
+        return
+
+    legacy = get_root() / "bot_trade" / "memory"
+    if legacy.exists():
+        print(
+            "[WARNING] legacy bot_trade/memory detected - migrating to <ROOT>/memory",
+            file=sys.stderr,
+        )
+        dst.mkdir(parents=True, exist_ok=True)
+        for item in legacy.iterdir():
+            target = dst / item.name
+            if item.is_dir():
+                shutil.move(str(item), target)
+            else:
+                os.replace(item, target)
+        try:
+            legacy.rmdir()
+        except OSError:
+            pass
+
+    _legacy_warned = True
+
+
+def memory_dir() -> Path:
+    """Return ``<ROOT>/memory`` ensuring it exists and migrate legacy data."""
+
+    d = get_root() / "memory"
+    d.mkdir(parents=True, exist_ok=True)
+    _migrate_legacy_memory(d)
+    return d
+
+
+def agents_dir(symbol: str, frame: str) -> Path:
+    d = get_root() / "agents" / symbol.upper() / str(frame)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def results_dir(symbol: str, frame: str) -> Path:
+    d = get_root() / "results" / symbol.upper() / str(frame)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def reports_dir(symbol: str, frame: str) -> Path:
+    d = get_root() / "reports" / symbol.upper() / str(frame)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def logs_dir(symbol: str, frame: str) -> Path:
+    d = results_dir(symbol, frame) / "logs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def dataset_path(p: str | Path) -> Path:
+    p = Path(p)
+    return p if p.is_absolute() else get_root() / p
+
+
+# ---------------------------------------------------------------------------
+# file helpers
+# ---------------------------------------------------------------------------
+
+@contextmanager
+def ensure_utf8(path: Path | str, csv_newline: bool = True) -> Iterator[object]:
+    """Open ``path`` for writing in UTF-8 ensuring its directory exists."""
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    newline = "" if csv_newline else None
+    with p.open("w", encoding="utf-8", newline=newline) as fh:
+        yield fh
+
+
+# Default paths -------------------------------------------------------------
+
+ROOT = get_root()
+DEFAULT_AGENTS_DIR = os.environ.get("BOT_AGENTS_DIR", str(ROOT / "agents"))
+DEFAULT_RESULTS_DIR = os.environ.get("BOT_RESULTS_DIR", str(ROOT / "results"))
+DEFAULT_REPORTS_DIR = os.environ.get("BOT_REPORTS_DIR", str(ROOT / "reports"))
+DEFAULT_MEMORY_FILE = os.environ.get(
+    "BOT_MEMORY_FILE", str(memory_dir() / "memory.json")
+)
+DEFAULT_KB_FILE = os.environ.get(
+    "BOT_KB_FILE", str(memory_dir() / "knowledge_base_full.json")
+)
+
+
+# ---------------------------------------------------------------------------
+# legacy helpers retained for compatibility
+# ---------------------------------------------------------------------------
+
+def _mk(*parts: str) -> str:
     p = os.path.join(*parts)
     os.makedirs(p, exist_ok=True)
     return p
 
-def build_paths(symbol: str, frame: str,
-                agents_dir: str = None,
-                results_dir: str = None,
-                reports_dir: str = None):
-        # Resolve dirs with environment overrides if None passed
-    agents_dir  = agents_dir  or DEFAULT_AGENTS_DIR
+
+def build_paths(
+    symbol: str,
+    frame: str,
+    agents_dir: str | None = None,
+    results_dir: str | None = None,
+    reports_dir: str | None = None,
+) -> dict:
+    agents_dir = agents_dir or DEFAULT_AGENTS_DIR
     results_dir = results_dir or DEFAULT_RESULTS_DIR
     reports_dir = reports_dir or DEFAULT_REPORTS_DIR
 
     sym, frm = symbol.upper(), str(frame)
-    paths = {}
-    paths["agents"]  = _mk(agents_dir,  sym, frm)
+    paths: dict[str, str] = {}
+    paths["agents"] = _mk(agents_dir, sym, frm)
     paths["results"] = _mk(results_dir, sym, frm)
     paths["reports"] = _mk(reports_dir, sym, frm)
-    paths["logs"]    = _mk(paths["results"], "logs")
+    paths["logs"] = _mk(paths["results"], "logs")
 
-        # logs
-    paths["error_log"]       = os.path.join(paths["logs"], "error.log")
-    paths["benchmark_log"]   = os.path.join(paths["logs"], "benchmark.log")
-    paths["train_log"]       = os.path.join(paths["logs"], f"train_rl_{frm}.log")
-    paths["risk_log"]        = os.path.join(paths["logs"], "risk_manager.log")  # للـ logging القياسي
-    paths["risk_csv"]        = os.path.join(paths["logs"], "risk.csv")          # لكتابة CSV من RiskManager
+    paths["error_log"] = os.path.join(paths["logs"], "error.log")
+    paths["benchmark_log"] = os.path.join(paths["logs"], "benchmark.log")
+    paths["train_log"] = os.path.join(paths["logs"], f"train_rl_{frm}.log")
+    paths["risk_log"] = os.path.join(paths["logs"], "risk_manager.log")
+    paths["risk_csv"] = os.path.join(paths["logs"], "risk.csv")
     paths["decisions_jsonl"] = os.path.join(paths["logs"], "entry_decisions.jsonl")
-    paths["tb_dir"]          = os.path.join(paths["results"], "tb")
+    paths["tb_dir"] = os.path.join(paths["results"], "tb")
 
-        # csv
-    # all csv logs live inside the dedicated logs directory to avoid
-    # cluttering the results root
-    paths["step_csv"]   = os.path.join(paths["logs"], "step_log.csv")
-    paths["steps_csv"] = paths["step_csv"]  # backward compatible key
-    paths["reward_csv"]  = os.path.join(paths["logs"], "reward.csv")
-    paths["train_csv"]   = os.path.join(paths["logs"], "train_log.csv")
-    paths["eval_csv"]    = os.path.join(paths["logs"], "evaluation.csv")
-    paths["trade_csv"]   = os.path.join(paths["logs"], "deep_rl_trades.csv")
-    paths["trades_csv"]  = paths["trade_csv"]  # legacy alias
+    paths["step_csv"] = os.path.join(paths["logs"], "step_log.csv")
+    paths["steps_csv"] = paths["step_csv"]
+    paths["reward_csv"] = os.path.join(paths["logs"], "reward.csv")
+    paths["train_csv"] = os.path.join(paths["logs"], "train_log.csv")
+    paths["eval_csv"] = os.path.join(paths["logs"], "evaluation.csv")
+    paths["trade_csv"] = os.path.join(paths["logs"], "deep_rl_trades.csv")
+    paths["trades_csv"] = paths["trade_csv"]
 
-    # state files (global)
     paths["memory_file"] = DEFAULT_MEMORY_FILE
-    paths["kb_file"]     = DEFAULT_KB_FILE
+    paths["kb_file"] = DEFAULT_KB_FILE
 
-    # models / vecnorm
-    paths["model_zip"]      = os.path.join(paths["agents"], "deep_rl.zip")
+    paths["model_zip"] = os.path.join(paths["agents"], "deep_rl.zip")
     paths["model_best_zip"] = os.path.join(paths["agents"], "deep_rl_best.zip")
-    paths["vecnorm_pkl"]    = os.path.join(paths["agents"], "vecnorm.pkl")
-    paths["vecnorm_best"]   = os.path.join(paths["agents"], "vecnorm_best.pkl")
-    paths["best_meta"]      = os.path.join(paths["agents"], "best_ckpt.json")
-    
-    # state files
-    paths["memory_file"] = DEFAULT_MEMORY_FILE
-    paths["kb_file"]     = DEFAULT_KB_FILE
+    paths["vecnorm_pkl"] = os.path.join(paths["agents"], "vecnorm.pkl")
+    paths["vecnorm_best"] = os.path.join(paths["agents"], "vecnorm_best.pkl")
+    paths["best_meta"] = os.path.join(paths["agents"], "best_ckpt.json")
+
     return paths
 
-def setup_logging(paths: dict):
+
+def setup_logging(paths: dict) -> None:
+    import json
+    import logging
+    from logging.handlers import RotatingFileHandler
+
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     for h in list(root.handlers):
         root.removeHandler(h)
     fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 
-    def add_file_handler(path, level):
+    def add_file_handler(path: str, level: int) -> None:
         fh = RotatingFileHandler(path, maxBytes=50_000_000, backupCount=5, encoding="utf-8")
-        fh.setLevel(level); fh.setFormatter(fmt); root.addHandler(fh)
+        fh.setLevel(level)
+        fh.setFormatter(fmt)
+        root.addHandler(fh)
 
-    add_file_handler(paths["train_log"],     logging.INFO)
+    add_file_handler(paths["train_log"], logging.INFO)
     add_file_handler(paths["benchmark_log"], logging.INFO)
 
     errh = RotatingFileHandler(paths["error_log"], maxBytes=50_000_000, backupCount=5, encoding="utf-8")
-    errh.setLevel(logging.ERROR); errh.setFormatter(fmt); root.addHandler(errh)
+    errh.setLevel(logging.ERROR)
+    errh.setFormatter(fmt)
+    root.addHandler(errh)
 
     sh = logging.StreamHandler(sys.stdout)
-    sh.setLevel(logging.INFO); sh.setFormatter(fmt); root.addHandler(sh)
+    sh.setLevel(logging.INFO)
+    sh.setFormatter(fmt)
+    root.addHandler(sh)
 
-    # risk logger
     risk_logger = logging.getLogger("config.risk_manager")
     risk_logger.setLevel(logging.INFO)
     risk_fh = RotatingFileHandler(paths["risk_log"], maxBytes=50_000_000, backupCount=5, encoding="utf-8")
-    risk_fh.setLevel(logging.INFO); risk_fh.setFormatter(fmt); risk_logger.addHandler(risk_fh)
+    risk_fh.setLevel(logging.INFO)
+    risk_fh.setFormatter(fmt)
+    risk_logger.addHandler(risk_fh)
     risk_logger.propagate = False
 
-def ensure_state_files(memory_file: str, kb_file: str):
-    """توليد ملفات الحالة بهياكل افتراضية متوافقة مع ai_core/self_improver.
-    - memory.json: يحتوي sessions + ai_trace
-    - knowledge_base_full.json: يحتوي strategy_memory + skills + learning_parameters + risk … إلخ
-    """
+
+def ensure_state_files(memory_file: str, kb_file: str) -> None:
     mem_dir = os.path.dirname(memory_file) or ""
-    kb_dir  = os.path.dirname(kb_file) or ""
+    kb_dir = os.path.dirname(kb_file) or ""
     if mem_dir:
         os.makedirs(mem_dir, exist_ok=True)
     if kb_dir:
@@ -113,8 +266,10 @@ def ensure_state_files(memory_file: str, kb_file: str):
 
     if not os.path.exists(memory_file):
         mem_init = {"sessions": {}, "ai_trace": []}
-        with open(memory_file, "w", encoding="utf-8") as f:
-            json.dump(mem_init, f, ensure_ascii=False, indent=2)
+        with ensure_utf8(memory_file, csv_newline=False) as fh:
+            import json
+
+            json.dump(mem_init, fh, ensure_ascii=False, indent=2)
 
     if not os.path.exists(kb_file):
         kb_init = {
@@ -124,33 +279,27 @@ def ensure_state_files(memory_file: str, kb_file: str):
                 "strong_frames": [],
                 "weak_frames": [],
                 "preferred_entry_signals": [],
-                "danger_signals": []
+                "danger_signals": [],
             },
             "learning_parameters": {
                 "reward_weights": {},
-                "risk": {}
+                "risk": {},
             },
             "risk": {},
             "performance": {},
-            "meta": {}
+            "meta": {},
         }
-        with open(kb_file, "w", encoding="utf-8") as f:
-            json.dump(kb_init, f, ensure_ascii=False, indent=2)
+        with ensure_utf8(kb_file, csv_newline=False) as fh:
+            import json
+
+            json.dump(kb_init, fh, ensure_ascii=False, indent=2)
 
 
 def state_paths_from_env() -> dict:
-    """أرجِع مسارات الحالة مع تطبيق Overrides من البيئة.
-    مفيد لتمريرها إلى Train_RL/Callbacks دون توزيع معرفة المسارات في كل ملف.
-    """
     return {"memory_file": DEFAULT_MEMORY_FILE, "kb_file": DEFAULT_KB_FILE}
 
-def get_paths(symbol: str, frame: str) -> dict:
-    """Return hardened relative paths for training artifacts.
 
-    This helper is intentionally light-weight and avoids absolute paths
-    so that the repository remains portable across platforms.  All
-    directories are created on demand with ``exist_ok=True``.
-    """
+def get_paths(symbol: str, frame: str) -> dict:
     sym = symbol.upper()
     frm = str(frame)
     base = _mk(DEFAULT_RESULTS_DIR, sym, frm)
@@ -159,20 +308,34 @@ def get_paths(symbol: str, frame: str) -> dict:
     return {
         "base": base,
         "logs_dir": logs_dir,
-        # csv logs
         "train_csv": os.path.join(logs_dir, "train_log.csv"),
         "eval_csv": os.path.join(logs_dir, "evaluation.csv"),
         "reward_csv": os.path.join(logs_dir, "reward.csv"),
         "trade_csv": os.path.join(logs_dir, "deep_rl_trades.csv"),
-        "trades_csv": os.path.join(logs_dir, "deep_rl_trades.csv"),  # legacy alias
+        "trades_csv": os.path.join(logs_dir, "deep_rl_trades.csv"),
         "step_csv": os.path.join(logs_dir, "step_log.csv"),
-        # misc logs
         "jsonl_decisions": os.path.join(logs_dir, "entry_decisions.jsonl"),
         "benchmark_log": os.path.join(logs_dir, "benchmark.log"),
         "risk_log": os.path.join(logs_dir, "risk.log"),
-        # directories for aggregated reports/metrics
         "report_dir": _mk(DEFAULT_RESULTS_DIR, "reports"),
         "perf_dir": _mk(DEFAULT_RESULTS_DIR, "performance"),
-        # best model location
         "best_zip": os.path.join(agents_dir, "deep_rl_best.zip"),
     }
+
+
+__all__ = [
+    "get_root",
+    "memory_dir",
+    "agents_dir",
+    "results_dir",
+    "reports_dir",
+    "logs_dir",
+    "dataset_path",
+    "ensure_utf8",
+    "build_paths",
+    "setup_logging",
+    "ensure_state_files",
+    "state_paths_from_env",
+    "get_paths",
+]
+

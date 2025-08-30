@@ -2,29 +2,32 @@ import argparse
 import json
 import os
 import uuid
-from typing import Any, Dict, List
+from pathlib import Path
+from typing import Any, Dict, Iterator, List
 
 import numpy as np
 import pandas as pd
 
-BASE_DIR = os.path.join('memory', 'knowledge')
-NODES_PATH = os.path.join(BASE_DIR, 'kg_nodes.parquet')
-EDGES_PATH = os.path.join(BASE_DIR, 'kg_edges.parquet')
-EMB_PATH = os.path.join(BASE_DIR, 'embeddings.npy')
-EMB_META_PATH = os.path.join(BASE_DIR, 'meta.parquet')
-SUMMARIES_PATH = os.path.join(BASE_DIR, 'summaries.jsonl')
-TACTICS_PATH = os.path.join(BASE_DIR, 'tactics.jsonl')
-PROPOSALS_PATH = os.path.join(BASE_DIR, 'config_proposals.jsonl')
+from bot_trade.config.rl_paths import ensure_utf8, memory_dir
+
+BASE_DIR = memory_dir() / 'knowledge'
+NODES_PATH = BASE_DIR / 'kg_nodes.parquet'
+EDGES_PATH = BASE_DIR / 'kg_edges.parquet'
+EMB_PATH = BASE_DIR / 'embeddings.npy'
+EMB_META_PATH = BASE_DIR / 'meta.parquet'
+SUMMARIES_PATH = BASE_DIR / 'summaries.jsonl'
+TACTICS_PATH = BASE_DIR / 'tactics.jsonl'
+PROPOSALS_PATH = BASE_DIR / 'config_proposals.jsonl'
 
 EMB_DIM = 384
 
 
 def _ensure_base() -> None:
-    os.makedirs(BASE_DIR, exist_ok=True)
+    BASE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _load_df(path: str) -> pd.DataFrame:
-    if os.path.exists(path):
+def _load_df(path: Path) -> pd.DataFrame:
+    if path.exists():
         try:
             return pd.read_parquet(path)
         except Exception:
@@ -32,21 +35,19 @@ def _load_df(path: str) -> pd.DataFrame:
     return pd.DataFrame()
 
 
-def _append_df(path: str, row: Dict[str, Any]) -> None:
+def _append_df(path: Path, row: Dict[str, Any]) -> None:
     df = _load_df(path)
     df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(path, index=False)
 
 
-def _append_jsonl(path: str, rec: Dict[str, Any]) -> None:
+def _append_jsonl(path: Path, rec: Dict[str, Any]) -> None:
     _ensure_base()
-    tmp = path + '.tmp'
-    lines = []
-    if os.path.exists(path):
-        with open(path, 'r', encoding='utf-8') as fh:
-            lines = fh.read().splitlines()
+    lines = path.read_text(encoding='utf-8').splitlines() if path.exists() else []
     lines.append(json.dumps(rec))
-    with open(tmp, 'w', encoding='utf-8') as fh:
+    tmp = path.with_suffix('.tmp')
+    with ensure_utf8(tmp, csv_newline=False) as fh:
         fh.write('\n'.join(lines) + ('\n' if lines else ''))
     os.replace(tmp, path)
 
@@ -122,7 +123,7 @@ def propose_config_edits(current_cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def search(query: str, k: int = 20) -> List[Dict[str, Any]]:
-    if not os.path.exists(EMB_PATH):
+    if not EMB_PATH.exists():
         return []
     emb = _embed(query)
     arr = np.load(EMB_PATH)

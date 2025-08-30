@@ -1,9 +1,13 @@
-import os
 import json
-import pandas as pd
+import os
 from collections import defaultdict
+from pathlib import Path
 
-KNOWLEDGE_FILE = "memory/knowledge_base.json"
+import pandas as pd
+
+from bot_trade.config.rl_paths import ensure_utf8, memory_dir
+
+KNOWLEDGE_FILE = memory_dir() / "knowledge_base.json"
 
 def load_performance_data(step_log_path="results/step_log.csv"):
     if not os.path.exists(step_log_path):
@@ -43,9 +47,8 @@ def extract_signal_stats(df):
     return wins, losses, signal_stats
 
 def update_knowledge_base(frame, symbol, win_signals, loss_signals, stats):
-    if os.path.exists(KNOWLEDGE_FILE):
-        with open(KNOWLEDGE_FILE, "r", encoding="utf-8") as f:
-            kb = json.load(f)
+    if KNOWLEDGE_FILE.exists():
+        kb = json.loads(KNOWLEDGE_FILE.read_text(encoding="utf-8"))
     else:
         kb = {}
 
@@ -60,7 +63,7 @@ def update_knowledge_base(frame, symbol, win_signals, loss_signals, stats):
 
     kb[key]["signal_stats"] = stats
 
-    with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
+    with ensure_utf8(KNOWLEDGE_FILE, csv_newline=False) as f:
         json.dump(kb, f, indent=2, ensure_ascii=False)
 
     print(f"[KNOWLEDGE ✅] Updated knowledge base for {key} with {len(stats)} signals.")
