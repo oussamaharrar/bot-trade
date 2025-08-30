@@ -21,6 +21,7 @@ import os, sys, time, json, logging, datetime as dt
 from typing import Any, Dict, Optional
 
 from bot_trade.config.rl_paths import dataset_path
+from bot_trade.config.device import normalize_device
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
 # imported inside `main` to keep import-time side effects minimal and to
@@ -33,20 +34,7 @@ from bot_trade.config.rl_paths import dataset_path
 # =============================
 
 def validate_args(args):
-    """Light validation + device string."""
-    cuda_ok = torch.cuda.is_available()
-    if cuda_ok:
-        try:
-            d = int(args.device)
-            if d < 0 or d >= torch.cuda.device_count():
-                logging.warning("[ARGS] device index %s خارج النطاق؛ سيتم استخدام 0", args.device)
-                args.device = 0
-        except Exception:
-            args.device = 0
-        args.device_str = f"cuda:{int(args.device)}"
-    else:
-        args.device_str = "cpu"
-
+    """Light validation of numeric arguments."""
     for k in ("n_envs", "n_steps", "batch_size", "total_steps"):
         if getattr(args, k, 0) <= 0:
             raise ValueError(f"[ARGS] {k} يجب أن يكون > 0.")
@@ -110,12 +98,9 @@ def _maybe_print_device_report(args):
 
 
 def _spawn_monitor(args):
-    """Launch monitor manager in a background process."""
+    """Launch monitor manager in a detached background process."""
     import subprocess, shutil
 
-    images_out = getattr(args, "monitor_images_out", "").format(
-        symbol=args.symbol, frame=args.frame
-    )
     root_dir = os.path.abspath(os.path.join(args.results_dir, os.pardir))
     exe = shutil.which("bot-monitor")
     if exe:
@@ -129,18 +114,26 @@ def _spawn_monitor(args):
         args.frame,
         "--run-id",
         args.run_id,
-        "--refresh",
-        str(getattr(args, "monitor_refresh", 10)),
-        "--images-out",
-        images_out,
         "--base",
         root_dir,
+        "--no-wait",
     ]
+
+    kwargs = dict(
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+    )
+    if os.name == "nt":
+        DETACHED = 0x00000008 | 0x00000010  # CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
+        kwargs["creationflags"] = DETACHED
+    else:
+        kwargs["start_new_session"] = True
     try:
-        return subprocess.Popen(cmd)
+        subprocess.Popen(cmd, **kwargs)
     except Exception as exc:  # pragma: no cover
         logging.warning("monitor launch failed: %s", exc)
-        return None
 
 
 
@@ -543,10 +536,8 @@ def train_one_file(args, data_file: str) -> bool:
     except Exception as e:
         logging.warning("[MEMORY] initial snapshot failed: %s", e)
 
-    mon_proc = _spawn_monitor(args) if getattr(args, "monitor", True) else None
-    if mon_proc:
-        import atexit
-        atexit.register(lambda: mon_proc.terminate())
+    if getattr(args, "monitor", True):
+        _spawn_monitor(args)
 
     # 11) Learn
     status = "finished"
@@ -680,9 +671,11 @@ def train_one_file(args, data_file: str) -> bool:
 
 def main():
     from bot_trade.config.rl_args import parse_args, finalize_args
+    global torch, np, pd, psutil, subprocess, shutil
 
     args = parse_args()
 
+    device_str = normalize_device(getattr(args, "device", None))
     try:
         import torch  # type: ignore
     except ModuleNotFoundError:
@@ -693,7 +686,15 @@ def main():
         )
         raise SystemExit(1)
 
-    global torch, np, pd, psutil, subprocess, shutil
+    if device_str is None:
+        device_str = "cuda:0" if torch.cuda.is_available() else "cpu"
+    elif device_str.startswith("cuda") and not torch.cuda.is_available():
+        print("[INFO] CUDA requested but not available; using CPU", flush=True)
+        device_str = "cpu"
+
+    args.device_str = device_str
+    args.device = int(device_str.split(":", 1)[1]) if device_str.startswith("cuda") else -1
+    logging.info("device=%s", device_str)
     global build_env_fns, make_vec_env, detect_action_space, build_ppo, build_callbacks
     global build_paths, ensure_state_files, get_paths
     global Writers, create_loggers, setup_worker_logging, UpdateManager, CompositeCallback, get_config

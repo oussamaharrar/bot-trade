@@ -97,6 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--base", default=None, help="Project root")
     ap.add_argument("--run-id", help="Run identifier")
     ap.add_argument("--no-wait", action="store_true")
+    ap.add_argument("--headless", action="store_true")
     return ap
 
 
@@ -123,6 +124,7 @@ def main(argv: List[str] | None = None) -> None:
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    headless = args.no_wait or args.headless
 
     root = Path(args.base) if args.base else discover_root()
     res_dir = root / "results" / args.symbol / args.frame
@@ -141,6 +143,36 @@ def main(argv: List[str] | None = None) -> None:
                 file=sys.stderr,
             )
             raise SystemExit(2)
+
+    if headless:
+        from bot_trade.tools.analytics_common import wait_for_first_write
+        img_dir = args.images_out.format(symbol=args.symbol, frame=args.frame) if args.images_out else None
+        if not args.no_wait:
+            print("Waiting for first log write...", flush=True)
+            wait_for_first_write(base_dir, args.symbol, args.frame)
+        if img_dir:
+            from bot_trade.tools.export_charts import CHARTS, export
+            export(base_dir, args.symbol, args.frame, img_dir, CHARTS, None, 200)
+        steps = None
+        try:
+            csv_path = res_dir / "train_log.csv"
+            if csv_path.exists():
+                with csv_path.open("r", encoding="utf-8") as fh:
+                    rows = list(csv.reader(fh))
+                if len(rows) > 1:
+                    header = rows[0]
+                    last = rows[-1]
+                    if "total_steps" in header:
+                        steps = last[header.index("total_steps")]
+        except Exception:
+            pass
+        msg = f"symbol={args.symbol} frame={args.frame} run_id={args.run_id}"
+        if steps is not None:
+            msg += f" steps={steps}"
+        if img_dir:
+            msg += f" images->{img_dir}"
+        print(msg, flush=True)
+        return
 
     from bot_trade.tools.analytics_common import wait_for_first_write
     from bot_trade.tools.monitor_launch import launch_new_console
