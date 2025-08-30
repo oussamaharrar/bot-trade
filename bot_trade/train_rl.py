@@ -230,11 +230,6 @@ def train_one_file(args, data_file: str) -> bool:
     if not port_state and portfolio_cfg.get("enable"):
         port_state = reset_with_balance(args.symbol, args.frame, portfolio_cfg.get("balance_start", 0.0))
 
-    mon_proc = _spawn_monitor(args) if getattr(args, "monitor", True) else None
-    if mon_proc:
-        import atexit
-        atexit.register(lambda: mon_proc.terminate())
-
     # 2) Device report (optional)
     _maybe_print_device_report(args)
 
@@ -478,6 +473,19 @@ def train_one_file(args, data_file: str) -> bool:
     composite_cb = CompositeCallback(update_manager, cfg)
     extras.append(composite_cb)
 
+    periodic_cb = None
+    if PeriodicArtifacts is not None:
+        periodic_cb = PeriodicArtifacts(
+            run_id=run_id,
+            writers=writers,
+            paths=paths,
+            args=args,
+            risk_manager=risk_manager,
+            dataset_info=dataset_info,
+            artifact_every_steps=int(getattr(args, "artifact_every_steps", 100_000)),
+        )
+        extras.append(periodic_cb)
+
     eval_cb: Optional[EvalCallback] = None
     if cfg.get("eval", {}).get("enable", True):
         eval_cb = EvalSaveCallback(
@@ -506,6 +514,39 @@ def train_one_file(args, data_file: str) -> bool:
             cb = base_callbacks
         else:
             cb = CallbackList([base_callbacks] + extras)  # type: ignore[arg-type]
+
+    # initial snapshot before training
+    try:
+        writers.train.last_step = 0
+    except Exception:
+        pass
+    try:
+        snap = make_snapshot(args, vec_env, model, None, writers, risk_manager, dataset_info)
+        env_state = snap.setdefault("env_state", {})
+        env_state.setdefault("ptr_index", 0)
+        env_state.setdefault("ptr_ts", None)
+        env_state.setdefault("open_position", {})
+        env_state.setdefault("equity", None)
+        env_state.setdefault("pnl_real", None)
+        env_state.setdefault("pnl_unreal", None)
+        env_state.setdefault("last_action", None)
+        env_state.setdefault("last_reward", None)
+        env_state.setdefault("last_reward_components", {})
+        snap.setdefault("risk_state", {})
+        g = snap.setdefault("global", {})
+        g.setdefault("global_timesteps", 0)
+        g.setdefault("vecnorm_path", None)
+        g.setdefault("checkpoint_path", None)
+        g.setdefault("best_path", None)
+        snap.setdefault("writers", {})["last_artifact_step"] = 0
+        commit_snapshot(run_id, snap)
+    except Exception as e:
+        logging.warning("[MEMORY] initial snapshot failed: %s", e)
+
+    mon_proc = _spawn_monitor(args) if getattr(args, "monitor", True) else None
+    if mon_proc:
+        import atexit
+        atexit.register(lambda: mon_proc.terminate())
 
     # 11) Learn
     status = "finished"
@@ -660,7 +701,7 @@ def main():
     global load_memory, commit_snapshot, make_snapshot, resume_from_snapshot, new_run_id
     global load_portfolio_state, save_portfolio_state, reset_with_balance
     global discover_files, read_one, LoadOptions, load_dataset, add_strategy_features, _HAS_READ_ONE
-    global CallbackList, BenchmarkCallback, StrictDataSanityCallback
+    global CallbackList, BenchmarkCallback, StrictDataSanityCallback, PeriodicArtifacts
 
     import math, psutil, numpy as np, pandas as pd, subprocess, shutil
 
@@ -704,10 +745,11 @@ def main():
         add_strategy_features = None  # pragma: no cover
     try:
         from stable_baselines3.common.callbacks import CallbackList
-        from bot_trade.config.rl_callbacks import BenchmarkCallback, StrictDataSanityCallback
+        from bot_trade.config.rl_callbacks import BenchmarkCallback, StrictDataSanityCallback, PeriodicArtifacts
     except Exception:  # pragma: no cover
         BenchmarkCallback = None
         StrictDataSanityCallback = None
+        PeriodicArtifacts = None
         CallbackList = None
 
     class EvalSaveCallback(EvalCallback):

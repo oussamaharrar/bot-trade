@@ -195,7 +195,10 @@ def make_snapshot(
             pass
     try:
         import numpy as np, random
-        env_state["rng_numpy"] = list(np.random.get_state())  # type: ignore[arg-type]
+        np_state = list(np.random.get_state())  # type: ignore[arg-type]
+        if len(np_state) > 1 and hasattr(np_state[1], "tolist"):
+            np_state[1] = np_state[1].tolist()
+        env_state["rng_numpy"] = np_state
         env_state["rng_python"] = list(random.getstate())  # type: ignore[arg-type]
     except Exception:
         pass

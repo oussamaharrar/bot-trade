@@ -20,6 +20,7 @@ import math
 import time
 import logging
 import datetime as dt
+import csv
 from typing import Optional, Dict, Any
 
 from stable_baselines3.common.callbacks import BaseCallback
@@ -205,94 +206,84 @@ class BestCheckpointCallback(BaseCallback):
         return True
 
 
-class PeriodicArtifactsCallback(BaseCallback):
-    """Dump memory/knowledge artefacts at a fixed step interval."""
+class PeriodicArtifacts(BaseCallback):
+    """Lightweight periodic artefacts + memory snapshot."""
 
     def __init__(
         self,
-        update_manager,
-        memory_file: str,
-        kb_file: str,
-        frame: str,
-        symbol: str,
-        every: int = 100_000,
-        run_id: str | None = None,
-        args: Any | None = None,
-        writers: Any | None = None,
+        run_id: str,
+        writers,
+        paths: Dict[str, str],
+        args: Any,
         risk_manager: Any | None = None,
         dataset_info: Dict[str, Any] | None = None,
+        artifact_every_steps: int = 100_000,
         verbose: int = 0,
     ) -> None:
         super().__init__(verbose)
-        self.um = update_manager
-        self.kb_file = kb_file
-        self.frame, self.symbol = frame, symbol
-        self.every = int(max(1, every))
-        self._last_dump = -1
         self.run_id = run_id
-        self.args = args
         self.writers = writers
+        self.paths = paths
+        self.args = args
         self.risk_manager = risk_manager
         self.dataset_info = dataset_info or {}
-
-    def _init_callback(self) -> None:
-        self._dump(0)
+        self.every = int(max(1, artifact_every_steps))
+        self.last_artifact_step = getattr(getattr(writers, "train", None), "last_step", 0)
 
     def _on_step(self) -> bool:  # noqa: D401
         step = int(self.num_timesteps)
-        if step - self._last_dump >= self.every:
+        if step - self.last_artifact_step >= self.every:
             self._dump(step)
         return True
 
     def _on_training_end(self) -> None:
-        self._dump(int(self.num_timesteps))
+        step = int(getattr(self.model, "num_timesteps", 0))
+        if step > self.last_artifact_step:
+            self._dump(step)
 
     def _dump(self, step: int) -> None:
         now = dt.datetime.utcnow().isoformat()
-        # memory snapshot
         try:
-            if self.run_id and self.args is not None:
-                vecnorm = None
-                try:
-                    vecnorm = self.model.get_vec_normalize_env()
-                except Exception:
-                    pass
-                commit_snapshot(
-                    self.run_id,
-                    make_snapshot(
-                        self.args,
-                        self.training_env,
-                        self.model,
-                        vecnorm,
-                        self.writers,
-                        self.risk_manager,
-                        self.dataset_info,
-                    ),
-                )
-        except Exception as e:
-            logging.error("[MEMORY] snapshot failed: %s", e)
-
-        # knowledge base update via UpdateManager or direct file append
-        event = {"symbol": self.symbol, "frame": self.frame, "step": step, "ts": now}
+            step_path = self.paths.get("step_csv")
+            if step_path:
+                os.makedirs(os.path.dirname(step_path), exist_ok=True)
+                with open(step_path, "a", encoding="utf-8", newline="") as fh:
+                    csv.writer(fh).writerow([now, step, "", ""])
+        except Exception:
+            pass
         try:
-            if self.um is not None:
-                self.um.update_knowledge(event)
-            else:
-                kb: list[Any]
-                try:
-                    with open(self.kb_file, "r", encoding="utf-8") as fh:
-                        kb = json.load(fh)
-                    if not isinstance(kb, list):
-                        kb = []
-                except Exception:
-                    kb = []
-                kb.append(event)
-                with open(self.kb_file, "w", encoding="utf-8") as fh:
-                    json.dump(kb, fh, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logging.error("[KB] update failed: %s", e)
+            fname = os.path.basename(self.dataset_info.get("path", ""))
+            self.writers.train.write([now, self.args.frame, self.args.symbol, fname, step, "progress"])
+            self.writers.train.last_step = step
+        except Exception:
+            pass
+        try:
+            self.writers.flush()
+        except Exception:
+            pass
+        try:
+            from bot_trade.tools.analyze_risk_and_training import analyse_risk
 
-        self._last_dump = step
+            base = os.path.dirname(os.path.dirname(self.paths.get("results", "")))
+            analyse_risk(base, self.args.symbol, self.args.frame)
+        except Exception:
+            pass
+        try:
+            commit_snapshot(
+                self.run_id,
+                make_snapshot(
+                    self.args,
+                    self.training_env,
+                    self.model,
+                    None,
+                    self.writers,
+                    self.risk_manager,
+                    self.dataset_info,
+                ),
+            )
+        except Exception:
+            logging.debug("[ARTIFACT] snapshot failed", exc_info=True)
+        self.last_artifact_step = step
 
 
 class BenchmarkCallback(BaseCallback):

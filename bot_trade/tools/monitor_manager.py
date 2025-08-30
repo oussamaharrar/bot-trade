@@ -28,6 +28,12 @@ def discover_root(start: Path | None = None) -> Path:
     env = os.environ.get("BOT_TRADE_ROOT")
     if env:
         return Path(env).resolve()
+    try:
+        from bot_trade.config.rl_paths import get_root  # lazy
+
+        return Path(get_root())
+    except Exception:
+        pass
     start = start or Path.cwd()
     for p in [start, *start.parents]:
         if (p / "pyproject.toml").exists() or (p / ".git").exists():
@@ -47,7 +53,7 @@ def read_run_id_from_csv(path: Path) -> Optional[str]:
         if not data:
             return None
         last = data[-1]
-        for col in ("run_id", "runId", "session_id"):
+        for col in ("run_id", "runId", "session_id", "session", "id", "run"):
             if col in header:
                 idx = header.index(col)
                 return last[idx] or None
@@ -56,7 +62,18 @@ def read_run_id_from_csv(path: Path) -> Optional[str]:
     return None
 
 
-def auto_run_id(symbol: str, frame: str, root: Path) -> Optional[str]:
+def auto_run_id(symbol: str, frame: str, root: Path) -> tuple[Optional[str], List[Path]]:
+    checked: List[Path] = []
+    mem_file = root / "memory" / "memory.json"
+    checked.append(mem_file)
+    if mem_file.exists():
+        try:
+            data = json.loads(mem_file.read_text(encoding="utf-8"))
+            rid = data.get("last_run_id")
+            if rid:
+                return rid, checked
+        except Exception:
+            pass
     res = root / "results" / symbol / frame
     candidates = [
         res / "train_log.csv",
@@ -64,18 +81,11 @@ def auto_run_id(symbol: str, frame: str, root: Path) -> Optional[str]:
         res / "deep_rl_evaluation.csv",
     ]
     for c in candidates:
+        checked.append(c)
         rid = read_run_id_from_csv(c)
         if rid:
-            return rid
-    from bot_trade.config.rl_paths import memory_dir
-    mem_file = memory_dir() / "memory.json"
-    if mem_file.exists():
-        try:
-            data = json.loads(mem_file.read_text(encoding="utf-8"))
-            return data.get("last_run_id")
-        except Exception:
-            return None
-    return None
+            return rid, checked
+    return None, checked
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -91,20 +101,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def misuse_check() -> bool:
+    msg = (
+        "Please run from the project root:\n"
+        "  python -m bot_trade.tools.monitor_manager [flags]\n"
+        "or use the console script:\n"
+        "  bot-monitor [flags]"
+    )
     if __package__ is None and ("/" in sys.argv[0] or sys.argv[0].endswith(".py") or "\\" in sys.argv[0]):
-        print(
-            "You ran this with a file path. Use either:\n"
-            "  python -m bot_trade.tools.monitor_manager [flags]\n"
-            "  bot-monitor [flags]",
-            file=sys.stderr,
-        )
+        print(msg, file=sys.stderr)
         return True
     cwd = Path.cwd()
     if cwd.name == "bot_trade" and (cwd.parent / "pyproject.toml").exists():
-        print(
-            "You are running from inside the package directory. cd to the project root before -m.",
-            file=sys.stderr,
-        )
+        print(msg, file=sys.stderr)
         return True
     return False
 
@@ -121,16 +129,18 @@ def main(argv: List[str] | None = None) -> None:
     base_dir = str(res_dir)
 
     if not args.run_id:
-        rid = auto_run_id(args.symbol, args.frame, root)
+        rid, checked = auto_run_id(args.symbol, args.frame, root)
         if rid:
             print(f"Using run_id={rid}", flush=True)
             args.run_id = rid
         else:
+            files = "\n".join(f"- {p}" for p in checked)
             print(
-                "[ERROR] Could not determine run_id. Checked train_log.csv, step_log.csv, deep_rl_evaluation.csv and memory.json.",
+                "[ERROR] Could not determine run_id. Checked:\n" + files +
+                f"\nExample: python -m bot_trade.tools.monitor_manager --symbol {args.symbol} --frame {args.frame} --run-id <id>",
                 file=sys.stderr,
             )
-            raise SystemExit(1)
+            raise SystemExit(2)
 
     from bot_trade.tools.analytics_common import wait_for_first_write
     from bot_trade.tools.monitor_launch import launch_new_console
