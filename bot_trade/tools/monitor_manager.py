@@ -146,34 +146,98 @@ def main(argv: List[str] | None = None) -> None:
 
     if headless:
         from bot_trade.tools.analytics_common import wait_for_first_write
-        img_dir = args.images_out.format(symbol=args.symbol, frame=args.frame) if args.images_out else None
         if not args.no_wait:
             print("Waiting for first log write...", flush=True)
             wait_for_first_write(base_dir, args.symbol, args.frame)
-        if img_dir:
-            from bot_trade.tools.export_charts import CHARTS, export
-            export(base_dir, args.symbol, args.frame, img_dir, CHARTS, None, 200)
-        steps = None
+        logs_dir = res_dir / "logs"
+        report_dir = root / "reports" / args.symbol / args.frame
+        report_dir.mkdir(parents=True, exist_ok=True)
+
+        import pandas as pd
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import re, collections
+
+        def _load_reward(path: Path):
+            if not path.exists():
+                return None
+            try:
+                df = pd.read_csv(path)
+                if df.empty:
+                    return None
+                df = df.rename(columns={"global_step": "step", "reward_total": "reward"})
+                return df
+            except Exception:
+                return None
+
+        reward_df = _load_reward(logs_dir / "reward.log")
         try:
-            csv_path = res_dir / "train_log.csv"
-            if csv_path.exists():
-                with csv_path.open("r", encoding="utf-8") as fh:
-                    rows = list(csv.reader(fh))
-                if len(rows) > 1:
-                    header = rows[0]
-                    last = rows[-1]
-                    if "total_steps" in header:
-                        steps = last[header.index("total_steps")]
+            train_df = pd.read_csv(logs_dir / "train_log.csv")
+        except Exception:
+            train_df = None
+        try:
+            step_df = pd.read_csv(logs_dir / "step_log.csv")
+        except Exception:
+            step_df = None
+        try:
+            risk_lines = (logs_dir / "risk.log").read_text(encoding="utf-8").splitlines()
+        except Exception:
+            risk_lines = []
+
+        try:
+            if reward_df is not None and not reward_df.empty:
+                fig, ax1 = plt.subplots()
+                ax1.plot(reward_df["step"], reward_df["reward"], label="reward")
+                if "pnl" in reward_df.columns:
+                    ax2 = ax1.twinx()
+                    ax2.plot(reward_df["step"], reward_df["pnl"], color="orange", label="pnl")
+                fig.savefig(report_dir / "reward.png", bbox_inches="tight")
+                plt.close(fig)
         except Exception:
             pass
-        msg = f"symbol={args.symbol} frame={args.frame} run_id={args.run_id}"
-        if steps is not None:
-            msg += f" steps={steps}"
-        if img_dir:
-            msg += f" images->{img_dir}"
-        print(msg, flush=True)
-        print("Headless refresh done.", flush=True)
-        return 0
+
+        try:
+            if step_df is not None and not step_df.empty:
+                pivot = step_df.pivot_table(index="step", columns="metric", values="value", aggfunc="last")
+                cols = [c for c in ["value_loss", "policy_gradient_loss", "approx_kl", "learning_rate"] if c in pivot.columns]
+                if cols:
+                    fig, ax = plt.subplots()
+                    pivot[cols].plot(ax=ax)
+                    fig.savefig(report_dir / "loss.png", bbox_inches="tight")
+                    plt.close(fig)
+                if "explained_variance" in pivot.columns:
+                    fig, ax = plt.subplots()
+                    ax.plot(pivot.index, pivot["explained_variance"])
+                    fig.savefig(report_dir / "variance.png", bbox_inches="tight")
+                    plt.close(fig)
+                if (step_df["metric"] == "action").any():
+                    acts = step_df[step_df["metric"] == "action"]["value"].value_counts().sort_index()
+                    fig, ax = plt.subplots()
+                    acts.plot(kind="bar", ax=ax)
+                    fig.savefig(report_dir / "actions.png", bbox_inches="tight")
+                    plt.close(fig)
+        except Exception:
+            pass
+
+        try:
+            if risk_lines:
+                counts = collections.Counter()
+                for line in risk_lines:
+                    m = re.search(r"flag=([A-Za-z0-9_]+)", line)
+                    if m:
+                        counts[m.group(1)] += 1
+                if counts:
+                    fig, ax = plt.subplots()
+                    items = sorted(counts.items())
+                    ax.bar([k for k, _ in items], [v for _, v in items])
+                    fig.savefig(report_dir / "risk_flags.png", bbox_inches="tight")
+                    plt.close(fig)
+        except Exception:
+            pass
+
+        print("Headless refresh done.")
+        sys.exit(0)
 
     from bot_trade.tools.analytics_common import wait_for_first_write
     from bot_trade.tools.monitor_launch import launch_new_console

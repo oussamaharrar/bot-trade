@@ -19,6 +19,7 @@ Notes:
 from __future__ import annotations
 import os, sys, time, json, logging, datetime as dt, math
 from typing import Any, Dict, Optional
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -283,7 +284,7 @@ def train_one_file(args, data_file: str) -> bool:
         logging.info("[KB] initialized new knowledge base at %s", args.kb_file)
 
     cfg = get_config()
-    update_manager = UpdateManager(paths, args.symbol, args.frame, cfg)
+    update_manager = UpdateManager(paths, args.symbol, args.frame, run_id, cfg)
 
     # merge CLI overrides into cfg surface
     ppo_cfg = cfg.setdefault("ppo", {})
@@ -312,7 +313,7 @@ def train_one_file(args, data_file: str) -> bool:
     eval_cfg.setdefault("save_best", True)
     log_cfg = cfg.setdefault("logging", {})
     log_cfg["step_every"] = int(getattr(args, "log_every_steps", log_cfg.get("step_every", 100)))
-    writers = Writers(paths, args.frame, args.symbol)
+    writers = Writers(paths, run_id)
 
     # ==== resume state / portfolio ====
     run_state = load_run_state()
@@ -454,30 +455,29 @@ def train_one_file(args, data_file: str) -> bool:
         except Exception:
             pass
 
-    # 6) Try loading VecNormalize running averages
-    loaded_vecnorm = False
-    if resume_data:
-        vp = resume_data.get("global", {}).get("vecnorm_path")
-        if vp and os.path.exists(vp):
+    # 6) Load VecNormalize statistics when resuming
+    vecnorm_applied = False
+    if (
+        resume_data
+        or getattr(args, "resume_auto", False)
+        or getattr(args, "resume_best", False)
+        or getattr(args, "resume", None)
+    ) and getattr(args, "vecnorm", True):
+        vecnorm_path = Path(paths.get("vecnorm_pkl", ""))
+        # TODO: auto-select vecnorm_best by a custom metric.
+        if vecnorm_path.exists():
             try:
                 if hasattr(vec_env, "load_running_average"):
-                    vec_env.load_running_average(vp)
-                    loaded_vecnorm = True
-                    logging.info("[VECNORM] loaded running average from snapshot")
+                    vec_env.load_running_average(str(vecnorm_path))
+                elif hasattr(vec_env, "load"):
+                    vec_env.load(str(vecnorm_path))  # type: ignore[attr-defined]
+                logging.info("[RESUME] Loaded vecnorm from %s", vecnorm_path)
+                vecnorm_applied = True
             except Exception as e:
-                logging.warning("[VECNORM] load failed (snapshot): %s", e)
-    if not loaded_vecnorm:
-        cand = "vecnorm_best" if getattr(args, "resume_best", False) else "vecnorm_pkl"
-        p = paths.get(cand)
-        if p and os.path.exists(p):
-            try:
-                if hasattr(vec_env, "load_running_average"):
-                    vec_env.load_running_average(p)
-                    loaded_vecnorm = True
-                    logging.info("[VECNORM] loaded running average from %s", cand)
-            except Exception as e:
-                logging.warning("[VECNORM] load failed (%s): %s", cand, e)
-    if not loaded_vecnorm:
+                logging.warning("[RESUME] vecnorm load failed: %r", e)
+        else:
+            logging.info("[RESUME] vecnorm file missing: %s", vecnorm_path)
+    else:
         logging.info("[VECNORM] no previous running average found.")
 
     # 7) Action space detection
@@ -561,21 +561,18 @@ def train_one_file(args, data_file: str) -> bool:
     cb = base_callbacks
     extras = []
 
-    composite_cb = CompositeCallback(update_manager, cfg)
+    composite_cb = CompositeCallback(update_manager, writers, cfg)
     extras.append(composite_cb)
 
-    periodic_cb = None
-    if PeriodicArtifacts is not None:
-        periodic_cb = PeriodicArtifacts(
-            run_id=run_id,
-            writers=writers,
-            paths=paths,
-            args=args,
-            risk_manager=risk_manager,
-            dataset_info=dataset_info,
-            artifact_every_steps=int(getattr(args, "artifact_every_steps", 100_000)),
-        )
-        extras.append(periodic_cb)
+    periodic_cb = PeriodicSnapshotsCallback(
+        run_id=run_id,
+        symbol=args.symbol,
+        frame=args.frame,
+        every_steps=int(getattr(args, "artifact_every_steps", 100_000)),
+        vecnorm_applied=vecnorm_applied,
+        writers=writers,
+    )
+    extras.append(periodic_cb)
 
     eval_cb: Optional[EvalCallback] = None
     if cfg.get("eval", {}).get("enable", True):
@@ -612,25 +609,15 @@ def train_one_file(args, data_file: str) -> bool:
     except Exception:
         pass
     try:
-        snap = make_snapshot(args, vec_env, model, None, writers, risk_manager, dataset_info)
-        env_state = snap.setdefault("env_state", {})
-        env_state.setdefault("ptr_index", 0)
-        env_state.setdefault("ptr_ts", None)
-        env_state.setdefault("open_position", {})
-        env_state.setdefault("equity", None)
-        env_state.setdefault("pnl_real", None)
-        env_state.setdefault("pnl_unreal", None)
-        env_state.setdefault("last_action", None)
-        env_state.setdefault("last_reward", None)
-        env_state.setdefault("last_reward_components", {})
-        snap.setdefault("risk_state", {})
-        g = snap.setdefault("global", {})
-        g.setdefault("global_timesteps", 0)
-        g.setdefault("vecnorm_path", None)
-        g.setdefault("checkpoint_path", None)
-        g.setdefault("best_path", None)
-        snap.setdefault("writers", {})["last_artifact_step"] = 0
-        commit_snapshot(run_id, snap)
+        payload = {
+            "symbol": args.symbol,
+            "frame": args.frame,
+            "ts": dt.datetime.utcnow().isoformat(),
+            "global_step": 0,
+            "status": "running",
+            "vecnorm_applied": vecnorm_applied,
+        }
+        commit_snapshot(run_id, 0, payload)
     except Exception as e:
         logging.warning("[MEMORY] initial snapshot failed: %s", e)
 
@@ -663,7 +650,7 @@ def train_one_file(args, data_file: str) -> bool:
             now = dt.datetime.utcnow().isoformat()
             file_name = os.path.basename(data_file)
             end_ts = int(getattr(model, "num_timesteps", 0))
-            writers.train.write([now, args.frame, args.symbol, file_name, end_ts, status])
+            writers.train.write([run_id, now, args.frame, args.symbol, file_name, end_ts, status])
             ep = getattr(model, "ep_info_buffer", None)
             if ep and len(ep) > 0:
                 avg = float(np.mean([x.get("r", 0.0) for x in ep]))
@@ -697,12 +684,16 @@ def train_one_file(args, data_file: str) -> bool:
 
     # final snapshot after training
     try:
-        vecnorm = None
-        try:
-            vecnorm = model.get_vec_normalize_env()
-        except Exception:
-            pass
-        commit_snapshot(run_id, make_snapshot(args, vec_env, model, vecnorm, writers, risk_manager, dataset_info))
+        step_now = int(getattr(model, "num_timesteps", 0))
+        payload = {
+            "symbol": args.symbol,
+            "frame": args.frame,
+            "ts": dt.datetime.utcnow().isoformat(),
+            "global_step": step_now,
+            "status": status,
+            "vecnorm_applied": vecnorm_applied,
+        }
+        commit_snapshot(run_id, step_now, payload)
     except Exception:
         pass
 
@@ -804,10 +795,10 @@ def main():
     global build_paths, ensure_state_files, get_paths
     global Writers, create_loggers, setup_worker_logging, UpdateManager, CompositeCallback, get_config
     global EvalCallback, EvalSaveCallback, load_run_state, save_run_state, MemoryManager
-    global load_memory, commit_snapshot, make_snapshot, resume_from_snapshot, new_run_id
+    global load_memory, commit_snapshot, resume_from_snapshot, new_run_id
     global load_portfolio_state, save_portfolio_state, reset_with_balance
     global discover_files, read_one, LoadOptions, load_dataset, add_strategy_features, _HAS_READ_ONE
-    global CallbackList, BenchmarkCallback, StrictDataSanityCallback, PeriodicArtifacts
+    global CallbackList, BenchmarkCallback, StrictDataSanityCallback, PeriodicSnapshotsCallback
 
     import math, psutil, numpy as np, pandas as pd, subprocess, shutil
 
@@ -822,7 +813,7 @@ def main():
     from bot_trade.config.rl_writers import Writers  # Writers bundle (train/eval/...)
     from bot_trade.config.log_setup import create_loggers, setup_worker_logging
     from bot_trade.config.update_manager import UpdateManager
-    from bot_trade.config.rl_callbacks import CompositeCallback
+    from bot_trade.config.rl_callbacks import CompositeCallback, PeriodicSnapshotsCallback
     from bot_trade.config.env_config import get_config
     from stable_baselines3.common.callbacks import EvalCallback
     from bot_trade.tools.run_state import load_state as load_run_state, save_state as save_run_state
@@ -830,7 +821,6 @@ def main():
         MemoryManager,
         load_memory,
         commit_snapshot,
-        make_snapshot,
         resume_from_snapshot,
     )
     from bot_trade.tools.runctx import new_run_id
@@ -851,11 +841,11 @@ def main():
         add_strategy_features = None  # pragma: no cover
     try:
         from stable_baselines3.common.callbacks import CallbackList
-        from bot_trade.config.rl_callbacks import BenchmarkCallback, StrictDataSanityCallback, PeriodicArtifacts
+        from bot_trade.config.rl_callbacks import BenchmarkCallback, StrictDataSanityCallback, PeriodicSnapshotsCallback
     except Exception:  # pragma: no cover
         BenchmarkCallback = None
         StrictDataSanityCallback = None
-        PeriodicArtifacts = None
+        PeriodicSnapshotsCallback = None
         CallbackList = None
 
     class EvalSaveCallback(EvalCallback):

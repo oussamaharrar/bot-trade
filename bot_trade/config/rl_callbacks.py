@@ -20,11 +20,10 @@ import math
 import time
 import logging
 import datetime as dt
-import csv
 from typing import Optional, Dict, Any
 
 from stable_baselines3.common.callbacks import BaseCallback
-from bot_trade.tools.memory_manager import commit_snapshot, make_snapshot
+from bot_trade.tools.memory_manager import commit_snapshot
 
 # Optional dependencies — كلّها اختيارية
 try:  # TensorBoard
@@ -117,26 +116,26 @@ class StepsAndRewardCallback(BaseCallback):
 
         if infos is not None:
             for i, info in enumerate(infos):
-                # مكافآت موجزة + TB الاختياري
-                ep_mean = _safe_mean_ep_reward(self.model)
-                avg_reward = float("nan")
+                row = {"ts": now, "global_step": step, "env_idx": i}
                 try:
                     if rewards is not None and i < len(rewards):
-                        avg_reward = float(rewards[i])
+                        row["reward_total"] = float(rewards[i])
                 except Exception:
                     pass
-                try:
-                    self.writers.reward.write([now, self.frame, self.symbol, step, avg_reward, ep_mean])
-                except Exception:
-                    pass
-                try:
-                    tb = getattr(self.writers, "tb", None)
-                    if tb is not None and math.isfinite(ep_mean):
-                        tb.add_scalar(f"{self.symbol}/{self.frame}/ep_rew_mean", float(ep_mean), step)
-                except Exception:
-                    pass
+                if isinstance(info, dict):
+                    comps = info.get("reward_components", {})
+                    if isinstance(comps, dict):
+                        row.update({k: comps.get(k) for k in ("pnl", "cost", "stability", "danger_pen") if k in comps})
+                    # legacy keys
+                    for k, dst in [("pnl", "pnl"), ("trade_cost", "cost"), ("dwell_pen", "cost"), ("danger_pen", "danger_pen"), ("stability", "stability")]:
+                        if k in info and dst not in row:
+                            row[dst] = info.get(k)
+                if len(row) > 3:
+                    try:
+                        self.writers.reward.write_row(row)
+                    except Exception:
+                        pass
 
-                # صفقات (إن وُجدت)
                 trade = info.get("trade") if isinstance(info, dict) else None
                 if trade:
                     try:
@@ -148,7 +147,6 @@ class StepsAndRewardCallback(BaseCallback):
                     except Exception:
                         pass
 
-                # سجل قرار منسّق (اختياري)
                 if hasattr(self.writers, "log_decision"):
                     try:
                         self.writers.log_decision(
@@ -161,15 +159,6 @@ class StepsAndRewardCallback(BaseCallback):
                         )
                     except Exception:
                         pass
-
-        # لقطات دورية حتى بدون infos
-        if step - self._last_log >= self.log_every:
-            ep_mean = _safe_mean_ep_reward(self.model)
-            try:
-                self.writers.reward.write([now, self.frame, self.symbol, step, ep_mean, ep_mean])
-            except Exception:
-                pass
-            self._last_log = step
         return True
 
 
@@ -206,84 +195,57 @@ class BestCheckpointCallback(BaseCallback):
         return True
 
 
-class PeriodicArtifacts(BaseCallback):
-    """Lightweight periodic artefacts + memory snapshot."""
+class PeriodicSnapshotsCallback(BaseCallback):
+    """Write atomic training snapshots every ``every_steps`` steps."""
 
     def __init__(
         self,
         run_id: str,
-        writers,
-        paths: Dict[str, str],
-        args: Any,
-        risk_manager: Any | None = None,
-        dataset_info: Dict[str, Any] | None = None,
-        artifact_every_steps: int = 100_000,
+        symbol: str,
+        frame: str,
+        every_steps: int = 100_000,
+        vecnorm_applied: bool = False,
+        writers=None,
         verbose: int = 0,
     ) -> None:
         super().__init__(verbose)
         self.run_id = run_id
+        self.symbol = symbol
+        self.frame = frame
+        self.every = int(max(1, every_steps))
+        self.vecnorm_applied = bool(vecnorm_applied)
         self.writers = writers
-        self.paths = paths
-        self.args = args
-        self.risk_manager = risk_manager
-        self.dataset_info = dataset_info or {}
-        self.every = int(max(1, artifact_every_steps))
-        self.last_artifact_step = getattr(getattr(writers, "train", None), "last_step", 0)
+        self._last = 0
+
+    def _snapshot(self, step: int, status: str) -> None:
+        payload = {
+            "symbol": self.symbol,
+            "frame": self.frame,
+            "ts": dt.datetime.utcnow().isoformat(),
+            "global_step": step,
+            "status": status,
+            "vecnorm_applied": self.vecnorm_applied,
+        }
+        try:
+            if self.writers is not None:
+                try:
+                    self.writers.flush()
+                except Exception:
+                    pass
+            commit_snapshot(self.run_id, step, payload)
+        except Exception:
+            logging.debug("[SNAPSHOT] commit failed", exc_info=True)
 
     def _on_step(self) -> bool:  # noqa: D401
         step = int(self.num_timesteps)
-        if step - self.last_artifact_step >= self.every:
-            self._dump(step)
+        if step - self._last >= self.every:
+            self._snapshot(step, "running")
+            self._last = step
         return True
 
     def _on_training_end(self) -> None:
         step = int(getattr(self.model, "num_timesteps", 0))
-        if step > self.last_artifact_step:
-            self._dump(step)
-
-    def _dump(self, step: int) -> None:
-        now = dt.datetime.utcnow().isoformat()
-        try:
-            step_path = self.paths.get("step_csv")
-            if step_path:
-                os.makedirs(os.path.dirname(step_path), exist_ok=True)
-                with open(step_path, "a", encoding="utf-8", newline="") as fh:
-                    csv.writer(fh).writerow([now, step, "", ""])
-        except Exception:
-            pass
-        try:
-            fname = os.path.basename(self.dataset_info.get("path", ""))
-            self.writers.train.write([now, self.args.frame, self.args.symbol, fname, step, "progress"])
-            self.writers.train.last_step = step
-        except Exception:
-            pass
-        try:
-            self.writers.flush()
-        except Exception:
-            pass
-        try:
-            from bot_trade.tools.analyze_risk_and_training import analyse_risk
-
-            base = os.path.dirname(os.path.dirname(self.paths.get("results", "")))
-            analyse_risk(base, self.args.symbol, self.args.frame)
-        except Exception:
-            pass
-        try:
-            commit_snapshot(
-                self.run_id,
-                make_snapshot(
-                    self.args,
-                    self.training_env,
-                    self.model,
-                    None,
-                    self.writers,
-                    self.risk_manager,
-                    self.dataset_info,
-                ),
-            )
-        except Exception:
-            logging.debug("[ARTIFACT] snapshot failed", exc_info=True)
-        self.last_artifact_step = step
+        self._snapshot(step, "finished")
 
 
 class BenchmarkCallback(BaseCallback):
@@ -448,9 +410,10 @@ class StrictDataSanityCallback(BaseCallback):
 class CompositeCallback(BaseCallback):
     """Lightweight bridge that forwards SB3 events to UpdateManager."""
 
-    def __init__(self, update_manager, cfg: Optional[Dict[str, Any]] = None, verbose: int = 0):
+    def __init__(self, update_manager, writers, cfg: Optional[Dict[str, Any]] = None, verbose: int = 0):
         super().__init__(verbose)
         self.um = update_manager
+        self.writers = writers
         self.cfg = cfg or {}
         logging_cfg = self.cfg.get("logging", {})
         self.step_every = int(logging_cfg.get("step_every", 100))
@@ -466,6 +429,34 @@ class CompositeCallback(BaseCallback):
                 metrics.update(comps)
         except Exception:
             pass
+        reward_val = None
+        try:
+            rewards = self.locals.get("rewards")
+            if rewards:
+                reward_val = float(rewards[0])
+        except Exception:
+            pass
+        parts = {k: metrics[k] for k in ("pnl", "dwell_pen", "trade_cost", "danger_pen") if k in metrics}
+        if reward_val is not None or parts:
+            try:
+                ts = dt.datetime.utcnow().isoformat()
+                row = {"ts": ts, "global_step": step, "env_idx": 0}
+                if reward_val is not None:
+                    row["reward_total"] = reward_val
+                if "pnl" in parts:
+                    row["pnl"] = parts["pnl"]
+                if "danger_pen" in parts:
+                    row["danger_pen"] = parts["danger_pen"]
+                cost = 0.0
+                if "trade_cost" in parts:
+                    cost += parts["trade_cost"]
+                if "dwell_pen" in parts:
+                    cost += parts["dwell_pen"]
+                if cost:
+                    row["cost"] = cost
+                self.writers.reward.write_row(row)
+            except Exception:
+                pass
         if step % self.step_every == 0 or metrics:
             try:
                 self.um.log_step(step, metrics)

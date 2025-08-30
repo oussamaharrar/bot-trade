@@ -29,9 +29,16 @@ def _git_hash() -> str:
 
 
 def new_run_id(symbol: str, frame: str) -> str:
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
-    gh = _git_hash()[:7]
-    return f"{symbol}-{frame}-{ts}-{gh}"
+    """Return a session-stable run identifier.
+
+    Format: ``run-<SYMBOL>-<FRAME>-<YYYYMMDD_HHMMSS>-<shortid>``.
+    ``shortid`` is the first 4 hex chars of the current git hash or ``nogit``.
+
+    # TODO: consider allowing custom run id prefix/suffix via CLI.
+    """
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    gh = _git_hash()[:4]
+    return f"run-{symbol}-{frame}-{ts}-{gh}"
 
 
 def run_paths(symbol: str, frame: str, run_id: str) -> Dict[str, Path]:
