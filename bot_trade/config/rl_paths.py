@@ -317,6 +317,7 @@ def get_paths(symbol: str, frame: str) -> dict:
         "jsonl_decisions": os.path.join(logs_dir, "entry_decisions.jsonl"),
         "benchmark_log": os.path.join(logs_dir, "benchmark.log"),
         "risk_log": os.path.join(logs_dir, "risk.log"),
+        "risk_csv": os.path.join(logs_dir, "risk.csv"),
         "report_dir": _mk(DEFAULT_RESULTS_DIR, "reports"),
         "perf_dir": _mk(DEFAULT_RESULTS_DIR, "performance"),
         "best_zip": os.path.join(agents_dir, "deep_rl_best.zip"),
