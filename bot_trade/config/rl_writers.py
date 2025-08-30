@@ -1,6 +1,7 @@
 import os, csv, json, threading
-from typing import Optional, Union, Iterable
+from typing import Optional, Union, Iterable, Dict, Any
 from datetime import datetime
+from pathlib import Path
 
 # ==============================================
 # Writers (CSV / JSONL) — Windows-safe, thread-safe
@@ -125,41 +126,83 @@ class JSONLWriter(_BaseWriter):
                 pass
             self._fh = None
 
+
+class RewardWriter:
+    """CSV writer specialised for per-step rewards.
+
+    The first column is always ``run_id`` injected automatically from the
+    owning :class:`WritersBundle`.
+
+    # TODO: add CSV rotation after size X.
+    # TODO: weekly aggregates for reward.log.
+    """
+
+    def __init__(self, path: Path, run_id: str):
+        self.run_id = run_id
+        self._writer = CSVWriter(
+            str(path),
+            header=[
+                "run_id",
+                "ts",
+                "global_step",
+                "env_idx",
+                "reward_total",
+                "pnl",
+                "cost",
+                "stability",
+                "danger_pen",
+            ],
+        )
+
+    def write_row(self, row: Dict[str, Any]) -> None:
+        """Write a reward record ensuring run_id is present."""
+        data = {"run_id": self.run_id, **row}
+        self._writer.write(data)
+
+    def flush(self) -> None:
+        self._writer.flush()
+
+    def close(self) -> None:
+        self._writer.close()
+
 class WritersBundle:
-    """
-    حزمة كتّاب موحّدة يستخدمها rl_callbacks:
-      .reward     -> CSVWriter    ["ts","frame","symbol","step","avg_reward","ep_rew_mean"]
-      .trades     -> CSVWriter    ["ts","frame","symbol","step","side","price","size","pnl","equity","reason"]
-      .benchmark  -> CSVWriter    ["ts","frame","symbol","step","fps","cpu_percent","ram_gb","gpu0_mb","gpu1_mb","gpu2_mb","gpu3_mb"]
-      .error      -> CSVWriter    ["ts","step","message"]
-      .train      -> CSVWriter    ["ts","frame","symbol","file","timesteps","status"]
-      .eval       -> CSVWriter    ["ts","frame","symbol","metric","value"]
-      .tb         -> SummaryWriter (اختياري)
-      .decisions  -> JSONLWriter  (اختياري) قرارات الدخول المنظمة
-    """
-    def __init__(self, paths: dict, enable_tb: bool = False, tb_dir: Optional[str] = None):
+    """Unified bundle of writers used by training callbacks."""
+
+    def __init__(self, paths: dict, run_id: str, enable_tb: bool = False, tb_dir: Optional[str] = None):
         self.paths = paths
-        # Ensure base dirs exist
+        self.run_id = run_id
+
         for key in ("results", "logs"):
             if key in paths:
                 os.makedirs(paths[key], exist_ok=True)
 
-        # CSV writers (headers aligned with callbacks)
-        self.reward    = CSVWriter(paths["reward_csv"], header=["ts","frame","symbol","step","avg_reward","ep_rew_mean"])
-        self.trades    = CSVWriter(paths["trade_csv"],  header=["ts","frame","symbol","step","side","price","size","pnl","equity","reason"])
-        self.benchmark = CSVWriter(paths["benchmark_log"], header=["ts","frame","symbol","step","fps","cpu_percent","ram_gb","gpu0_mb","gpu1_mb","gpu2_mb","gpu3_mb"])
-        # store miscellaneous logs inside the dedicated logs directory
-        self.error     = CSVWriter(os.path.join(self.paths.get("logs", self.paths.get("results")), "error.csv"), header=["ts","step","message"])
-        self.train     = CSVWriter(self.paths["train_csv"], header=["ts","frame","symbol","file","timesteps","status"]) 
-        self.eval      = CSVWriter(self.paths["eval_csv"],  header=["ts","frame","symbol","metric","value"]) 
+        logs_dir = self.paths.get("logs", self.paths.get("results"))
 
-        # JSONL decisions
+        self.trades = CSVWriter(
+            paths["trade_csv"],
+            header=["ts", "frame", "symbol", "step", "side", "price", "size", "pnl", "equity", "reason"],
+        )
+        self.benchmark = CSVWriter(
+            paths["benchmark_log"],
+            header=["ts", "frame", "symbol", "step", "fps", "cpu_percent", "ram_gb", "gpu0_mb", "gpu1_mb", "gpu2_mb", "gpu3_mb"],
+        )
+        self.error = CSVWriter(os.path.join(logs_dir, "error.csv"), header=["ts", "step", "message"])
+        self.train = CSVWriter(
+            paths["train_csv"],
+            header=["run_id", "ts", "frame", "symbol", "file", "timesteps", "status"],
+        )
+        self.eval = CSVWriter(paths["eval_csv"], header=["ts", "frame", "symbol", "metric", "value"])
+
         try:
-            self.decisions = JSONLWriter(os.path.join(self.paths["logs"], "entry_decisions.jsonl"))
+            self.reward = RewardWriter(Path(logs_dir) / "reward.log", run_id)
+        except Exception:
+            self.reward = None  # type: ignore
+
+        try:
+            self.decisions = JSONLWriter(os.path.join(logs_dir, "entry_decisions.jsonl"))
         except Exception:
             self.decisions = None
 
-        # TensorBoard (optional)
         self.tb = None
         if enable_tb:
             try:
@@ -181,8 +224,13 @@ class WritersBundle:
             pass
 
     def flush(self):
-        for w in (self.reward, self.trades, self.benchmark, self.error, self.train, self.eval):
+        for w in (self.trades, self.benchmark, self.error, self.train, self.eval):
             w.flush()
+        try:
+            if getattr(self, "reward", None) is not None:
+                self.reward.flush()  # type: ignore[attr-defined]
+        except Exception:
+            pass
         try:
             if getattr(self, "decisions", None) is not None:
                 self.decisions.flush()
@@ -194,10 +242,18 @@ class WritersBundle:
             except Exception:
                 pass
 
+    def flush_all(self):  # pragma: no cover - backwards alias
+        self.flush()
+
     def close(self):
         self.flush()
-        for w in (self.reward, self.trades, self.benchmark, self.error, self.train, self.eval):
+        for w in (self.trades, self.benchmark, self.error, self.train, self.eval):
             w.close()
+        try:
+            if getattr(self, "reward", None) is not None:
+                self.reward.close()  # type: ignore[attr-defined]
+        except Exception:
+            pass
         try:
             if getattr(self, "decisions", None) is not None:
                 self.decisions.close()
@@ -210,9 +266,9 @@ class WritersBundle:
                 pass
 
 
-def build_writers(paths: dict, enable_tb: bool = False) -> WritersBundle:
-    """أنشئ الحزمة الموحّدة للكتّاب بناءً على مسارات rl_paths.build_paths(...)"""
-    return WritersBundle(paths, enable_tb=enable_tb, tb_dir=None)
+def build_writers(paths: dict, run_id: str, enable_tb: bool = False) -> WritersBundle:
+    """Construct :class:`WritersBundle` for the given ``run_id``."""
+    return WritersBundle(paths, run_id, enable_tb=enable_tb, tb_dir=None)
 
 # Alias لضمان التوافق مع أي استيراد قديم
 class Writers(WritersBundle):

@@ -62,6 +62,8 @@ class MemoryManager:
 PROJECT_ROOT = get_root()
 MEM_DIR = memory_dir()
 MEMORY_FILE = MEM_DIR / "memory.json"
+SNAPSHOTS_DIR = MEM_DIR / "snapshots"
+ensure_dirs(SNAPSHOTS_DIR)
 
 
 def _default_memory(root: Path = PROJECT_ROOT) -> Dict[str, Any]:
@@ -237,16 +239,38 @@ def make_snapshot(
     return snapshot
 
 
-def commit_snapshot(run_id: str, snapshot: Dict[str, Any], root: Path = PROJECT_ROOT) -> None:
-    """Atomically commit ``snapshot`` for ``run_id`` to memory.json."""
+def commit_snapshot(run_id: str, step: int, payload: Dict[str, Any], root: Path = PROJECT_ROOT) -> Path:
+    """Atomically persist a snapshot payload.
+
+    Parameters
+    ----------
+    run_id: str
+        Training run identifier.
+    step: int
+        Global step counter.
+    payload: dict
+        Additional fields to store. ``schema_version`` and ``run_id`` are
+        injected automatically.
+    """
+    payload = dict(payload)
+    payload.setdefault("schema_version", 1)
+    payload.setdefault("run_id", run_id)
+    payload.setdefault("step", step)
+
+    tmp = SNAPSHOTS_DIR / f"{run_id}-{step}.json.tmp"
+    out = SNAPSHOTS_DIR / f"{run_id}-{step}.json"
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(out)
+
     mem = load_memory(root)
-    mem.setdefault("runs", {})[run_id] = snapshot
+    mem.setdefault("runs", {})[run_id] = payload
     mem["last_run_id"] = run_id
     path = (memory_dir() if root == PROJECT_ROOT else Path(root) / "memory") / "memory.json"
     ensure_dirs(path.parent)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(mem, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+    tmp2 = path.with_suffix(".tmp")
+    tmp2.write_text(json.dumps(mem, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp2, path)
+    return out
 
 
 def resume_from_snapshot(run_id: str, root: Path = PROJECT_ROOT) -> Dict[str, Any]:

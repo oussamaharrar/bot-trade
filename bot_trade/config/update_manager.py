@@ -52,13 +52,14 @@ class UpdateManager:
     """
 
     def __init__(self, paths: Dict[str, str], symbol: str, frame: str,
-                 cfg: Optional[Dict[str, Any]] = None) -> None:
+                 run_id: str, cfg: Optional[Dict[str, Any]] = None) -> None:
         if mp.current_process().name != "MainProcess":
             raise RuntimeError("UpdateManager must run in MainProcess")
 
         self.paths = paths
         self.symbol = symbol
         self.frame = frame
+        self.run_id = run_id
         self.cfg = cfg or {}
 
         self.logs_dir = paths.get("logs_dir") or os.path.join(
@@ -73,7 +74,7 @@ class UpdateManager:
         self._step_fh = open(self._step_path, "a", encoding="utf-8", newline="")
         self._step_csv = csv.writer(self._step_fh)
         if os.path.getsize(self._step_path) == 0:
-            self._step_csv.writerow(["ts", "step", "metric", "value"])
+            self._step_csv.writerow(["run_id", "ts", "step", "metric", "value"])
 
         # ------------------------------------------------------------------
         # Performance CSV (aggregated evaluation metrics)
@@ -100,19 +101,16 @@ class UpdateManager:
         step: int
             Current global step count.
         metrics: dict, optional
-            Mapping of metric name to value.  If empty, a placeholder row
-            is written so that the step file still reflects progress.
+            Mapping of metric name to value. Rows are only written when
+            metrics are provided.
         """
 
         metrics = metrics or {}
-        if self._step_csv is None:
+        if self._step_csv is None or not metrics:
             return
         ts = _utcnow()
-        if not metrics:
-            self._step_csv.writerow([ts, step, "", ""])
-        else:
-            for key, value in metrics.items():
-                self._step_csv.writerow([ts, step, key, value])
+        for key, value in metrics.items():
+            self._step_csv.writerow([self.run_id, ts, step, key, value])
         self._step_fh.flush()
 
     # Compatibility shim (older code used ``on_step``)
