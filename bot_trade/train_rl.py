@@ -144,6 +144,9 @@ def _spawn_monitors(args) -> None:
 # =============================
 
 def train_one_file(args, data_file: str) -> bool:
+    run_id = getattr(args, "run_id", None) or new_run_id(args.symbol, args.frame)
+    args.run_id = run_id
+
     # 1) Paths + logging + state
     paths = build_paths(
         args.symbol,
@@ -223,6 +226,23 @@ def train_one_file(args, data_file: str) -> bool:
             add_features_fn=add_strategy_features,
             safe=args.safe,
         )
+
+    try:
+        st = os.stat(data_file)
+        dataset_info = {
+            "path": data_file,
+            "mtime": st.st_mtime,
+            "size_bytes": st.st_size,
+            "rows": int(getattr(df, "shape", [0])[0]),
+        }
+    except Exception:
+        dataset_info = {"path": data_file}
+
+    # initial snapshot before training
+    try:
+        commit_snapshot(run_id, make_snapshot(args, None, None, None, writers, None, dataset_info))
+    except Exception:
+        pass
 
     cur_cfg = cfg.get("curriculum", {})
     if cur_cfg.get("enable"):
@@ -426,6 +446,12 @@ def train_one_file(args, data_file: str) -> bool:
         except Exception:
             pass
 
+    # final snapshot after training
+    try:
+        commit_snapshot(run_id, make_snapshot(args, vec_env, model, None, writers, None, dataset_info))
+    except Exception:
+        pass
+
     if cfg.get("knowledge", {}).get("run_after_training", False):
         try:
             import subprocess
@@ -502,6 +528,7 @@ def main():
     global build_paths, ensure_state_files, get_paths
     global Writers, create_loggers, setup_worker_logging, UpdateManager, CompositeCallback, get_config
     global EvalCallback, EvalSaveCallback, load_run_state, save_run_state, MemoryManager
+    global load_memory, commit_snapshot, make_snapshot, resume_from_snapshot, new_run_id
     global load_portfolio_state, save_portfolio_state, reset_with_balance
     global discover_files, read_one, LoadOptions, load_dataset, add_strategy_features, _HAS_READ_ONE
     global CallbackList, BenchmarkCallback, StrictDataSanityCallback
@@ -523,7 +550,14 @@ def main():
     from bot_trade.config.env_config import get_config
     from stable_baselines3.common.callbacks import EvalCallback
     from bot_trade.tools.run_state import load_state as load_run_state, save_state as save_run_state
-    from bot_trade.tools.memory_manager import MemoryManager
+    from bot_trade.tools.memory_manager import (
+        MemoryManager,
+        load_memory,
+        commit_snapshot,
+        make_snapshot,
+        resume_from_snapshot,
+    )
+    from bot_trade.tools.runctx import new_run_id
     from bot_trade.ai_core.portfolio import (
         load_state as load_portfolio_state,
         save_state as save_portfolio_state,
