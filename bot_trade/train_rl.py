@@ -127,8 +127,12 @@ def _maybe_print_device_report(args):
     print("===================================")
 
 
-def _spawn_monitor(root_dir: str, args, run_id: str) -> None:
-    """Launch monitor manager headlessly without blocking training."""
+def _spawn_monitor(root_dir: str, args, run_id: str, headless: bool = True):
+    """Launch monitor manager.
+
+    Headless mode detaches and returns ``None``. Interactive mode returns the
+    ``Popen`` handle so callers may manage the process.
+    """
     import subprocess
 
     cmd = [
@@ -143,10 +147,21 @@ def _spawn_monitor(root_dir: str, args, run_id: str) -> None:
         run_id,
         "--base",
         root_dir,
-        "--no-wait",
     ]
+    if headless:
+        cmd.append("--no-wait")
+
     child_env = os.environ.copy()
     child_env.setdefault("BOT_TRADE_ROOT", root_dir)
+
+    if not headless:
+        try:
+            proc = subprocess.Popen(cmd, env=child_env, shell=False)
+            logger.info("[monitor] spawned (interactive)")
+            return proc
+        except Exception as exc:  # pragma: no cover
+            logger.warning("monitor launch failed: %s", exc)
+            return None
 
     success = False
     if os.name == "nt":
@@ -198,7 +213,7 @@ def _spawn_monitor(root_dir: str, args, run_id: str) -> None:
                         success = True
                     except Exception as e4:
                         logger.warning(f"monitor launch failed after fallbacks: {e4!r}")
-                        return
+                        return None
     else:
         try:
             subprocess.Popen(
@@ -215,6 +230,7 @@ def _spawn_monitor(root_dir: str, args, run_id: str) -> None:
             logger.warning("monitor launch failed: %s", exc)
     if success:
         logger.info("[monitor] spawned (headless)")
+    return None
 
 
 
@@ -226,6 +242,7 @@ def train_one_file(args, data_file: str) -> bool:
     """Train on a single dataset file with resume capability."""
     mem = load_memory()
     resume_data = None
+    mon_proc = None
 
     if getattr(args, "resume", None):
         rid = args.resume
@@ -619,7 +636,7 @@ def train_one_file(args, data_file: str) -> bool:
 
     if getattr(args, "monitor", True):
         root_dir = os.path.abspath(os.path.join(args.results_dir, os.pardir))
-        _spawn_monitor(root_dir, args, run_id)
+        _spawn_monitor(root_dir, args, run_id, headless=True)
 
     # 11) Learn
     status = "finished"
@@ -738,7 +755,7 @@ def train_one_file(args, data_file: str) -> bool:
     except Exception:
         pass
 
-    if mon_proc:
+    if mon_proc is not None:
         try:
             mon_proc.terminate()
         except Exception:

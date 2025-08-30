@@ -173,7 +173,7 @@ def main(argv: List[str] | None = None) -> None:
             msg += f" images->{img_dir}"
         print(msg, flush=True)
         print("Headless refresh done.", flush=True)
-        sys.exit(0)
+        return 0
 
     from bot_trade.tools.analytics_common import wait_for_first_write
     from bot_trade.tools.monitor_launch import launch_new_console
@@ -262,5 +262,5 @@ def main(argv: List[str] | None = None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
 
