@@ -23,6 +23,7 @@ import datetime as dt
 from typing import Optional, Dict, Any
 
 from stable_baselines3.common.callbacks import BaseCallback
+from bot_trade.tools.memory_manager import commit_snapshot, make_snapshot
 
 # Optional dependencies — كلّها اختيارية
 try:  # TensorBoard
@@ -205,12 +206,7 @@ class BestCheckpointCallback(BaseCallback):
 
 
 class PeriodicArtifactsCallback(BaseCallback):
-    """Dump memory/knowledge artefacts at a fixed step interval.
-
-    Also runs once at training start and end.  The callback only performs
-    light-weight JSON reads/writes in the main process and relies on
-    :class:`UpdateManager` for knowledge-base aggregation when available.
-    """
+    """Dump memory/knowledge artefacts at a fixed step interval."""
 
     def __init__(
         self,
@@ -220,15 +216,24 @@ class PeriodicArtifactsCallback(BaseCallback):
         frame: str,
         symbol: str,
         every: int = 100_000,
+        run_id: str | None = None,
+        args: Any | None = None,
+        writers: Any | None = None,
+        risk_manager: Any | None = None,
+        dataset_info: Dict[str, Any] | None = None,
         verbose: int = 0,
     ) -> None:
         super().__init__(verbose)
         self.um = update_manager
-        self.memory_file = memory_file
         self.kb_file = kb_file
         self.frame, self.symbol = frame, symbol
         self.every = int(max(1, every))
         self._last_dump = -1
+        self.run_id = run_id
+        self.args = args
+        self.writers = writers
+        self.risk_manager = risk_manager
+        self.dataset_info = dataset_info or {}
 
     def _init_callback(self) -> None:
         self._dump(0)
@@ -246,17 +251,24 @@ class PeriodicArtifactsCallback(BaseCallback):
         now = dt.datetime.utcnow().isoformat()
         # memory snapshot
         try:
-            mem: Dict[str, Any]
-            if os.path.exists(self.memory_file):
-                with open(self.memory_file, "r", encoding="utf-8") as f:
-                    mem = json.load(f) or {}
-            else:
-                mem = {}
-            sess = mem.setdefault("sessions", {})
-            key = f"{self.symbol}:{self.frame}"
-            sess[key] = {"last_step": step, "updated_at": now}
-            with open(self.memory_file, "w", encoding="utf-8") as f:
-                json.dump(mem, f, ensure_ascii=False, indent=2)
+            if self.run_id and self.args is not None:
+                vecnorm = None
+                try:
+                    vecnorm = self.model.get_vec_normalize_env()
+                except Exception:
+                    pass
+                commit_snapshot(
+                    self.run_id,
+                    make_snapshot(
+                        self.args,
+                        self.training_env,
+                        self.model,
+                        vecnorm,
+                        self.writers,
+                        self.risk_manager,
+                        self.dataset_info,
+                    ),
+                )
         except Exception as e:
             logging.error("[MEMORY] snapshot failed: %s", e)
 

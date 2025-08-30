@@ -205,7 +205,7 @@ def build_ppo(args, vec_env, is_discrete: bool):
     return model
 
 
-def build_callbacks(paths, writers, args, update_manager=None):
+def build_callbacks(paths, writers, args, update_manager=None, run_id=None, risk_manager=None, dataset_info=None):
     from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
     from .rl_callbacks import (
         StepsAndRewardCallback,
@@ -226,6 +226,11 @@ def build_callbacks(paths, writers, args, update_manager=None):
         args.frame,
         args.symbol,
         every=int(getattr(args, "artifact_every_steps", 100_000)),
+        run_id=run_id or getattr(args, "run_id", None),
+        args=args,
+        writers=writers,
+        risk_manager=risk_manager,
+        dataset_info=dataset_info,
     )
 
     callbacks = [ckpt_cb, best_cb, step_cb, art_cb]
