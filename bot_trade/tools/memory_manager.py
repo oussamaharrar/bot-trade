@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from bot_trade.config.rl_paths import get_root, memory_dir
-from bot_trade.tools.paths import ensure_dirs
+from bot_trade.tools.paths import ensure_dirs, DIR_MEMORY
 from bot_trade.tools.runctx import atomic_write_json, lockfile
 
 
@@ -84,13 +84,32 @@ def load_memory(root: Path = PROJECT_ROOT) -> Dict[str, Any]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return _default_memory(root)
+
+    # v1 -> v2 migration: v1 did not have schema_version and stored
+    # simple keys like ``run_id``/``step``.  Merge anything we can find
+    # into the new structure while keeping defaults for missing fields.
     if data.get("schema_version") != 2:
         upgraded = _default_memory(root)
-        upgraded.update({k: data.get(k, v) for k, v in upgraded.items()})
-        upgraded["runs"] = data.get("runs", {})
-        upgraded["frames"] = data.get("frames", {})
-        upgraded["sessions"] = data.get("sessions", {})
+        # try legacy root keys
+        if isinstance(data, dict):
+            if "last_run_id" in data:
+                upgraded["last_run_id"] = data.get("last_run_id")
+            if "runs" in data:
+                upgraded["runs"] = data.get("runs", {})
+            if "frames" in data:
+                upgraded["frames"] = data.get("frames", {})
+            if "sessions" in data:
+                upgraded["sessions"] = data.get("sessions", {})
+            # very old memory file: {run_id:..., step:...}
+            if "run_id" in data and "step" in data:
+                rid = str(data.get("run_id"))
+                upgraded["last_run_id"] = rid
+                upgraded.setdefault("runs", {})[rid] = {
+                    "global": {"global_timesteps": int(data.get("step", 0))},
+                    "updated_at": data.get("updated_at"),
+                }
         return upgraded
+
     return data
 
 
@@ -132,14 +151,11 @@ def make_snapshot(
 
     snapshot: Dict[str, Any] = {
         "meta": {
-            "symbol": getattr(args, "symbol", None),
-            "frame": getattr(args, "frame", None),
             "seed": getattr(args, "seed", None),
             "device": getattr(args, "device_str", getattr(args, "device", None)),
             "n_envs": getattr(args, "n_envs", None),
             "algo": getattr(args, "algo", "PPO"),
             "policy": getattr(args, "policy", getattr(args, "policy_name", None)),
-            "created_at": datetime.now(timezone.utc).isoformat(),
         },
         "dataset": dataset_info or {},
         "global": {
@@ -157,15 +173,63 @@ def make_snapshot(
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    # attempt to pull common env/risk fields but tolerate absence
+    # meta extras
+    snapshot["meta"].update({
+        "symbol": getattr(args, "symbol", None),
+        "frame": getattr(args, "frame", None),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    # attempt to pull common env fields
+    env_state = snapshot["env_state"]
     try:
-        snapshot["env_state"]["ptr_index"] = int(_try(env, "ptr", 0))
+        env_state["ptr_index"] = int(_try(env, "ptr", 0))
     except Exception:
         pass
     try:
-        snapshot["risk_state"]["danger_mode"] = bool(_try(risk_manager, "danger", False))
+        env_state["ptr_ts"] = _try(env, "current_ts", None)
+    except Exception:
+        try:
+            env_state["ptr_ts"] = _try(_try(env, "_row", lambda: None)(), "name", None)
+        except Exception:
+            pass
+    try:
+        import numpy as np, random
+        env_state["rng_numpy"] = list(np.random.get_state())  # type: ignore[arg-type]
+        env_state["rng_python"] = list(random.getstate())  # type: ignore[arg-type]
     except Exception:
         pass
+    try:
+        pos = {
+            "side": _try(env, "position_side", None),
+            "size": _try(env, "coin", None),
+            "entry": _try(env, "entry_price", None),
+            "sl": _try(env, "stop_loss_price", None),
+            "tp": _try(env, "take_profit_price", None),
+        }
+        if any(v is not None for v in pos.values()):
+            env_state["open_position"] = pos
+    except Exception:
+        pass
+    for k in ["equity", "pnl_real", "pnl_unreal", "last_action", "last_reward", "last_reward_components"]:
+        try:
+            env_state[k] = _try(env, k, None)
+        except Exception:
+            pass
+
+    # risk manager state
+    rstate = snapshot["risk_state"]
+    for attr, key in [
+        ("current_risk", "risk_pct"),
+        ("danger_mode", "danger_mode"),
+        ("freeze_mode", "freeze_mode"),
+        ("ema_reward", "ema_reward"),
+        ("max_drawdown", "max_drawdown"),
+    ]:
+        try:
+            rstate[key] = _try(risk_manager, attr, None)
+        except Exception:
+            pass
 
     return snapshot
 
@@ -182,9 +246,15 @@ def commit_snapshot(run_id: str, snapshot: Dict[str, Any], root: Path = PROJECT_
     os.replace(tmp, path)
 
 
-def resume_from_snapshot(run_id: str, root: Path = ROOT) -> Dict[str, Any]:
+def resume_from_snapshot(run_id: str, root: Path = PROJECT_ROOT) -> Dict[str, Any]:
+    """Return stored snapshot for ``run_id`` ensuring dataset still matches."""
     mem = load_memory(root)
-    return mem.get("runs", {}).get(run_id, {})
+    snap = mem.get("runs", {}).get(run_id)
+    if not snap:
+        return {}
+    if not validate_dataset(snap.get("dataset", {})):
+        raise SystemExit(f"[MEMORY] Dataset mismatch for run {run_id}; aborting resume.")
+    return snap
 
 
 __all__ = [

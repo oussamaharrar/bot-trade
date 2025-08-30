@@ -144,7 +144,21 @@ def _spawn_monitors(args) -> None:
 # =============================
 
 def train_one_file(args, data_file: str) -> bool:
-    run_id = getattr(args, "run_id", None) or new_run_id(args.symbol, args.frame)
+    """Train on a single dataset file with resume capability."""
+    mem = load_memory()
+    resume_data = None
+
+    if getattr(args, "resume", None):
+        rid = args.resume
+        if not rid or str(rid).lower() in {"latest", "last", "true", "1"}:
+            rid = mem.get("last_run_id")
+        if not rid:
+            raise SystemExit("[RESUME] no previous run to resume")
+        resume_data = resume_from_snapshot(str(rid))
+        data_file = resume_data.get("dataset", {}).get("path", data_file)
+        run_id = str(rid)
+    else:
+        run_id = getattr(args, "run_id", None) or new_run_id(args.symbol, args.frame)
     args.run_id = run_id
 
     # 1) Paths + logging + state
@@ -228,21 +242,20 @@ def train_one_file(args, data_file: str) -> bool:
         )
 
     try:
+        import hashlib
         st = os.stat(data_file)
+        h = hashlib.sha256()
+        with open(data_file, "rb") as fh:
+            h.update(fh.read(1024 * 1024))
         dataset_info = {
             "path": data_file,
             "mtime": st.st_mtime,
             "size_bytes": st.st_size,
             "rows": int(getattr(df, "shape", [0])[0]),
+            "hash_head": h.hexdigest(),
         }
     except Exception:
         dataset_info = {"path": data_file}
-
-    # initial snapshot before training
-    try:
-        commit_snapshot(run_id, make_snapshot(args, None, None, None, writers, None, dataset_info))
-    except Exception:
-        pass
 
     cur_cfg = cfg.get("curriculum", {})
     if cur_cfg.get("enable"):
@@ -279,21 +292,97 @@ def train_one_file(args, data_file: str) -> bool:
         seed=getattr(args, "seed", None),
     )
 
+    # expose risk manager for snapshots/resume
+    risk_manager = None
+    try:
+        risk_manager = vec_env.get_attr("risk_engine")[0]
+    except Exception:
+        pass
+
+    if resume_data:
+        env_state = resume_data.get("env_state", {})
+        try:
+            ptr = env_state.get("ptr_index")
+            if ptr is not None:
+                vec_env.set_attr("ptr", int(ptr))
+        except Exception:
+            pass
+        try:
+            op = env_state.get("open_position", {})
+            if op:
+                vec_env.set_attr("entry_price", op.get("entry"))
+                size = op.get("size")
+                side = op.get("side")
+                if size is not None and side is not None:
+                    amt = float(size) if side == "long" else -float(size)
+                    vec_env.set_attr("coin", amt)
+        except Exception:
+            pass
+        try:
+            vec_env.set_attr("last_action", env_state.get("last_action"))
+            vec_env.set_attr("last_reward", env_state.get("last_reward"))
+            vec_env.set_attr("last_reward_components", env_state.get("last_reward_components"))
+        except Exception:
+            pass
+        try:
+            import numpy as np, random
+            np_state = env_state.get("rng_numpy")
+            if np_state is not None:
+                np.random.set_state(tuple(np_state))
+            py_state = env_state.get("rng_python")
+            if py_state is not None:
+                random.setstate(tuple(py_state))
+        except Exception:
+            pass
+        if risk_manager:
+            rs = resume_data.get("risk_state", {})
+            try:
+                risk_manager.current_risk = rs.get("risk_pct", risk_manager.current_risk)
+            except Exception:
+                pass
+            try:
+                risk_manager.freeze_mode = rs.get("freeze_mode", risk_manager.freeze_mode)
+            except Exception:
+                pass
+            try:
+                risk_manager.ema_reward = rs.get("ema_reward", risk_manager.ema_reward)
+            except Exception:
+                pass
+            try:
+                risk_manager.max_drawdown = rs.get("max_drawdown", risk_manager.max_drawdown)
+            except Exception:
+                pass
+        try:
+            writers.train.last_step = resume_data.get("writers", {}).get("last_artifact_step", 0)
+        except Exception:
+            pass
+
     # 6) Try loading VecNormalize running averages (prefer best)
     loaded_vecnorm = False
-    for cand in ("vecnorm_best", "vecnorm_pkl"):
-        p = paths.get(cand)
-        if not p:
-            continue
-        try:
-            if os.path.exists(p):
+    if resume_data:
+        vp = resume_data.get("global", {}).get("vecnorm_path")
+        if vp and os.path.exists(vp):
+            try:
                 if hasattr(vec_env, "load_running_average"):
-                    vec_env.load_running_average(p)
+                    vec_env.load_running_average(vp)
                     loaded_vecnorm = True
-                    logging.info("[VECNORM] loaded running average from %s", cand)
-                    break
-        except Exception as e:
-            logging.warning("[VECNORM] load failed (%s): %s", cand, e)
+                    logging.info("[VECNORM] loaded running average from snapshot")
+            except Exception as e:
+                logging.warning("[VECNORM] load failed (snapshot): %s", e)
+    if not loaded_vecnorm:
+        for cand in ("vecnorm_best", "vecnorm_pkl"):
+            p = paths.get(cand)
+            if not p:
+                continue
+            try:
+                if os.path.exists(p):
+                    if hasattr(vec_env, "load_running_average"):
+                        vec_env.load_running_average(p)
+                        loaded_vecnorm = True
+                        logging.info("[VECNORM] loaded running average from %s", cand)
+                        break
+            except Exception as e:
+                logging.warning("[VECNORM] load failed (%s): %s", cand, e)
     if not loaded_vecnorm:
         logging.info("[VECNORM] no previous running average found.")
 
@@ -327,7 +416,10 @@ def train_one_file(args, data_file: str) -> bool:
     # 9) Resume or build fresh model
     model = None
     resume_path = None
-    if args.resume_auto:
+    if resume_data:
+        g = resume_data.get("global", {})
+        resume_path = g.get("checkpoint_path") or g.get("best_path")
+    elif args.resume_auto:
         if os.path.exists(paths["model_best_zip"]):
             resume_path = paths["model_best_zip"]
         elif os.path.exists(paths["model_zip"]):
@@ -356,8 +448,17 @@ def train_one_file(args, data_file: str) -> bool:
         model = build_ppo(args, vec_env, is_discrete)
         logging.info("[PPO] Built new model (device=%s, use_sde=%s)", args.device_str, bool(args.sde and not is_discrete))
 
+    if resume_data:
+        try:
+            model.num_timesteps = int(resume_data.get("global", {}).get("global_timesteps", model.num_timesteps))
+        except Exception:
+            pass
+
     # 10) Callbacks (base from rl_builders + optional extras)
-    base_callbacks = build_callbacks(paths, writers, args, update_manager)
+    base_callbacks = build_callbacks(
+        paths, writers, args, update_manager,
+        run_id=run_id, risk_manager=risk_manager, dataset_info=dataset_info,
+    )
     cb = base_callbacks
     extras = []
 
@@ -448,7 +549,12 @@ def train_one_file(args, data_file: str) -> bool:
 
     # final snapshot after training
     try:
-        commit_snapshot(run_id, make_snapshot(args, vec_env, model, None, writers, None, dataset_info))
+        vecnorm = None
+        try:
+            vecnorm = model.get_vec_normalize_env()
+        except Exception:
+            pass
+        commit_snapshot(run_id, make_snapshot(args, vec_env, model, vecnorm, writers, risk_manager, dataset_info))
     except Exception:
         pass
 
