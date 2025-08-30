@@ -172,6 +172,7 @@ def main(argv: List[str] | None = None) -> None:
         if img_dir:
             msg += f" images->{img_dir}"
         print(msg, flush=True)
+        print("Headless refresh done.", flush=True)
         sys.exit(0)
 
     from bot_trade.tools.analytics_common import wait_for_first_write
