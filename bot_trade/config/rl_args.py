@@ -47,7 +47,7 @@ def parse_args():
     ap.add_argument("--symbol", type=str, default="BTCUSDT")
     ap.add_argument("--frame", type=str, default="1m")
     ap.add_argument("--policy", type=str, default="MlpPolicy")
-    ap.add_argument("--device", type=int, default=0)
+    ap.add_argument("--device", type=str, default=None)
     ap.add_argument("--n-envs", type=int, default=0)
     ap.add_argument("--n-steps", type=int, default=4096)
     ap.add_argument("--batch-size", type=int, default=65536)
@@ -139,19 +139,13 @@ def finalize_args(args, is_continuous: Optional[bool] = None):
             torch.set_num_threads(max(1, int(getattr(args, "torch_threads", 1))))
         except Exception:
             pass
-        if torch.cuda.is_available():
-            n = torch.cuda.device_count()
-            idx = max(0, min(int(getattr(args, "device", 0)), n - 1))
-            args.device, args.device_str = idx, f"cuda:{idx}"
-            if getattr(args, "cuda_tf32", False):
-                torch.backends.cuda.matmul.allow_tf32 = True
-                torch.backends.cudnn.allow_tf32 = True
-            if getattr(args, "cudnn_benchmark", False):
-                torch.backends.cudnn.benchmark = True
-        else:
-            args.device_str = "cpu"
+        if getattr(args, "cuda_tf32", False):
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+        if getattr(args, "cudnn_benchmark", False):
+            torch.backends.cudnn.benchmark = True
     except Exception:
-        args.device_str = "cpu"
+        pass
     try:
         total_per_rollout = int(args.n_envs) * int(args.n_steps)
         eff = min(int(getattr(args, "batch_size", 0) or 0), max(total_per_rollout, int(args.n_envs)))
