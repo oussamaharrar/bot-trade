@@ -207,31 +207,15 @@ def build_ppo(args, vec_env, is_discrete: bool):
 
 def build_callbacks(paths, writers, args, update_manager=None, run_id=None, risk_manager=None, dataset_info=None):
     from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
-    from .rl_callbacks import (
-        StepsAndRewardCallback,
-        PeriodicArtifactsCallback,
-    )
+    from .rl_callbacks import StepsAndRewardCallback
     ckpt_cb = CheckpointCallback(
         save_freq=max(1, int(getattr(args, "checkpoint_every", 50_000))),
         save_path=paths["agents"],
         name_prefix="checkpoint",
     )
     step_cb = StepsAndRewardCallback(args.frame, args.symbol, writers, log_every=int(getattr(args, "log_every", 2_000)))
-    art_cb = PeriodicArtifactsCallback(
-        update_manager,
-        args.memory_file,
-        args.kb_file,
-        args.frame,
-        args.symbol,
-        every=int(getattr(args, "artifact_every_steps", 100_000)),
-        run_id=run_id or getattr(args, "run_id", None),
-        args=args,
-        writers=writers,
-        risk_manager=risk_manager,
-        dataset_info=dataset_info,
-    )
 
-    callbacks = [ckpt_cb, step_cb, art_cb]
+    callbacks = [ckpt_cb, step_cb]
 
     try:
         from .rl_callbacks import BenchmarkCallback, StrictDataSanityCallback
