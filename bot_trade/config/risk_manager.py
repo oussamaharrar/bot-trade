@@ -47,17 +47,26 @@ class RiskManager:
                 writer = csv.writer(f)
                 writer.writerow(["reason", "risk_pct", "ema_reward", "drawdown", "freeze_mode"])
         self._last_multi_log = 0.0
+        self._last_neg_log = 0.0
 
     def log_risk_reason(self, reason: str):
         level = logging.INFO
         throttle = 0.0
+        attr = None
         if reason == "Multiple entry signals active":
             level = logging.DEBUG
             throttle = 5.0
+            attr = "_last_multi_log"
+        elif reason == "Negative reward or high drawdown":
+            level = logging.DEBUG
+            throttle = 5.0
+            attr = "_last_neg_log"
+        if throttle > 0.0 and attr:
             now = time.time()
-            if now - self._last_multi_log < throttle:
+            last = getattr(self, attr, 0.0)
+            if now - last < throttle:
                 return
-            self._last_multi_log = now
+            setattr(self, attr, now)
         if self.risk_log_path:
             with open(self.risk_log_path, "a", encoding="utf-8", newline="") as f:
                 writer = csv.writer(f)
