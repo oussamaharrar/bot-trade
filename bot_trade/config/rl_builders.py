@@ -209,7 +209,6 @@ def build_callbacks(paths, writers, args, update_manager=None, run_id=None, risk
     from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
     from .rl_callbacks import (
         StepsAndRewardCallback,
-        BestCheckpointCallback,
         PeriodicArtifactsCallback,
     )
     ckpt_cb = CheckpointCallback(
@@ -217,7 +216,6 @@ def build_callbacks(paths, writers, args, update_manager=None, run_id=None, risk
         save_path=paths["agents"],
         name_prefix="checkpoint",
     )
-    best_cb = BestCheckpointCallback(paths, check_every=max(50_000, int(getattr(args, "n_steps", 2048))))
     step_cb = StepsAndRewardCallback(args.frame, args.symbol, writers, log_every=int(getattr(args, "log_every", 2_000)))
     art_cb = PeriodicArtifactsCallback(
         update_manager,
@@ -233,7 +231,7 @@ def build_callbacks(paths, writers, args, update_manager=None, run_id=None, risk
         dataset_info=dataset_info,
     )
 
-    callbacks = [ckpt_cb, best_cb, step_cb, art_cb]
+    callbacks = [ckpt_cb, step_cb, art_cb]
 
     try:
         from .rl_callbacks import BenchmarkCallback, StrictDataSanityCallback
