@@ -20,6 +20,8 @@ from __future__ import annotations
 import os, sys, time, json, logging, datetime as dt, math
 from typing import Any, Dict, Optional
 
+logger = logging.getLogger(__name__)
+
 from bot_trade.config.rl_paths import dataset_path
 from bot_trade.config.device import normalize_device
 
@@ -125,11 +127,10 @@ def _maybe_print_device_report(args):
     print("===================================")
 
 
-def _spawn_monitor(args):
-    """Launch monitor manager in a detached background process."""
+def _spawn_monitor(root_dir: str, args, run_id: str) -> None:
+    """Launch monitor manager headlessly without blocking training."""
     import subprocess
 
-    root_dir = os.path.abspath(os.path.join(args.results_dir, os.pardir))
     cmd = [
         sys.executable,
         "-m",
@@ -139,27 +140,81 @@ def _spawn_monitor(args):
         "--frame",
         args.frame,
         "--run-id",
-        args.run_id,
+        run_id,
         "--base",
         root_dir,
         "--no-wait",
     ]
+    child_env = os.environ.copy()
+    child_env.setdefault("BOT_TRADE_ROOT", root_dir)
 
-    kwargs = dict(
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        close_fds=True,
-    )
+    success = False
     if os.name == "nt":
-        DETACHED = 0x00000008 | 0x00000010  # CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
-        kwargs["creationflags"] = DETACHED
+        CREATE_NEW_CONSOLE = 0x00000010
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        CREATE_NO_WINDOW = 0x08000000
+
+        def _try_spawn_win(flags, close_fds, note):
+            return subprocess.Popen(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=flags,
+                close_fds=close_fds,
+                env=child_env,
+                shell=False,
+            )
+
+        try:
+            _try_spawn_win(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP, True, "NO_WINDOW+NPG")
+            success = True
+        except Exception as e1:
+            try:
+                _try_spawn_win(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP, False, "DETACHED+NPG")
+                success = True
+            except Exception as e2:
+                try:
+                    pyw = sys.executable.replace("python.exe", "pythonw.exe")
+                    if os.path.exists(pyw):
+                        cmd2 = [pyw] + cmd[1:]
+                        subprocess.Popen(
+                            cmd2,
+                            stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            creationflags=CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP,
+                            close_fds=True,
+                            env=child_env,
+                            shell=False,
+                        )
+                        success = True
+                    else:
+                        raise FileNotFoundError("pythonw.exe not found")
+                except Exception as e3:
+                    try:
+                        _try_spawn_win(CREATE_NEW_CONSOLE | CREATE_NEW_PROCESS_GROUP, True, "NEW_CONSOLE")
+                        success = True
+                    except Exception as e4:
+                        logger.warning(f"monitor launch failed after fallbacks: {e4!r}")
+                        return
     else:
-        kwargs["start_new_session"] = True
-    try:
-        subprocess.Popen(cmd, **kwargs)
-    except Exception as exc:  # pragma: no cover
-        logging.warning("monitor launch failed: %s", exc)
+        try:
+            subprocess.Popen(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=child_env,
+                shell=False,
+                start_new_session=True,
+            )
+            success = True
+        except Exception as exc:  # pragma: no cover
+            logger.warning("monitor launch failed: %s", exc)
+    if success:
+        logger.info("[monitor] spawned (headless)")
 
 
 
@@ -563,7 +618,8 @@ def train_one_file(args, data_file: str) -> bool:
         logging.warning("[MEMORY] initial snapshot failed: %s", e)
 
     if getattr(args, "monitor", True):
-        _spawn_monitor(args)
+        root_dir = os.path.abspath(os.path.join(args.results_dir, os.pardir))
+        _spawn_monitor(root_dir, args, run_id)
 
     # 11) Learn
     status = "finished"
