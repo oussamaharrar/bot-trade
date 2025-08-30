@@ -20,6 +20,8 @@ from __future__ import annotations
 import os, sys, time, json, logging, datetime as dt
 from typing import Any, Dict, Optional
 
+from bot_trade.config.rl_paths import dataset_path
+
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
 # imported inside `main` to keep import-time side effects minimal and to
 # allow `python -m bot_trade.train_rl --help` to run without them.
@@ -164,6 +166,9 @@ def train_one_file(args, data_file: str) -> bool:
         run_id = getattr(args, "run_id", None) or new_run_id(args.symbol, args.frame)
     args.run_id = run_id
 
+    data_file = str(dataset_path(data_file))
+    logging.info("[DATA] dataset path resolved to %s", data_file)
+
     # 1) Paths + logging + state
     paths = build_paths(
         args.symbol,
@@ -254,13 +259,14 @@ def train_one_file(args, data_file: str) -> bool:
             h.update(fh.read(1024 * 1024))
         dataset_info = {
             "path": data_file,
+            "origin": getattr(args, "data_origin", "unknown"),
             "mtime": st.st_mtime,
             "size_bytes": st.st_size,
             "rows": int(getattr(df, "shape", [0])[0]),
             "hash_head": h.hexdigest(),
         }
     except Exception:
-        dataset_info = {"path": data_file}
+        dataset_info = {"path": data_file, "origin": getattr(args, "data_origin", "unknown")}
 
     cur_cfg = cfg.get("curriculum", {})
     if cur_cfg.get("enable"):
@@ -804,6 +810,18 @@ def main():
     args = validate_args(args)
     args = finalize_args(args, is_continuous=None)  # allow builders to decide SDE later
 
+    # Resolve dataset root (CLI > config.yaml > default)
+    cfg = get_config()
+    cfg_paths = cfg.get("project", {}).get("paths", {}) if isinstance(cfg, dict) else {}
+    cfg_root = cfg_paths.get("ready_dir") or cfg_paths.get("data_dir")
+    cli_root = getattr(args, "data_root", None)
+    data_root = cli_root or cfg_root or "data"
+    origin = "cli" if cli_root else ("config" if cfg_root else "default")
+    data_root = str(dataset_path(data_root))
+    args.data_root = data_root
+    args.data_origin = origin
+    logging.info("[DATA] root resolved to %s (origin=%s)", data_root, origin)
+
     mm = MemoryManager()
     mm.log_event("start", {"args": vars(args)})
 
@@ -842,12 +860,15 @@ def main():
         return
 
     # Single-job: pick first matching file
-    files = discover_files(args.frame, args.symbol)
+    files = discover_files(args.frame, args.symbol, data_root=args.data_root)
     if not files:
-        raise FileNotFoundError(f"No data files for {args.symbol}-{args.frame}")
+        raise FileNotFoundError(
+            f"No data files for {args.symbol}-{args.frame} in {args.data_root}"
+        )
     data_file = files[0]
+    logging.info("[DATA] using file %s", data_file)
     train_one_file(args, data_file)
-    mm.snapshot({"data_file": data_file})
+    mm.snapshot({"data_file": data_file, "origin": args.data_origin})
     mm.log_event("end", {"status": "ok"})
 
 

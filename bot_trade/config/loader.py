@@ -21,6 +21,8 @@ import logging
 from dataclasses import dataclass
 from typing import List, Optional, Callable, Dict
 
+from bot_trade.config.rl_paths import dataset_path
+
 import numpy as np
 import pandas as pd
 # module-level logger: avoid propagating noisy logs from workers on Windows
@@ -138,37 +140,38 @@ class LoadOptions:
 
 
 def discover_files(frame: str, symbol: str, data_root: str = "data") -> List[str]:
-    """Return sorted list of files under data_root/<frame>/ matching symbol.
-    Prefer Feather; fall back to Parquet then CSV.
+    """Return sorted list of files under ``data_root/<frame>/`` matching ``symbol``.
+
+    ``data_root`` is resolved via :func:`rl_paths.dataset_path` so that relative
+    inputs are interpreted against project ``<ROOT>``.
     """
-    patt_base = os.path.join(data_root, frame)
-    cands = []
+    base = dataset_path(data_root) / frame
+    cands: List[str] = []
     for ext in ("feather", "parquet", "csv"):
-        pattern1 = os.path.join(patt_base, f"{symbol}-{frame}-*.{ext}")
-        pattern2 = os.path.join(patt_base, f"*{symbol}*.{ext}")
+        pattern1 = str(base / f"{symbol}-{frame}-*.{ext}")
+        pattern2 = str(base / f"*{symbol}*.{ext}")
         cands += glob.glob(pattern1)
         cands += glob.glob(pattern2)
         if cands:
             break  # prefer the first extension found
-    files = sorted(set(cands))
+    files = sorted(set(os.path.abspath(f) for f in cands))
     if not files:
-        raise FileNotFoundError(f"No data files found for {symbol=} {frame=} in {patt_base}")
+        raise FileNotFoundError(f"No data files found for {symbol=} {frame=} in {base}")
     return files
 
 
 def read_one(path: str, opts: LoadOptions = LoadOptions()) -> pd.DataFrame:
+    """Read a single file (feather/parquet/csv) and standardize columns.
+
+    ``path`` is resolved via :func:`rl_paths.dataset_path` so relative inputs
+    are interpreted against project ``<ROOT>``.
     """
-    Read a single file (feather/parquet/csv) and standardize columns.
-    - Preserves all numeric features (numeric_only=True: drops non-numeric like strings)
-    - Adds `datetime` (UTC), `symbol`, `frame` if missing
-    - Downcasts to float32/int32 for memory efficiency
-    - Optionally calls `config.strategy_features.add_strategy_features`
-    """
-    ext = os.path.splitext(path)[1].lower()
+    p = dataset_path(path)
+    ext = p.suffix.lower()
     if ext == ".feather":
         try:
             import pyarrow.feather as paw
-            tbl = paw.read_table(path)
+            tbl = paw.read_table(str(p))
             df = tbl.to_pandas(types_mapper=None)
         except ImportError as e:
             raise ImportError(
@@ -177,19 +180,19 @@ def read_one(path: str, opts: LoadOptions = LoadOptions()) -> pd.DataFrame:
             ) from e
         except Exception:
             # fallback to pandas API
-            df = pd.read_feather(path)
+            df = pd.read_feather(str(p))
     elif ext == ".parquet":
         try:
-            df = pd.read_parquet(path, engine="pyarrow")
+            df = pd.read_parquet(p, engine="pyarrow")
         except ImportError:
             try:
-                df = pd.read_parquet(path, engine="fastparquet")
+                df = pd.read_parquet(p, engine="fastparquet")
             except Exception as e:
                 raise ImportError(
                     "Parquet requires 'pyarrow' أو 'fastparquet'. ثبّت أحدهما."
                 ) from e
     elif ext == ".csv":
-        df = pd.read_csv(path)
+        df = pd.read_csv(p)
     else:
         raise ValueError(f"Unsupported extension: {ext}")
 
@@ -197,7 +200,7 @@ def read_one(path: str, opts: LoadOptions = LoadOptions()) -> pd.DataFrame:
     df = _ensure_datetime(df)
 
     # ثم ثبّت symbol/frame
-    meta = _parse_symbol_frame_from_name(path)
+    meta = _parse_symbol_frame_from_name(str(p))
     symbol = opts.expect_symbol or meta.get("symbol") or (df["symbol"].iloc[0] if "symbol" in df.columns and len(df)>0 else None)
     frame = opts.expect_frame or meta.get("frame") or (df["frame"].iloc[0] if "frame" in df.columns and len(df)>0 else None)
     if symbol is None:
@@ -242,7 +245,7 @@ def read_one(path: str, opts: LoadOptions = LoadOptions()) -> pd.DataFrame:
         if not num_df.empty and num_df.isna().any().any():
             problems["NaN"] = "numeric NaN present"
         if problems:
-            _logger.warning("[SAFE] Potential issues in %s: %s", os.path.basename(path), problems)
+            _logger.warning("[SAFE] Potential issues in %s: %s", p.name, problems)
 
     if df.empty:
         raise ValueError(f"Loaded empty dataframe from {path}")
@@ -255,7 +258,8 @@ def load_dataset(frame: str, symbol: str, data_root: str = "data", opts: LoadOpt
     """Load and concatenate all files for (frame, symbol), sorted by datetime, reset index.
     Guarantees columns: datetime(UTC), symbol, frame, OHLCV, and preserves all numeric features found.
     """
-    files = discover_files(frame=frame, symbol=symbol, data_root=data_root)
+    root = str(dataset_path(data_root))
+    files = discover_files(frame=frame, symbol=symbol, data_root=root)
     parts: List[pd.DataFrame] = []
     for fp in files:
         part = read_one(fp, opts=LoadOptions(**{**opts.__dict__, "expect_symbol": symbol, "expect_frame": frame}))
