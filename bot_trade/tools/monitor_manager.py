@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from bot_trade.config.rl_paths import memory_dir
 
 
 MENU = """
@@ -58,7 +57,7 @@ def read_run_id_from_csv(path: Path) -> Optional[str]:
 
 
 def auto_run_id(symbol: str, frame: str, root: Path) -> Optional[str]:
-    res = root / "results" / symbol / frame / "logs"
+    res = root / "results" / symbol / frame
     candidates = [
         res / "train_log.csv",
         res / "step_log.csv",
@@ -68,6 +67,7 @@ def auto_run_id(symbol: str, frame: str, root: Path) -> Optional[str]:
         rid = read_run_id_from_csv(c)
         if rid:
             return rid
+    from bot_trade.config.rl_paths import memory_dir
     mem_file = memory_dir() / "memory.json"
     if mem_file.exists():
         try:

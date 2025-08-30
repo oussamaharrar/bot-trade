@@ -104,10 +104,10 @@ def parse_args():
     ap.add_argument("--playlist", type=str, default=None)
     ap.add_argument("--mp-start", type=str, default="spawn", choices=["spawn", "forkserver", "fork"])
     ap.add_argument(
-        "--spawn-monitors",
+        "--monitor",
         action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Open interactive Monitor Manager in a separate window",
+        default=True,
+        help="Launch monitor manager during training",
     )
     ap.add_argument("--monitor-refresh", type=int, default=10)
     ap.add_argument("--monitor-images-out", type=str,
