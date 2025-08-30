@@ -1,7 +1,7 @@
 """Minimal Markdown report generator for training sessions."""
 from __future__ import annotations
 
-from tools import bootstrap  # noqa: F401  # Import path fixup when run directly
+from bot_trade.tools import bootstrap  # noqa: F401  # Import path fixup when run directly
 
 import os
 from datetime import datetime
@@ -63,7 +63,7 @@ def generate_summary(paths: Dict[str, str], symbol: str, frame: str) -> str:
 
 if __name__ == "__main__":  # pragma: no cover
     import argparse
-    from config.rl_paths import get_paths
+    from bot_trade.config.rl_paths import get_paths
 
     p = argparse.ArgumentParser()
     p.add_argument("--symbol", required=True)

@@ -7,19 +7,19 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from tools import bootstrap  # noqa: F401  # Import path fixup when run directly
+from bot_trade.tools import bootstrap  # noqa: F401  # Import path fixup when run directly
 
 import json
 
-from tools.analytics_common import (
+from bot_trade.tools.analytics_common import (
     load_reward_df,
     load_trades_df,
     compute_equity,
     wait_for_first_write,
     artifact_paths,
 )
-from tools.paths import results_dir, report_dir, logs_dir
-from tools.runctx import atomic_write_json
+from bot_trade.tools.paths import results_dir, report_dir, logs_dir
+from bot_trade.tools.runctx import atomic_write_json
 
 import numpy as np
 import pandas as pd

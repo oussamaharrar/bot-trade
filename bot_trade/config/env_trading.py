@@ -6,14 +6,14 @@ import numpy as np
 import pandas as pd
 from gymnasium import Env, spaces
 
-from config.risk_manager import RiskManager
-from config.signals.entry_signals import generate_entry_signals
-from config.signals.danger_signals import detect_danger_signals
-from config.signals.freeze_signals import check_freeze_conditions
-from config.signals.recovery_signals import compute_recovery_signals
-from config.strategy_features import add_strategy_features
-from config.signals.reward_signals import RewardSignalTracker
-from ai_core.entry_verifier import smart_entry_guard
+from bot_trade.config.risk_manager import RiskManager
+from bot_trade.config.signals.entry_signals import generate_entry_signals
+from bot_trade.config.signals.danger_signals import detect_danger_signals
+from bot_trade.config.signals.freeze_signals import check_freeze_conditions
+from bot_trade.config.signals.recovery_signals import compute_recovery_signals
+from bot_trade.config.strategy_features import add_strategy_features
+from bot_trade.config.signals.reward_signals import RewardSignalTracker
+from bot_trade.ai_core.entry_verifier import smart_entry_guard
 
 def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -233,7 +233,7 @@ class TradingEnv(Env):
                                             signal_idx=self.ptr, active_signals=active_list, session_id=self.session_id)
             except TypeError:
                 try:
-                    from ai_core.entry_verifier import verify_entry
+                    from bot_trade.ai_core.entry_verifier import verify_entry
                     allowed = verify_entry(self.frame, self.current_symbol, active_list, self._build_df_slice(),
                                            self.ptr, threshold=ai_ctrl.get("simulation_threshold", 0.5), session_id=self.session_id)
                 except Exception:

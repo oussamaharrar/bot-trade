@@ -1,13 +1,13 @@
 """Auto-refreshing CLI ticker showing training KPIs."""
 from __future__ import annotations
 
-from tools import bootstrap  # noqa: F401  # Import path fixup when run directly
+from bot_trade.tools import bootstrap  # noqa: F401  # Import path fixup when run directly
 
 import argparse
 import threading
 from datetime import datetime, timezone
 
-from tools.analytics_common import (
+from bot_trade.tools.analytics_common import (
     load_reward_df,
     load_trades_df,
     load_steps_df,
@@ -23,7 +23,7 @@ from tools.analytics_common import (
     table_to_image,
     wait_for_first_write,
 )
-from tools.paths import results_dir, logs_dir
+from bot_trade.tools.paths import results_dir, logs_dir
 
 try:
     from rich.console import Console

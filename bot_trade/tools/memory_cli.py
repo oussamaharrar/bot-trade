@@ -1,12 +1,12 @@
 """Small CLI to inspect and manage training memory state."""
 from __future__ import annotations
 
-from tools import bootstrap  # noqa: F401  # Import path fixup when run directly
+from bot_trade.tools import bootstrap  # noqa: F401  # Import path fixup when run directly
 
 import argparse
 import json
 
-from tools.memory_manager import MemoryManager
+from bot_trade.tools.memory_manager import MemoryManager
 
 
 def main() -> None:

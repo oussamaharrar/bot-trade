@@ -51,7 +51,7 @@ def main() -> None:
     ap.add_argument('--frame', default='1m')
     args = ap.parse_args()
 
-    from tools.analytics_common import wait_for_first_write
+    from bot_trade.tools.analytics_common import wait_for_first_write
     if not args.no_wait:
         wait_for_first_write(args.base, args.symbol, args.frame)
 

@@ -5,7 +5,7 @@ import numpy as np
 from datetime import datetime
 from stable_baselines3 import PPO, A2C, DQN
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-from config.env_trading import TradingEnv
+from bot_trade.config.env_trading import TradingEnv
 
 # ==== الإعدادات ====
 AGENT_NAME = "ppo_main"   # عدّل الاسم حسب النموذج المطلوب

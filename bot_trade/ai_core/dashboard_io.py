@@ -3,7 +3,7 @@ import json
 import pandas as pd
 from typing import Dict
 
-from config.rl_paths import get_paths
+from bot_trade.config.rl_paths import get_paths
 
 
 def _read_csv(path: str) -> pd.DataFrame:

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict
 
-from tools.paths import (
+from bot_trade.tools.paths import (
     ROOT,
     results_dir,
     report_dir,
