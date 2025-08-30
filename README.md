@@ -30,6 +30,16 @@ python -m bot_trade.train_rl --help
 python -m bot_trade.run_multi_gpu --help
 python -m bot_trade.run_bot --help
 python -m bot_trade.run_rl_agent --help
+
+# CLI
+
+The monitor manager can be invoked either as a module or via the installed
+console script:
+
+```
+python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m
+# or simply
+bot-monitor --symbol BTCUSDT --frame 1m
 ```
 
 ## Collaboration
@@ -72,8 +82,8 @@ variables:
 
 ## Memory and resume
 
-Training runs persist state in `memory/` and can resume automatically. Inspect
-saved state with:
+Training runs persist state in `memory/memory.json` using schema version 2 and
+can resume automatically. Inspect saved state via:
 
 ```bash
 python -m tools.memory_cli --print-latest

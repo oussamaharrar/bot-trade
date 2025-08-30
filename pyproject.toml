@@ -8,5 +8,8 @@ version = "0.0.0"
 requires-python = ">=3.10"
 dependencies = []
 
+[project.scripts]
+bot-monitor = "bot_trade.tools.monitor_manager:main"
+
 [tool.setuptools.packages.find]
 include = ["bot_trade", "bot_trade.*"]
