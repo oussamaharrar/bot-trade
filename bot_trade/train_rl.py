@@ -357,7 +357,7 @@ def train_one_file(args, data_file: str) -> bool:
         except Exception:
             pass
 
-    # 6) Try loading VecNormalize running averages (prefer best)
+    # 6) Try loading VecNormalize running averages
     loaded_vecnorm = False
     if resume_data:
         vp = resume_data.get("global", {}).get("vecnorm_path")
@@ -370,17 +370,14 @@ def train_one_file(args, data_file: str) -> bool:
             except Exception as e:
                 logging.warning("[VECNORM] load failed (snapshot): %s", e)
     if not loaded_vecnorm:
-        for cand in ("vecnorm_best", "vecnorm_pkl"):
-            p = paths.get(cand)
-            if not p:
-                continue
+        cand = "vecnorm_best" if getattr(args, "resume_best", False) else "vecnorm_pkl"
+        p = paths.get(cand)
+        if p and os.path.exists(p):
             try:
-                if os.path.exists(p):
-                    if hasattr(vec_env, "load_running_average"):
-                        vec_env.load_running_average(p)
-                        loaded_vecnorm = True
-                        logging.info("[VECNORM] loaded running average from %s", cand)
-                        break
+                if hasattr(vec_env, "load_running_average"):
+                    vec_env.load_running_average(p)
+                    loaded_vecnorm = True
+                    logging.info("[VECNORM] loaded running average from %s", cand)
             except Exception as e:
                 logging.warning("[VECNORM] load failed (%s): %s", cand, e)
     if not loaded_vecnorm:
@@ -419,11 +416,16 @@ def train_one_file(args, data_file: str) -> bool:
     if resume_data:
         g = resume_data.get("global", {})
         resume_path = g.get("checkpoint_path") or g.get("best_path")
-    elif args.resume_auto:
+    elif getattr(args, "resume_best", False):
         if os.path.exists(paths["model_best_zip"]):
             resume_path = paths["model_best_zip"]
         elif os.path.exists(paths["model_zip"]):
             resume_path = paths["model_zip"]
+    elif getattr(args, "resume_auto", False):
+        if os.path.exists(paths["model_zip"]):
+            resume_path = paths["model_zip"]
+        elif os.path.exists(paths["model_best_zip"]):
+            resume_path = paths["model_best_zip"]
     if resume_path:
         try:
             from stable_baselines3 import PPO
@@ -469,7 +471,11 @@ def train_one_file(args, data_file: str) -> bool:
     if cfg.get("eval", {}).get("enable", True):
         eval_cb = EvalSaveCallback(
             eval_env,
-            target_path=paths["model_best_zip"],
+            latest_path=paths["model_zip"],
+            best_path=paths["model_best_zip"],
+            vecnorm_path=paths["vecnorm_pkl"],
+            vecnorm_best=paths["vecnorm_best"],
+            best_meta=paths["best_meta"],
             n_eval_episodes=int(cfg["eval"].get("n_episodes", 5)),
             eval_freq=int(cfg["eval"].get("eval_freq", int(args.n_steps))),
             deterministic=True,
@@ -688,13 +694,29 @@ def main():
         CallbackList = None
 
     class EvalSaveCallback(EvalCallback):
-        """EvalCallback that mirrors the best model and guards learning rate."""
+        """EvalCallback that maintains latest and best checkpoints."""
 
-        def __init__(self, eval_env, target_path: str, patience: int = 3, lr_factor: float = 0.5, lr_limit: int = 2, **kwargs):
-            save_dir = os.path.dirname(target_path)
+        def __init__(
+            self,
+            eval_env,
+            latest_path: str,
+            best_path: str,
+            vecnorm_path: str,
+            vecnorm_best: str,
+            best_meta: str,
+            patience: int = 3,
+            lr_factor: float = 0.5,
+            lr_limit: int = 2,
+            **kwargs,
+        ):
+            save_dir = os.path.dirname(best_path)
             os.makedirs(save_dir, exist_ok=True)
             super().__init__(eval_env, best_model_save_path=save_dir, **kwargs)
-            self._target_path = target_path
+            self._latest_path = latest_path
+            self._best_path = best_path
+            self._vecnorm_path = vecnorm_path
+            self._vecnorm_best = vecnorm_best
+            self._best_meta = best_meta
             self._last_mtime = 0.0
             self._patience = int(patience)
             self._lr_factor = float(lr_factor)
@@ -703,18 +725,42 @@ def main():
             self._lr_updates = 0
             self._best_metric = -float("inf")
 
+        def _save_vecnorm(self, path: str) -> None:
+            try:
+                vec = self.model.get_vec_normalize_env()
+                if vec is None:
+                    return
+                if hasattr(vec, "save_running_average"):
+                    vec.save_running_average(path)
+                elif hasattr(vec, "save"):
+                    vec.save(path)
+            except Exception:
+                pass
+
         def _on_step(self) -> bool:  # type: ignore[override]
             result = super()._on_step()
-            src = getattr(self, "best_model_path", None)
-            if src and os.path.exists(src):
+            if self.eval_freq and self.n_calls % self.eval_freq == 0:
                 try:
-                    mtime = os.path.getmtime(src)
-                    if mtime > self._last_mtime:
-                        shutil.copy(src, self._target_path)
-                        self._last_mtime = mtime
+                    self.model.save(self._latest_path)
+                    self._save_vecnorm(self._vecnorm_path)
                 except Exception:
                     pass
-            if self.eval_freq and self.n_calls % self.eval_freq == 0:
+                src = getattr(self, "best_model_path", None)
+                if src and os.path.exists(src):
+                    try:
+                        mtime = os.path.getmtime(src)
+                        if mtime > self._last_mtime:
+                            shutil.copy(src, self._best_path)
+                            shutil.copy(self._vecnorm_path, self._vecnorm_best)
+                            meta = {
+                                "metric": float(getattr(self, "best_mean_reward", 0.0)),
+                                "timestamp": dt.datetime.utcnow().isoformat(),
+                            }
+                            with open(self._best_meta, "w", encoding="utf-8") as fh:
+                                json.dump(meta, fh)
+                            self._last_mtime = mtime
+                    except Exception:
+                        pass
                 cur = getattr(self, "last_mean_reward", None)
                 if cur is not None:
                     if cur > self._best_metric:
@@ -728,7 +774,10 @@ def main():
                                     for g in self.model.policy.optimizer.param_groups:
                                         g["lr"] *= self._lr_factor
                                     self._lr_updates += 1
-                                    logging.warning("[Eval] LR reduced to %s", self.model.policy.optimizer.param_groups[0]["lr"])
+                                    logging.warning(
+                                        "[Eval] LR reduced to %s",
+                                        self.model.policy.optimizer.param_groups[0]["lr"],
+                                    )
                                 except Exception:
                                     pass
                                 self._no_improve = 0

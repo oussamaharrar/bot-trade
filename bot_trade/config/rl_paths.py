@@ -109,6 +109,24 @@ def agents_dir(symbol: str, frame: str) -> Path:
     return d
 
 
+def latest_agent(symbol: str, frame: str) -> Path:
+    """Return path to the latest agent checkpoint."""
+
+    return agents_dir(symbol, frame) / "deep_rl.zip"
+
+
+def best_agent(symbol: str, frame: str) -> Path:
+    """Return path to the best agent checkpoint."""
+
+    return agents_dir(symbol, frame) / "deep_rl_best.zip"
+
+
+def vecnorm_path(symbol: str, frame: str) -> Path:
+    """Return path to VecNormalize statistics."""
+
+    return agents_dir(symbol, frame) / "vecnorm.pkl"
+
+
 def results_dir(symbol: str, frame: str) -> Path:
     d = get_root() / "results" / symbol.upper() / str(frame)
     d.mkdir(parents=True, exist_ok=True)
@@ -328,6 +346,9 @@ __all__ = [
     "get_root",
     "memory_dir",
     "agents_dir",
+    "latest_agent",
+    "best_agent",
+    "vecnorm_path",
     "results_dir",
     "reports_dir",
     "logs_dir",

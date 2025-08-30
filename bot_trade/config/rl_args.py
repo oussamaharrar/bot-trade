@@ -67,6 +67,7 @@ def parse_args():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--checkpoint-every", type=int, default=200_000)
     ap.add_argument("--resume-auto", action="store_true")
+    ap.add_argument("--resume-best", action="store_true", help="Resume from best checkpoint if available")
     ap.add_argument("--resume", nargs="?", const="latest", default=None,
                     help="Resume from memory snapshot (optionally specify run_id)")
     ap.add_argument("--progress", action="store_true")
