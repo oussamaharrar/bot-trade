@@ -136,6 +136,17 @@ def main(argv: List[str] | None = None) -> int:
     results_root = Path(args.data_dir) if args.data_dir else root / "results"
 
     run_id = args.run_id
+    if run_id == "latest":
+        base = results_root / args.symbol / args.frame
+        try:
+            run_dirs = sorted(
+                [d for d in base.iterdir() if d.is_dir() and not d.is_symlink()],
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            run_id = run_dirs[0].name if run_dirs else None
+        except Exception:
+            run_id = None
     if not run_id:
         rid, checked = _infer_run_id(args.symbol, args.frame, results_root)
         if not rid:
