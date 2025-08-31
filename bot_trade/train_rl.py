@@ -261,6 +261,8 @@ def _postrun_summary(paths, meta, logger):
     sym = getattr(paths, "symbol", meta.get("symbol", "?"))
     frm = getattr(paths, "frame", meta.get("frame", "?"))
 
+    charts_dir_base = Path(paths["reports"]) if isinstance(paths, dict) else paths.reports
+    charts_dir = charts_dir_base / "charts"
     reward_path_base = Path(paths["results"]) if isinstance(paths, dict) else paths.results
     reward_path = reward_path_base / "reward" / "reward.log"
     agents_base = Path(paths["agents_root"]) if isinstance(paths, dict) else paths.agents_root
@@ -281,6 +283,25 @@ def _postrun_summary(paths, meta, logger):
         charts_dir, images = ((Path(paths["reports"]) if isinstance(paths, dict) else paths.reports) / "charts").resolve(), 0
         logger.warning("[POSTRUN_EXPORT] export_failed err=%s", e)
 
+    # ensure charts exist by invoking exporter synchronously
+    try:  # best effort; avoid crashing summary
+        from bot_trade.tools.monitor_manager import as _mm_main
+        root_dir = getattr(paths, "root", None)
+        if root_dir is None and isinstance(paths, dict):
+            try:
+                root_dir = Path(paths["results"]).parents[3]
+            except Exception:
+                root_dir = None
+        argv = ["--symbol", sym, "--frame", frm, "--run-id", run_id, "--headless"]
+        if root_dir:
+            argv += ["--base", str(root_dir)]
+        _mm_main(argv)
+    except Exception as exc:
+        logger.warning("[POSTRUN] chart export failed: %s", exc)
+
+    pngs = list(charts_dir.glob("*.png")) if charts_dir.exists() else []
+    images = len(pngs)
+main
     reward_lines = 0
     if reward_path.exists():
         with reward_path.open("r", encoding="utf-8", errors="ignore") as fh:
@@ -616,6 +637,9 @@ def train_one_file(args, data_file: str) -> bool:
             from pathlib import Path
             vec_path = paths["vecnorm"] if isinstance(paths, dict) else getattr(paths, "vecnorm", None)
             if vec_path and Path(vec_path).exists():
+
+            if Path(paths["vecnorm"]).exists():
+main
                 args.vecnorm = True
         except Exception:
             pass
