@@ -17,7 +17,7 @@ Notes:
 """
 
 from __future__ import annotations
-import os, sys, time, json, logging, datetime as dt, math, threading
+import os, sys, time, json, logging, datetime as dt, math, threading, pathlib
 from typing import Any, Dict, Optional
 from pathlib import Path
 
@@ -254,7 +254,6 @@ def _logging_monitor_loop(queue, listener):
 
 
 def _postrun_summary(paths, meta):
-    from pathlib import Path
     logger = logging.getLogger()
     run_id = meta.get("run_id") or (
         paths.get("run_id") if isinstance(paths, dict) else getattr(paths, "run_id", "<unknown>")
@@ -267,18 +266,18 @@ def _postrun_summary(paths, meta):
             symbol=sym,
             frame=frm,
             run_id=str(paths["run_id"]) if isinstance(paths, dict) else getattr(paths, "run_id"),
-            base=str(Path.cwd()),
+            base=str(pathlib.Path.cwd()),
             headless=True,
         )
         logger.info("[POSTRUN_EXPORT] charts=%s images=%d", charts_dir, img_count)
     except Exception as e:
-        charts_dir = (Path(paths["reports"]) / "charts").resolve() if isinstance(paths, dict) else (paths.reports / "charts").resolve()
+        charts_dir = (pathlib.Path(paths["reports"]) / "charts").resolve() if isinstance(paths, dict) else (paths.reports / "charts").resolve()
         img_count = 0
         logger.warning("[POSTRUN_EXPORT] export_failed err=%s", e)
 
-    reward_path_base = Path(paths["results"]) if isinstance(paths, dict) else paths.results
+    reward_path_base = pathlib.Path(paths["results"]) if isinstance(paths, dict) else paths.results
     reward_path = reward_path_base / "reward" / "reward.log"
-    agents_base = Path(paths["agents_root"]) if isinstance(paths, dict) else paths.agents_root
+    agents_base = pathlib.Path(paths["agents_root"]) if isinstance(paths, dict) else paths.agents_root
     best = agents_base / "deep_rl_best.zip"
     last = agents_base / "deep_rl_last.zip"
     vecnorm = (paths.get("vecnorm") if isinstance(paths, dict) else getattr(paths, "vecnorm", None))
@@ -288,7 +287,7 @@ def _postrun_summary(paths, meta):
         with reward_path.open("r", encoding="utf-8", errors="ignore") as fh:
             reward_lines = sum(1 for _ in fh if _.strip())
     vec_applied = bool(meta.get("vecnorm_applied", False))
-    vec_snapshot = bool(vecnorm and Path(vecnorm).exists())
+    vec_snapshot = bool(vecnorm and pathlib.Path(vecnorm).exists())
     best_ok = best.exists()
     last_ok = last.exists()
     line = (
@@ -303,10 +302,9 @@ def _postrun_summary(paths, meta):
 
 def _try_apply_vecnorm(venv, cfg, paths, logger):
     from stable_baselines3.common.vec_env import VecNormalize
-    from pathlib import Path
     get = paths.get if isinstance(paths, dict) else lambda k: getattr(paths, k, None)
     candidates = [
-        Path(p) for p in (get("vecnorm_best"), get("vecnorm_last"), get("vecnorm")) if p
+        pathlib.Path(p) for p in (get("vecnorm_best"), get("vecnorm_last"), get("vecnorm")) if p
     ]
     chosen = next((p for p in candidates if p.exists()), None)
     if cfg.vecnorm and chosen:
@@ -325,15 +323,14 @@ def _manage_models(paths: Dict[str, str], summary: Dict[str, Any], run_id: str) 
     Returns the absolute path to the current best model if available.
     """
     import json, shutil, time
-    from pathlib import Path
     from bot_trade.tools.memory_manager import atomic_json, load_memory
     from bot_trade.config.rl_paths import memory_dir
 
-    best_zip = Path(paths["model_best_zip"])
-    model_zip = Path(paths["model_zip"])
-    archive_dir = Path(paths["agents"]) / "archive"
+    best_zip = pathlib.Path(paths["model_best_zip"])
+    model_zip = pathlib.Path(paths["model_zip"])
+    archive_dir = pathlib.Path(paths["agents"]) / "archive"
     archive_dir.mkdir(parents=True, exist_ok=True)
-    best_meta = Path(paths.get("best_meta", best_zip.with_suffix(".json")))
+    best_meta = pathlib.Path(paths.get("best_meta", best_zip.with_suffix(".json")))
 
     def _archive(src: Path) -> None:
         if src.exists():
@@ -341,7 +338,7 @@ def _manage_models(paths: Dict[str, str], summary: Dict[str, Any], run_id: str) 
             shutil.move(str(src), dst)
 
     metric_new = summary.get("metric")
-    candidate = Path(summary.get("best_model_path") or model_zip)
+    candidate = pathlib.Path(summary.get("best_model_path") or model_zip)
 
     best_metric = float("-inf")
     if best_meta.exists():
@@ -404,7 +401,9 @@ def train_one_file(args, data_file: str) -> bool:
 
     data_file = str(dataset_path(data_file))
     logging.info("[DATA] dataset path resolved to %s", data_file)
-    if not Path(data_file).exists():
+    assert hasattr(pathlib, "Path"), "[PATH] pathlib.Path missing"
+    # do NOT reassign `Path` anywhere in this function
+    if not pathlib.Path(data_file).exists():
         print(f"[DATA] missing dataset: {data_file}", file=sys.stderr)
         sys.exit(3)
 
@@ -615,9 +614,8 @@ def train_one_file(args, data_file: str) -> bool:
     # 6) Load VecNormalize statistics
     if getattr(args, "resume_auto", False):
         try:
-            from pathlib import Path
             vec_path = paths["vecnorm"] if isinstance(paths, dict) else getattr(paths, "vecnorm", None)
-            if vec_path and Path(vec_path).exists():
+            if vec_path and pathlib.Path(vec_path).exists():
                 args.vecnorm = True
         except Exception:
             pass
@@ -1183,7 +1181,7 @@ def main():
     try:
         files = discover_files(args.frame, args.symbol, data_root=args.data_root)
     except FileNotFoundError:
-        base = Path(args.data_root) / args.frame
+        base = pathlib.Path(args.data_root) / args.frame
         pats = [
             f"{base}/{args.symbol}-{args.frame}-*.feather",
             f"{base}/{args.symbol}-{args.frame}-*.parquet",
@@ -1194,7 +1192,7 @@ def main():
             print(f"  - {p}", file=sys.stderr)
         raise SystemExit(3)
     if not files:
-        base = Path(args.data_root) / args.frame
+        base = pathlib.Path(args.data_root) / args.frame
         pats = [
             f"{base}/{args.symbol}-{args.frame}-*.feather",
             f"{base}/{args.symbol}-{args.frame}-*.parquet",
