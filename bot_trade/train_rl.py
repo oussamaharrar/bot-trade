@@ -17,7 +17,7 @@ Notes:
 """
 
 from __future__ import annotations
-import os, sys, time, json, logging, datetime as dt, math
+import os, sys, time, json, logging, datetime as dt, math, threading
 from typing import Any, Dict, Optional
 from pathlib import Path
 
@@ -234,6 +234,39 @@ def _spawn_monitor(root_dir: str, args, run_id: str, headless: bool = True):
     return None
 
 
+def _logging_monitor_loop(queue, listener):
+    try:
+        while True:
+            try:
+                record = queue.get(True)
+            except (EOFError, BrokenPipeError):
+                break
+            if record is None:
+                break
+            listener.handle(record)
+    finally:
+        try:
+            listener.stop()
+        except Exception:
+            pass
+
+
+def _try_apply_vecnorm(venv, cfg, paths, logger):
+    from stable_baselines3.common.vec_env import VecNormalize
+    get = (lambda k: paths.get(k)) if hasattr(paths, "get") else (lambda k: getattr(paths, k, None))
+    candidates = [get("vecnorm_best"), get("vecnorm_last"), get("vecnorm")]
+    candidates = [p for p in candidates if p is not None]
+    chosen = next((p for p in candidates if hasattr(p, "exists") and p.exists()), None)
+    if cfg.vecnorm and chosen is not None:
+        venv = VecNormalize.load(chosen, venv)
+        venv.training = True
+        venv.norm_obs = cfg.norm_obs
+        venv.norm_reward = cfg.norm_reward
+        logger.info("[VECNORM] applied=True path=%s", chosen)
+        return venv, True
+    logger.info("[VECNORM] applied=False path=%s", chosen or (candidates[0] if candidates else "<none>"))
+    return venv, False
+
 def _manage_models(paths: Dict[str, str], summary: Dict[str, Any], run_id: str) -> str | None:
     """Handle best/archive model rotation.
 
@@ -332,6 +365,14 @@ def train_one_file(args, data_file: str) -> bool:
         level=getattr(args, "log_level", logging.INFO),
         logs_path=paths["logs"],
     )
+    try:
+        listener.stop()
+    except Exception:
+        pass
+    log_thread = threading.Thread(
+        target=_logging_monitor_loop, args=(log_queue, listener), daemon=True
+    )
+    log_thread.start()
     ensure_state_files(args.memory_file, args.kb_file)
     logging.info("[PATHS] initialized for %s | %s", args.symbol, args.frame)
 
@@ -517,16 +558,7 @@ def train_one_file(args, data_file: str) -> bool:
             pass
 
     # 6) Load VecNormalize statistics
-    vecnorm_applied = False
-    if getattr(args, "vecnorm", True) and Path(paths["vecnorm_pkl"]).exists():
-        from stable_baselines3.common.vec_env import VecNormalize
-
-        vec_env = VecNormalize.load(paths["vecnorm_pkl"], vec_env)
-        vec_env.training = True
-        vec_env.norm_obs = bool(getattr(args, "norm_obs", True))
-        vec_env.norm_reward = bool(getattr(args, "norm_reward", True))
-        vecnorm_applied = True
-    logging.info("[VECNORM] applied=%s path=%s", vecnorm_applied, paths["vecnorm_pkl"])
+    vec_env, vecnorm_applied = _try_apply_vecnorm(vec_env, args, paths, logging)
     paths_obj.write_run_meta({"vecnorm_applied": vecnorm_applied})
 
     # 7) Action space detection
@@ -535,6 +567,7 @@ def train_one_file(args, data_file: str) -> bool:
 
     # 8) Batch clamping
     clamp_batch(args)
+    logging.info("[PPO] effective batch_size=%d", args.batch_size)
 
     # 8b) Evaluation environment
     eval_env_fns = build_env_fns(
@@ -725,7 +758,11 @@ def train_one_file(args, data_file: str) -> bool:
         except Exception:
             pass
         try:
-            listener.stop()
+            log_queue.put(None)
+        except Exception:
+            pass
+        try:
+            log_thread.join()
         except Exception:
             pass
         logging.shutdown()
