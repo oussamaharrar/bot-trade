@@ -17,7 +17,7 @@ Notes:
 """
 
 from __future__ import annotations
-import os, sys, time, json, logging, datetime as dt, math, threading, pathlib
+import os, sys, time, json, logging, datetime as dt, math, threading, pathlib, zipfile
 from typing import Any, Dict, Optional
 from pathlib import Path
 
@@ -47,12 +47,27 @@ def validate_args(args):
 
 
 def clamp_batch(args):
-    """Ensure batch_size respects n_envs*n_steps and is divisible by n_envs."""
+    """Ensure batch_size respects rollout and divides it cleanly."""
     rollout = int(args.n_envs) * int(args.n_steps)
     if int(args.batch_size) > rollout:
-        logging.warning("[PPO] batch_size (%d) > n_envs*n_steps (%d) — سيتم تقليمه", args.batch_size, rollout)
+        logging.warning(
+            "[PPO] batch_size (%d) > n_envs*n_steps (%d) — سيتم تقليمه",
+            args.batch_size,
+            rollout,
+        )
     batch = min(int(args.batch_size), rollout)
     batch = (batch // int(args.n_envs)) * int(args.n_envs)
+    if rollout % batch != 0:
+        import math as _math
+
+        new_bs = _math.gcd(rollout, batch)
+        logging.info(
+            "[PPO] batch_size=%d not divisor of rollout=%d → %d",
+            batch,
+            rollout,
+            new_bs,
+        )
+        batch = max(int(args.n_envs), new_bs)
     args.batch_size = max(int(args.n_envs), int(batch))
     return args
 
@@ -655,9 +670,26 @@ def train_one_file(args, data_file: str) -> bool:
         eval_env_fns,
         n_envs=1,
         start_method=getattr(args, "mp_start", "spawn"),
-        normalize=True,
+        normalize=False,
         seed=getattr(args, "seed", None),
     )
+    vecnorm_path = Path(paths.get("vecnorm_pkl", paths.get("vecnorm", "")))
+    vecnorm_snapshot_exists = vecnorm_path.exists()
+    if getattr(args, "vecnorm", False) or vecnorm_snapshot_exists:
+        from stable_baselines3.common.vec_env import VecNormalize
+
+        if vecnorm_snapshot_exists:
+            eval_env = VecNormalize.load(str(vecnorm_path), eval_env)
+        else:
+            eval_env = VecNormalize(
+                eval_env,
+                training=False,
+                norm_obs=args.norm_obs,
+                norm_reward=args.norm_reward,
+            )
+        eval_env.training = False
+        eval_env.norm_obs = args.norm_obs
+        eval_env.norm_reward = args.norm_reward
 
     # 9) Resume or build fresh model
     model = None
@@ -676,12 +708,36 @@ def train_one_file(args, data_file: str) -> bool:
         elif os.path.exists(paths["model_best_zip"]):
             resume_path = paths["model_best_zip"]
     if resume_path:
+        from stable_baselines3 import PPO
+        best_path = Path(paths.get("model_best_zip", ""))
         try:
-            from stable_baselines3 import PPO
-            model = PPO.load(resume_path, env=vec_env, device=args.device_str)
+            model = PPO.load(
+                resume_path, env=vec_env, device=args.device_str, print_system_info=False
+            )
             logging.info("[RESUME] Loaded model from %s", resume_path)
+        except (zipfile.BadZipFile, ValueError) as e:
+            logging.error(
+                "[RESUME] bad checkpoint at %s: %s — falling back to fresh model",
+                resume_path,
+                e,
+            )
+            if best_path.exists() and Path(resume_path) != best_path:
+                try:
+                    model = PPO.load(
+                        str(best_path),
+                        env=vec_env,
+                        device=args.device_str,
+                        print_system_info=False,
+                    )
+                    logging.info("[RESUME] loaded BEST instead: %s", best_path)
+                except Exception:
+                    logging.warning("[RESUME] best load failed; building fresh model")
+                    model = None
+            else:
+                model = None
         except Exception as e:
             logging.error("[RESUME] failed to load: %s. Building fresh model.", e)
+            model = None
 
     if model is None:
         sched = cfg.get("ppo", {}).get("lr_schedule", "constant")
@@ -1005,6 +1061,7 @@ def main():
     from bot_trade.config.rl_callbacks import CompositeCallback, PeriodicSnapshotsCallback
     from bot_trade.config.env_config import get_config
     from stable_baselines3.common.callbacks import EvalCallback
+    from stable_baselines3.common.vec_env import VecEnvWrapper, sync_envs_normalization
     from bot_trade.tools.run_state import load_state as load_run_state, save_state as save_run_state
     from bot_trade.tools.memory_manager import (
         MemoryManager,
@@ -1072,8 +1129,22 @@ def main():
             self._best_metric = -float("inf")
 
         def _on_step(self) -> bool:  # type: ignore[override]
-            result = super()._on_step()
-            if self.eval_freq and self.n_calls % self.eval_freq == 0:
+            run_eval = self.eval_freq and self.n_calls % self.eval_freq == 0
+            if run_eval:
+                orig_get = self.model.get_vec_normalize_env
+                try:
+                    if isinstance(self.training_env, VecEnvWrapper) and isinstance(self.eval_env, VecEnvWrapper):
+                        try:
+                            sync_envs_normalization(self.training_env, self.eval_env)
+                        except Exception:
+                            logging.warning("[Eval] normalization sync failed", exc_info=True)
+                    self.model.get_vec_normalize_env = lambda *_, **__: None
+                    result = super()._on_step()
+                finally:
+                    self.model.get_vec_normalize_env = orig_get
+            else:
+                result = super()._on_step()
+            if run_eval:
                 try:
                     self.model.save(self._latest_path)
                     _save_vecnorm(self._vecnorm_ref, self._vecnorm_path, logging)
