@@ -252,6 +252,39 @@ def _logging_monitor_loop(queue, listener):
             pass
 
 
+def _postrun_summary(paths, meta, logger):
+    from pathlib import Path
+    run_id = meta.get("run_id") or (paths.get("run_id") if isinstance(paths, dict) else getattr(paths, "run_id", "<unknown>"))
+    sym = getattr(paths, "symbol", meta.get("symbol", "?"))
+    frm = getattr(paths, "frame", meta.get("frame", "?"))
+    charts_dir_base = Path(paths["reports"]) if isinstance(paths, dict) else paths.reports
+    charts_dir = charts_dir_base / "charts"
+    reward_path_base = Path(paths["results"]) if isinstance(paths, dict) else paths.results
+    reward_path = reward_path_base / "reward" / "reward.log"
+    agents_base = Path(paths["agents_root"]) if isinstance(paths, dict) else paths.agents_root
+    best = agents_base / "deep_rl_best.zip"
+    last = agents_base / "deep_rl_last.zip"
+    vecnorm = (paths.get("vecnorm") if isinstance(paths, dict) else getattr(paths, "vecnorm", None))
+    pngs = list(charts_dir.glob("*.png")) if charts_dir.exists() else []
+    images = len(pngs)
+    reward_lines = 0
+    if reward_path.exists():
+        with reward_path.open("r", encoding="utf-8", errors="ignore") as fh:
+            reward_lines = sum(1 for _ in fh if _.strip())
+    vec_applied = bool(meta.get("vecnorm_applied", False))
+    vec_snapshot = bool(vecnorm and Path(vecnorm).exists())
+    best_ok = best.exists()
+    last_ok = last.exists()
+    line = (
+        f"[POSTRUN] run_id={run_id} symbol={sym} frame={frm} "
+        f"charts={charts_dir.resolve()} images={images} reward_lines={reward_lines} "
+        f"vecnorm_applied={str(vec_applied).lower()} vecnorm_snapshot={str(vec_snapshot).lower()} "
+        f"best={str(best_ok).lower()} last={str(last_ok).lower()}"
+    )
+    logger.info(line)
+    print(line, flush=True)
+
+
 def _try_apply_vecnorm(venv, cfg, paths, logger):
     from stable_baselines3.common.vec_env import VecNormalize
     from pathlib import Path
@@ -351,6 +384,7 @@ def train_one_file(args, data_file: str) -> bool:
     else:
         run_id = getattr(args, "run_id", None) or new_run_id(args.symbol, args.frame)
     args.run_id = run_id
+    run_meta = {"run_id": run_id, "symbol": args.symbol, "frame": args.frame}
 
     data_file = str(dataset_path(data_file))
     logging.info("[DATA] dataset path resolved to %s", data_file)
@@ -565,6 +599,7 @@ def train_one_file(args, data_file: str) -> bool:
     # 6) Load VecNormalize statistics
     vec_env, vecnorm_applied = _try_apply_vecnorm(vec_env, args, paths, logging)
     vecnorm_ref = vec_env if getattr(args, "vecnorm", False) else None
+    run_meta["vecnorm_applied"] = vecnorm_applied
     paths_obj.write_run_meta({"vecnorm_applied": vecnorm_applied})
 
     # 7) Action space detection
@@ -767,6 +802,11 @@ def train_one_file(args, data_file: str) -> bool:
             saved_vec = _save_vecnorm(vecnorm_ref, paths["vecnorm"], logging)
             logging.info("[SAVE] model -> %s | vecnorm -> %s", paths["model_zip"], paths["vecnorm"])
             best_path = _manage_models(paths, summary, run_id)
+            run_meta.update({
+                "vecnorm_applied": vecnorm_applied,
+                "best_model_path": best_path,
+                "vecnorm_snapshot_saved": saved_vec,
+            })
             paths_obj.write_run_meta({
                 "vecnorm_applied": vecnorm_applied,
                 "best_model_path": best_path,
@@ -869,6 +909,8 @@ def train_one_file(args, data_file: str) -> bool:
             save_portfolio_state(args.symbol, args.frame, port_state)
     except Exception:
         pass
+
+    _postrun_summary(paths, run_meta, logging.getLogger())
 
     if mon_proc is not None:
         try:
