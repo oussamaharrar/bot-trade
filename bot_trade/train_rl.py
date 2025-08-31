@@ -234,6 +234,64 @@ def _spawn_monitor(root_dir: str, args, run_id: str, headless: bool = True):
     return None
 
 
+def _manage_models(paths: Dict[str, str], summary: Dict[str, Any], run_id: str) -> str | None:
+    """Handle best/archive model rotation.
+
+    Returns the absolute path to the current best model if available.
+    """
+    import json, shutil, time
+    from pathlib import Path
+    from bot_trade.tools.memory_manager import atomic_json, load_memory
+    from bot_trade.config.rl_paths import memory_dir
+
+    best_zip = Path(paths["model_best_zip"])
+    model_zip = Path(paths["model_zip"])
+    archive_dir = Path(paths["agents"]) / "archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    best_meta = Path(paths.get("best_meta", best_zip.with_suffix(".json")))
+
+    def _archive(src: Path) -> None:
+        if src.exists():
+            dst = archive_dir / f"{src.stem}-{int(time.time())}.zip"
+            shutil.move(str(src), dst)
+
+    metric_new = summary.get("metric")
+    candidate = Path(summary.get("best_model_path") or model_zip)
+
+    best_metric = float("-inf")
+    if best_meta.exists():
+        try:
+            best_metric = float(json.loads(best_meta.read_text(encoding="utf-8")).get("metric", float("-inf")))
+        except Exception:
+            pass
+
+    best_path: Path | None = None
+    if metric_new is not None and candidate.exists():
+        if metric_new >= best_metric:
+            if best_zip.exists():
+                _archive(best_zip)
+            shutil.copy(str(candidate), str(best_zip))
+            atomic_json(best_meta, {"metric": metric_new, "run_id": run_id})
+            best_path = best_zip
+        else:
+            _archive(candidate)
+            if best_zip.exists():
+                best_path = best_zip
+    elif candidate.exists():
+        _archive(candidate)
+        if best_zip.exists():
+            best_path = best_zip
+
+    try:
+        mem = load_memory()
+        mem.setdefault("runs", {}).setdefault(run_id, {})["best_model_path"] = str(best_path) if best_path else None
+        atomic_json(memory_dir() / "memory.json", mem)
+    except Exception:
+        pass
+
+    return str(best_path) if best_path else None
+
+
 
 # =============================
 # Single-file training job
@@ -265,12 +323,18 @@ def train_one_file(args, data_file: str) -> bool:
     paths = build_paths(
         args.symbol,
         args.frame,
+        run_id,
         agents_dir=args.agents_dir,
         results_dir=args.results_dir,
         reports_dir=args.reports_dir,
     )
-    paths.update(get_paths(args.symbol, args.frame))
-    log_queue, listener, _ = create_loggers(paths["results"], args.frame, args.symbol, level=getattr(args, "log_level", logging.INFO))
+    log_queue, listener, _ = create_loggers(
+        paths["results"],
+        args.frame,
+        args.symbol,
+        level=getattr(args, "log_level", logging.INFO),
+        logs_path=paths["logs"],
+    )
     ensure_state_files(args.memory_file, args.kb_file)
     logging.info("[PATHS] initialized for %s | %s", args.symbol, args.frame)
 
@@ -455,30 +519,19 @@ def train_one_file(args, data_file: str) -> bool:
         except Exception:
             pass
 
-    # 6) Load VecNormalize statistics when resuming
+    # 6) Load VecNormalize statistics
     vecnorm_applied = False
-    if (
-        resume_data
-        or getattr(args, "resume_auto", False)
-        or getattr(args, "resume_best", False)
-        or getattr(args, "resume", None)
-    ) and getattr(args, "vecnorm", True):
-        vecnorm_path = Path(paths.get("vecnorm_pkl", ""))
-        # TODO: auto-select vecnorm_best by a custom metric.
-        if vecnorm_path.exists():
-            try:
-                if hasattr(vec_env, "load_running_average"):
-                    vec_env.load_running_average(str(vecnorm_path))
-                elif hasattr(vec_env, "load"):
-                    vec_env.load(str(vecnorm_path))  # type: ignore[attr-defined]
-                logging.info("[RESUME] Loaded vecnorm from %s", vecnorm_path)
-                vecnorm_applied = True
-            except Exception as e:
-                logging.warning("[RESUME] vecnorm load failed: %r", e)
-        else:
-            logging.info("[RESUME] vecnorm file missing: %s", vecnorm_path)
-    else:
-        logging.info("[VECNORM] no previous running average found.")
+    if getattr(args, "vecnorm", True):
+        try:
+            from bot_trade.config.rl_builders import load_vecnormalize_safe
+
+            vecnorm_applied = load_vecnormalize_safe(
+                vec_env,
+                paths.get("vecnorm_pkl"),
+                paths.get("vecnorm_best"),
+            )
+        except Exception as e:  # pragma: no cover
+            logging.warning("[VECNORM] load failed: %s", e)
     logging.info("[VECNORM] applied=%s", vecnorm_applied)
 
     # 7) Action space detection
@@ -624,10 +677,11 @@ def train_one_file(args, data_file: str) -> bool:
 
     if getattr(args, "monitor", True):
         root_dir = os.path.abspath(os.path.join(args.results_dir, os.pardir))
-        _spawn_monitor(root_dir, args, run_id, headless=True)
+        _spawn_monitor(root_dir, args, run_id, headless=getattr(args, "headless", False))
 
     # 11) Learn
     status = "finished"
+    best_path: Optional[str] = None
     try:
         logging.info("[🚀] Training for total_steps=%s .", args.total_steps)
         model.learn(total_timesteps=int(args.total_steps), callback=cb, progress_bar=args.progress)
@@ -651,7 +705,7 @@ def train_one_file(args, data_file: str) -> bool:
             now = dt.datetime.utcnow().isoformat()
             file_name = os.path.basename(data_file)
             end_ts = int(getattr(model, "num_timesteps", 0))
-            writers.train.write([run_id, now, args.frame, args.symbol, file_name, end_ts, status])
+            writers.train.write([now, args.frame, args.symbol, file_name, end_ts, status])
             ep = getattr(model, "ep_info_buffer", None)
             if ep and len(ep) > 0:
                 avg = float(np.mean([x.get("r", 0.0) for x in ep]))
@@ -663,6 +717,7 @@ def train_one_file(args, data_file: str) -> bool:
             if hasattr(vec_env, "save_running_average"):
                 vec_env.save_running_average(paths["vecnorm_pkl"])  # last
             logging.info("[SAVE] model -> %s | vecnorm -> %s", paths["model_zip"], paths["vecnorm_pkl"])
+            best_path = _manage_models(paths, summary, run_id)
         except Exception as e:
             logging.error("[SAVE] failed: %s", e)
         try:
@@ -693,6 +748,7 @@ def train_one_file(args, data_file: str) -> bool:
             "global_step": step_now,
             "status": status,
             "vecnorm_applied": vecnorm_applied,
+            "best_model_path": best_path,
         }
         commit_snapshot(run_id, step_now, payload)
     except Exception:
@@ -761,6 +817,7 @@ def train_one_file(args, data_file: str) -> bool:
 # =============================
 
 def main():
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     from bot_trade.config.rl_args import parse_args, finalize_args, build_policy_kwargs
     global torch, np, pd, psutil, subprocess, shutil
 
@@ -793,7 +850,7 @@ def main():
     logging.info("Using device=%s", device_str)
     args.policy_kwargs = build_policy_kwargs(args.net_arch, args.activation, args.ortho_init)
     global build_env_fns, make_vec_env, detect_action_space, build_ppo, build_callbacks
-    global build_paths, ensure_state_files, get_paths
+    global build_paths, ensure_state_files
     global Writers, create_loggers, setup_worker_logging, UpdateManager, CompositeCallback, get_config
     global EvalCallback, EvalSaveCallback, load_run_state, save_run_state, MemoryManager
     global load_memory, commit_snapshot, resume_from_snapshot, new_run_id
@@ -810,7 +867,7 @@ def main():
         build_ppo,
         build_callbacks,
     )
-    from bot_trade.config.rl_paths import build_paths, ensure_state_files, get_paths
+    from bot_trade.config.rl_paths import build_paths, ensure_state_files
     from bot_trade.config.rl_writers import Writers  # Writers bundle (train/eval/...)
     from bot_trade.config.log_setup import create_loggers, setup_worker_logging
     from bot_trade.config.update_manager import UpdateManager

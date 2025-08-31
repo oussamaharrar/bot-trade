@@ -41,7 +41,7 @@ def discover_root(start: Path | None = None) -> Path:
     return start
 
 
-from bot_trade.tools.analytics_common import infer_run_id, wait_for_first_write
+from bot_trade.tools.analytics_common import infer_run_id
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -86,7 +86,7 @@ def main(argv: List[str] | None = None) -> int:
     root = Path(args.base) if args.base else discover_root()
     results_root = Path(args.data_dir) if args.data_dir else root / "results"
     res_dir = results_root / args.symbol / args.frame
-    base_dir = str(results_root)
+    base_dir = str(root)
 
     if not args.run_id:
         rid, checked = infer_run_id(args.symbol, args.frame, results_root, root)
@@ -109,8 +109,29 @@ def main(argv: List[str] | None = None) -> int:
         if not args.no_wait:
             print("Waiting for first log write...", flush=True)
             wait_for_first_write(base_dir, args.symbol, args.frame)
-        logs_dir = res_dir / "logs"
-        report_dir = root / "reports" / args.symbol / args.frame
+        run_dir = None
+        if not args.no_wait:
+            print("Waiting for first log write...", flush=True)
+            import time
+            while run_dir is None:
+                for d in sorted(res_dir.glob(f"rl-{args.run_id}-*")):
+                    if d.is_dir():
+                        candidate = d.name
+                        logs_dir = root / "logs" / args.symbol / args.frame / candidate
+                        if any(logs_dir.glob("*")):
+                            run_dir = candidate
+                            break
+                time.sleep(0.5)
+        if run_dir is None:
+            for d in sorted(res_dir.glob(f"rl-{args.run_id}-*")):
+                if d.is_dir():
+                    run_dir = d.name
+                    break
+        if run_dir is None:
+            print("No run directory found for", args.run_id, file=sys.stderr)
+            return 2
+        logs_dir = root / "logs" / args.symbol / args.frame / run_dir
+        report_dir = root / "reports" / args.symbol / args.frame / run_dir
         report_dir.mkdir(parents=True, exist_ok=True)
 
         import pandas as pd
@@ -119,12 +140,15 @@ def main(argv: List[str] | None = None) -> int:
         import matplotlib.pyplot as plt
         import re, collections
 
+        generated: list[Path] = []
+
         def save_fig(fig, name: str) -> None:
             out = report_dir / f"{name}_{args.run_id}.png"
             tmp = out.with_suffix(out.suffix + ".tmp")
             fig.savefig(tmp, bbox_inches="tight")
             plt.close(fig)
             os.replace(tmp, out)
+            generated.append(out)
             latest = report_dir / f"{name}.png"
             try:
                 if latest.exists() or latest.is_symlink():
@@ -209,7 +233,12 @@ def main(argv: List[str] | None = None) -> int:
         except Exception:
             pass
 
-        print("Headless refresh done.")
+        count = len(generated)
+        abs_path = str(report_dir.resolve())
+        print(f"Exported {count} PNGs to {abs_path}")
+        if count == 0:
+            print("[HINT] No charts generated; check logs existence.", file=sys.stderr)
+            return 2
         return 0
 
     from bot_trade.tools.monitor_launch import launch_new_console

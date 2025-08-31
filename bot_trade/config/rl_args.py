@@ -120,6 +120,11 @@ def parse_args():
     ap.add_argument("--monitor-refresh", type=int, default=10)
     ap.add_argument("--monitor-images-out", type=str,
                     default="exports/{symbol}/{frame}/live")
+    ap.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run training without GUI; monitor exports charts to reports.",
+    )
     args = ap.parse_args()
     level_name = str(getattr(args, "log_level", "INFO")).upper()
     import logging
