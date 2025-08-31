@@ -1,11 +1,9 @@
 import argparse
 import sys
 import time
-import os
 from pathlib import Path
 from typing import Tuple, List
 
-import pandas as pd
 import matplotlib
 
 from bot_trade.config.rl_paths import RunPaths, get_root, ensure_contract
@@ -52,67 +50,49 @@ def _infer_run_id(symbol: str, frame: str, results_root: Path) -> Tuple[str | No
     return None, checked
 
 
-def _export_charts(rp: RunPaths) -> Tuple[Path, int]:
-    import matplotlib.pyplot as plt
+def export_charts_for_run(
+    symbol: str,
+    frame: str,
+    run_id: str,
+    base: str | None = None,
+    headless: bool = True,
+) -> Tuple[Path, int]:
+    """Export charts for a given run and return the directory and image count."""
+    root = Path(base) if base else get_root()
+    rp = RunPaths(symbol, frame, run_id, root=root)
+    ensure_contract(rp.as_dict())
+    if headless:
+        matplotlib.use("Agg", force=True)
+    deadline = time.time() + 30
+    reward_new = rp.results / "reward" / "reward.log"
+    reward_old = rp.logs / "reward.log"
+    step_file = rp.logs / "step_log.csv"
+    while time.time() < deadline:
+        if (
+            reward_new.is_file()
+            and not reward_new.is_symlink()
+            and reward_new.stat().st_size > 0
+        ) or (
+            reward_old.is_file()
+            and not reward_old.is_symlink()
+            and reward_old.stat().st_size > 0
+        ) or (
+            step_file.is_file()
+            and not step_file.is_symlink()
+            and step_file.stat().st_size > 0
+        ):
+            break
+        time.sleep(0.5)
 
     charts_dir = rp.reports / "charts"
     charts_dir.mkdir(parents=True, exist_ok=True)
-    count = 0
-
-    def save_fig(fig, name: str) -> None:
-        nonlocal count
-        out = charts_dir / name
-        tmp = out.with_suffix(out.suffix + ".tmp")
-        fig.savefig(tmp, format="png")
-        plt.close(fig)
-        os.replace(tmp, out)
-        count += 1
-
-    reward_file = rp.results / "reward" / "reward.log"
-    if not reward_file.exists():
-        reward_file = rp.logs / "reward.log"
-    step_file = rp.logs / "step_log.csv"
-    risk_file = rp.logs / "risk_log.csv"
-
     try:
-        df = pd.read_csv(reward_file)
-        if not df.empty:
-            fig, ax = plt.subplots()
-            ax.plot(df.get("global_step", df.index), df.get("reward_total", df.get("reward", 0)))
-            save_fig(fig, "reward_curve.png")
+        from bot_trade.tools.export_charts import export_for_run
+        export_for_run(rp, charts_dir)
     except Exception:
         pass
-
-    try:
-        df = pd.read_csv(step_file)
-        if not df.empty and "metric" in df.columns:
-            for metric in list(df["metric"].unique())[:4]:
-                m = df[df["metric"] == metric]
-                if not m.empty:
-                    fig, ax = plt.subplots()
-                    ax.plot(m["step"], m["value"])
-                    save_fig(fig, f"{metric}.png")
-    except Exception:
-        pass
-
-    try:
-        df = pd.read_csv(risk_file)
-        if not df.empty and "reason" in df.columns:
-            counts = df["reason"].value_counts().head(10)
-            fig, ax = plt.subplots()
-            counts.plot.bar(ax=ax)
-            save_fig(fig, "risk_flags.png")
-    except Exception:
-        pass
-
-    if count < 5:
-        for i in range(count, 5):
-            fig, ax = plt.subplots()
-            ax.text(0.5, 0.5, "n/a", ha="center")
-            ax.set_axis_off()
-            save_fig(fig, f"extra_{i}.png")
-
-    return charts_dir.resolve(), max(count, 5)
+    count = sum(1 for p in charts_dir.glob("*.png") if p.is_file() and not p.is_symlink())
+    return charts_dir.resolve(), count
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +116,17 @@ def main(argv: List[str] | None = None) -> int:
     results_root = Path(args.data_dir) if args.data_dir else root / "results"
 
     run_id = args.run_id
+    if run_id == "latest":
+        base = results_root / args.symbol / args.frame
+        try:
+            run_dirs = sorted(
+                [d for d in base.iterdir() if d.is_dir() and not d.is_symlink()],
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            run_id = run_dirs[0].name if run_dirs else None
+        except Exception:
+            run_id = None
     if not run_id:
         rid, checked = _infer_run_id(args.symbol, args.frame, results_root)
         if not rid:
@@ -144,24 +135,10 @@ def main(argv: List[str] | None = None) -> int:
             return 2
         run_id = rid
 
-    rp = RunPaths(args.symbol, args.frame, run_id, root=root)
-    ensure_contract(rp.as_dict())
-
-    deadline = time.time() + 30
-    reward_new = rp.results / "reward" / "reward.log"
-    reward_old = rp.logs / "reward.log"
-    step_file = rp.logs / "step_log.csv"
-    while time.time() < deadline:
-        if reward_new.exists() and reward_new.stat().st_size > 0:
-            break
-        if reward_old.exists() and reward_old.stat().st_size > 0:
-            break
-        if step_file.exists() and step_file.stat().st_size > 0:
-            break
-        time.sleep(0.5)
-    charts_path, _ = _export_charts(rp)
+    charts_path, count = export_charts_for_run(
+        args.symbol, args.frame, run_id, base=str(root), headless=args.headless
+    )
     abs_dir = charts_path.resolve()
-    count = len(list(abs_dir.glob("*.png")))
     print(f"[CHARTS] dir={abs_dir} images={count}", flush=True)
     if count == 0:
         print("[ERROR] no charts generated", file=sys.stderr)
