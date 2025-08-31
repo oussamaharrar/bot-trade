@@ -254,9 +254,12 @@ def _logging_monitor_loop(queue, listener):
 
 def _postrun_summary(paths, meta, logger):
     from pathlib import Path
-    run_id = meta.get("run_id") or (paths.get("run_id") if isinstance(paths, dict) else getattr(paths, "run_id", "<unknown>"))
+    run_id = meta.get("run_id") or (
+        paths.get("run_id") if isinstance(paths, dict) else getattr(paths, "run_id", "<unknown>")
+    )
     sym = getattr(paths, "symbol", meta.get("symbol", "?"))
     frm = getattr(paths, "frame", meta.get("frame", "?"))
+
     charts_dir_base = Path(paths["reports"]) if isinstance(paths, dict) else paths.reports
     charts_dir = charts_dir_base / "charts"
     reward_path_base = Path(paths["results"]) if isinstance(paths, dict) else paths.results
@@ -265,6 +268,23 @@ def _postrun_summary(paths, meta, logger):
     best = agents_base / "deep_rl_best.zip"
     last = agents_base / "deep_rl_last.zip"
     vecnorm = (paths.get("vecnorm") if isinstance(paths, dict) else getattr(paths, "vecnorm", None))
+
+    # ensure charts exist by invoking exporter synchronously
+    try:  # best effort; avoid crashing summary
+        from bot_trade.tools.monitor_manager import main as _mm_main
+        root_dir = getattr(paths, "root", None)
+        if root_dir is None and isinstance(paths, dict):
+            try:
+                root_dir = Path(paths["results"]).parents[3]
+            except Exception:
+                root_dir = None
+        argv = ["--symbol", sym, "--frame", frm, "--run-id", run_id, "--headless"]
+        if root_dir:
+            argv += ["--base", str(root_dir)]
+        _mm_main(argv)
+    except Exception as exc:
+        logger.warning("[POSTRUN] chart export failed: %s", exc)
+
     pngs = list(charts_dir.glob("*.png")) if charts_dir.exists() else []
     images = len(pngs)
     reward_lines = 0
@@ -597,6 +617,13 @@ def train_one_file(args, data_file: str) -> bool:
             pass
 
     # 6) Load VecNormalize statistics
+    if getattr(args, "resume_auto", False):
+        try:
+            from pathlib import Path
+            if Path(paths["vecnorm"]).exists():
+                args.vecnorm = True
+        except Exception:
+            pass
     vec_env, vecnorm_applied = _try_apply_vecnorm(vec_env, args, paths, logging)
     vecnorm_ref = vec_env if getattr(args, "vecnorm", False) else None
     run_meta["vecnorm_applied"] = vecnorm_applied
