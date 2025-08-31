@@ -614,7 +614,8 @@ def train_one_file(args, data_file: str) -> bool:
     if getattr(args, "resume_auto", False):
         try:
             from pathlib import Path
-            if Path(paths["vecnorm"]).exists():
+            vec_path = paths["vecnorm"] if isinstance(paths, dict) else getattr(paths, "vecnorm", None)
+            if vec_path and Path(vec_path).exists():
                 args.vecnorm = True
         except Exception:
             pass

@@ -52,10 +52,9 @@ def _infer_run_id(symbol: str, frame: str, results_root: Path) -> Tuple[str | No
     return None, checked
 
 
-def _export_charts(rp: RunPaths) -> Tuple[Path, int]:
+def _export_charts(rp: RunPaths, charts_dir: Path) -> Tuple[Path, int]:
     import matplotlib.pyplot as plt
 
-    charts_dir = rp.reports / "charts"
     charts_dir.mkdir(parents=True, exist_ok=True)
     count = 0
 
@@ -132,7 +131,18 @@ def export_charts_for_run(symbol: str, frame: str, run_id: str, base: str | None
            (step_file.exists() and step_file.stat().st_size > 0):
             break
         time.sleep(0.5)
-    return _export_charts(rp)
+
+    charts_dir = rp.reports / "charts"
+    charts_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        from bot_trade.tools.export_charts import export_for_run
+        export_for_run(rp, charts_dir)
+    except Exception:
+        pass
+    count = len(list(charts_dir.glob("*.png")))
+    if count < 5:
+        _, count = _export_charts(rp, charts_dir)
+    return charts_dir.resolve(), count
 
 
 # ---------------------------------------------------------------------------
