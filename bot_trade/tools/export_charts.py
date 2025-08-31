@@ -1,11 +1,20 @@
 """Batch export of analytics charts and tables."""
 from __future__ import annotations
 
+# ``analytics_common`` pulls in ``matplotlib.pyplot`` during import.  To ensure
+# headless operation we must switch the backend *before* that happens.
+import matplotlib
+
+matplotlib.use("Agg")
+
 from bot_trade.tools import bootstrap  # noqa: F401  # Import path fixup when run directly
 
 import argparse
 import json
+import logging
+import os
 from datetime import datetime
+from pathlib import Path
 
 from bot_trade.tools.analytics_common import (
     load_reward_df,
@@ -28,6 +37,15 @@ from bot_trade.tools.paths import results_dir, report_dir
 
 import pandas as pd
 
+
+# ---------------------------------------------------------------------------
+# Column normalisation
+# ---------------------------------------------------------------------------
+
+# ``reward.log`` may expose either ``reward_total`` or ``reward``.  Normalising
+# to a canonical ``reward`` column keeps downstream code simple.
+COL_ALIASES = {"reward_total": "reward", "reward": "reward"}
+
 CHARTS = [
     "reward",
     "equity",
@@ -45,7 +63,8 @@ CHARTS = [
 
 def export(base: str, symbol: str, frame: str, out_dir: str, charts, limit, rollwin, svg: bool = False):
     os.makedirs(out_dir, exist_ok=True)
-    reward = load_reward_df(base, symbol, frame, limit)
+
+    reward = load_reward_df(base, symbol, frame, limit).rename(columns=COL_ALIASES)
     trades = load_trades_df(base, symbol, frame, limit)
     steps = load_steps_df(base, symbol, frame, limit)
     decisions = load_decisions_df(base, symbol, frame, limit)
@@ -61,10 +80,13 @@ def export(base: str, symbol: str, frame: str, out_dir: str, charts, limit, roll
         base, _ = os.path.splitext(path_png)
         return base + '.svg'
 
-    if "reward" in charts and not reward.empty:
-        png = os.path.join(out_dir,'reward.png')
-        plot_line(reward.iloc[:,0].rolling(rollwin).mean(), png, 'reward')
-        if svg: plot_line(reward.iloc[:,0].rolling(rollwin).mean(), maybe_svg(png), 'reward')
+    reward_series = reward["reward"] if "reward" in reward.columns else reward.iloc[:, 0] if not reward.empty else reward
+
+    if "reward" in charts and not reward_series.empty:
+        png = os.path.join(out_dir, "reward.png")
+        plot_line(reward_series.rolling(rollwin).mean(), png, "reward")
+        if svg:
+            plot_line(reward_series.rolling(rollwin).mean(), maybe_svg(png), "reward")
     if "equity" in charts:
         png = os.path.join(out_dir,'equity.png')
         plot_line(eq, png, 'equity')
@@ -102,8 +124,13 @@ def export(base: str, symbol: str, frame: str, out_dir: str, charts, limit, roll
         png = os.path.join(out_dir,'positions_timeline.png')
         plot_line(trades['qty'].cumsum(), png, 'positions')
         if svg: plot_line(trades['qty'].cumsum(), maybe_svg(png), 'positions')
-    with open(os.path.join(out_dir,'index.json'),'w',encoding='utf-8') as fh:
+    with open(os.path.join(out_dir, "index.json"), "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=2)
+
+    pngs = [p for p in Path(out_dir).glob("*.png") if p.is_file() and not p.is_symlink()]
+    count = len(pngs)
+    logging.info("charts dir=%s images=%d", Path(out_dir).resolve(), count)
+    return count
 
 
 def main():

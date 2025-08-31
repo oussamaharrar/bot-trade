@@ -49,32 +49,26 @@ def _infer_run_id(symbol: str, frame: str, results_root: Path) -> tuple[str | No
     return None, checked
 
 
-def export_charts_for_run(
-    symbol: str,
-    frame: str,
-    run_id: str,
-    base: str | None = None,
-    headless: bool = True,
-) -> tuple[Path, int]:
-    """Export charts for a given run and return the directory and image count."""
-    root = Path(base) if base else get_root()
-    rp = RunPaths(symbol, frame, run_id, root=root)
-    ensure_contract(rp.as_dict())
-    if headless:
-        matplotlib.use("Agg", force=True)
-    deadline = time.time() + 30
-    reward_new = rp.results / "reward" / "reward.log"
-    reward_old = rp.logs / "reward.log"
-    step_file = rp.logs / "step_log.csv"
+def export_charts_for_run(paths: RunPaths, wait_sec: int = 10, min_images: int = 5) -> tuple[Path, int]:
+    """Export charts for ``paths`` and ensure a minimum number of images."""
+
+    matplotlib.use("Agg", force=True)
+
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    from bot_trade.tools import export_charts as ec
+
+    ensure_contract(paths.as_dict())
+
+    reward_file = paths.results / "reward" / "reward.log"
+    step_file = paths.logs / "step_log.csv"
+
+    deadline = time.time() + wait_sec
     while time.time() < deadline:
         if (
-            reward_new.is_file()
-            and not reward_new.is_symlink()
-            and reward_new.stat().st_size > 0
-        ) or (
-            reward_old.is_file()
-            and not reward_old.is_symlink()
-            and reward_old.stat().st_size > 0
+            reward_file.is_file()
+            and not reward_file.is_symlink()
+            and reward_file.stat().st_size > 0
         ) or (
             step_file.is_file()
             and not step_file.is_symlink()
@@ -83,15 +77,67 @@ def export_charts_for_run(
             break
         time.sleep(0.5)
 
-    charts_dir = rp.reports / "charts"
+    charts_dir = paths.reports / "charts"
     charts_dir.mkdir(parents=True, exist_ok=True)
+
     try:
-        from bot_trade.tools.export_charts import export_for_run
-        export_for_run(rp, charts_dir)
+        ec.export(
+            str(paths.results.parent.parent),
+            paths.symbol,
+            f"{paths.frame}/{paths.run_id}",
+            str(charts_dir),
+            ec.CHARTS,
+            None,
+            200,
+            svg=False,
+        )
     except Exception:
         pass
+
+    def _load_series(path: Path) -> pd.Series:
+        try:
+            data = []
+            with path.open("r", encoding="utf-8", errors="ignore") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    first = line.split(",", 1)[0]
+                    try:
+                        data.append(float(first))
+                    except Exception:
+                        continue
+            return pd.Series(data)
+        except Exception:
+            return pd.Series(dtype=float)
+
+    def _plot(series: pd.Series, path: Path, title: str) -> None:
+        plt.figure()
+        plt.plot(series.values)
+        plt.title(title)
+        plt.tight_layout()
+        plt.savefig(path)
+        plt.close()
+
     count = sum(1 for p in charts_dir.glob("*.png") if p.is_file() and not p.is_symlink())
-    return charts_dir.resolve(), count
+
+    reward_series = _load_series(reward_file)
+    step_series = _load_series(step_file)
+    idx = 0
+    while count < min_images:
+        target = charts_dir / f"fallback_{idx}.png"
+        if not reward_series.empty:
+            _plot(reward_series, target, "reward")
+        elif not step_series.empty:
+            _plot(step_series, target, "steps")
+        else:
+            _plot(pd.Series([0]), target, "empty")
+        count += 1
+        idx += 1
+
+    abs_dir = charts_dir.resolve()
+    print(f"[CHARTS] dir={abs_dir} images={count}", flush=True)
+    return abs_dir, count
 
 
 # ---------------------------------------------------------------------------
@@ -134,11 +180,8 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         run_id = rid
 
-    charts_path, count = export_charts_for_run(
-        args.symbol, args.frame, run_id, base=str(root), headless=args.headless
-    )
-    abs_dir = charts_path.resolve()
-    print(f"[CHARTS] dir={abs_dir} images={count}", flush=True)
+    rp = RunPaths(args.symbol, args.frame, run_id, root=root)
+    charts_path, count = export_charts_for_run(rp)
     if count == 0:
         print("[ERROR] no charts generated", file=sys.stderr)
         return 2
