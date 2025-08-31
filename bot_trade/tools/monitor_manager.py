@@ -8,7 +8,7 @@ from typing import Tuple, List
 import pandas as pd
 import matplotlib
 
-from bot_trade.config.rl_paths import RunPaths, get_root
+from bot_trade.config.rl_paths import RunPaths, get_root, ensure_contract
 
 
 # ---------------------------------------------------------------------------
@@ -18,26 +18,41 @@ from bot_trade.config.rl_paths import RunPaths, get_root
 def _infer_run_id(symbol: str, frame: str, results_root: Path) -> Tuple[str | None, List[Path]]:
     checked: List[Path] = []
     base = results_root / symbol / frame
-    if not base.exists():
-        return None, checked
-    run_dirs = sorted([d for d in base.iterdir() if d.is_dir()], key=lambda p: p.stat().st_mtime, reverse=True)
-    for d in run_dirs:
-        reward = d / "reward.log"
-        checked.append(reward)
-        if reward.exists() and reward.stat().st_size > 0:
-            return d.name, checked
-    for d in run_dirs:
-        step = d / "step_log.csv"
-        checked.append(step)
-        if step.exists() and step.stat().st_size > 0:
-            return d.name, checked
+    if base.exists():
+        run_dirs = sorted(
+            [d for d in base.iterdir() if d.is_dir() and not d.is_symlink()],
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for d in run_dirs:
+            reward = d / "reward" / "reward.log"
+            checked.append(reward)
+            if reward.exists() and reward.stat().st_size > 0:
+                return d.name, checked
+    # fallback to legacy logs structure
+    logs_base = results_root.parent / "logs" / symbol / frame
+    if logs_base.exists():
+        run_dirs = sorted(
+            [d for d in logs_base.iterdir() if d.is_dir() and not d.is_symlink()],
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for d in run_dirs:
+            reward = d / "reward.log"
+            checked.append(reward)
+            if reward.exists() and reward.stat().st_size > 0:
+                return d.name, checked
+        for d in run_dirs:
+            step = d / "step_log.csv"
+            checked.append(step)
+            if step.exists() and step.stat().st_size > 0:
+                return d.name, checked
     snaps = results_root.parent / "memory" / "snapshots"
     checked.append(snaps)
     return None, checked
 
 
 def _export_charts(rp: RunPaths) -> Tuple[Path, int]:
-    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     charts_dir = rp.reports / "charts"
@@ -48,12 +63,14 @@ def _export_charts(rp: RunPaths) -> Tuple[Path, int]:
         nonlocal count
         out = charts_dir / name
         tmp = out.with_suffix(out.suffix + ".tmp")
-        fig.savefig(tmp)
+        fig.savefig(tmp, format="png")
         plt.close(fig)
         os.replace(tmp, out)
         count += 1
 
-    reward_file = rp.logs / "reward.log"
+    reward_file = rp.results / "reward" / "reward.log"
+    if not reward_file.exists():
+        reward_file = rp.logs / "reward.log"
     step_file = rp.logs / "step_log.csv"
     risk_file = rp.logs / "risk_log.csv"
 
@@ -68,18 +85,13 @@ def _export_charts(rp: RunPaths) -> Tuple[Path, int]:
 
     try:
         df = pd.read_csv(step_file)
-        if not df.empty:
-            metrics = {
-                "loss.png": "value_loss",
-                "variance.png": "policy_entropy",
-                "actions.png": "approx_kl",
-            }
-            for name, metric in metrics.items():
+        if not df.empty and "metric" in df.columns:
+            for metric in list(df["metric"].unique())[:4]:
                 m = df[df["metric"] == metric]
                 if not m.empty:
                     fig, ax = plt.subplots()
                     ax.plot(m["step"], m["value"])
-                    save_fig(fig, name)
+                    save_fig(fig, f"{metric}.png")
     except Exception:
         pass
 
@@ -93,7 +105,14 @@ def _export_charts(rp: RunPaths) -> Tuple[Path, int]:
     except Exception:
         pass
 
-    return charts_dir.resolve(), count
+    if count < 5:
+        for i in range(count, 5):
+            fig, ax = plt.subplots()
+            ax.text(0.5, 0.5, "n/a", ha="center")
+            ax.set_axis_off()
+            save_fig(fig, f"extra_{i}.png")
+
+    return charts_dir.resolve(), max(count, 5)
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +129,9 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("--headless", action="store_true")
     args = ap.parse_args(argv)
 
+    if args.headless:
+        matplotlib.use("Agg")
+
     root = Path(args.base) if args.base else get_root()
     results_root = Path(args.data_dir) if args.data_dir else root / "results"
 
@@ -123,18 +145,25 @@ def main(argv: List[str] | None = None) -> int:
         run_id = rid
 
     rp = RunPaths(args.symbol, args.frame, run_id, root=root)
+    ensure_contract(rp.as_dict())
 
     deadline = time.time() + 30
+    reward_new = rp.results / "reward" / "reward.log"
+    reward_old = rp.logs / "reward.log"
+    step_file = rp.logs / "step_log.csv"
     while time.time() < deadline:
-        if (rp.logs / "reward.log").exists() and (rp.logs / "reward.log").stat().st_size > 0:
+        if reward_new.exists() and reward_new.stat().st_size > 0:
             break
-        if (rp.logs / "step_log.csv").exists() and (rp.logs / "step_log.csv").stat().st_size > 0:
+        if reward_old.exists() and reward_old.stat().st_size > 0:
+            break
+        if step_file.exists() and step_file.stat().st_size > 0:
             break
         time.sleep(0.5)
 
     charts_path, count = _export_charts(rp)
     print(str(charts_path), count)
     if count == 0:
+        print("[ERROR] no charts generated", file=sys.stderr)
         return 2
     return 0
 

@@ -243,7 +243,13 @@ def stop_logging(log_objs: Optional[LogObjects]) -> None:
     if not log_objs:
         return
     try:
+        log_objs.queue.put_nowait(None)
+    except Exception:
+        pass
+    try:
         log_objs.listener.stop()
+    except (EOFError, BrokenPipeError):
+        pass
     except Exception:
         pass
     logging.shutdown()
