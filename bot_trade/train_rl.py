@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 from bot_trade.config.rl_paths import dataset_path, RunPaths, ensure_contract
 from bot_trade.config.device import normalize_device
 from bot_trade.config.rl_callbacks import _save_vecnorm
+from bot_trade.tools.monitor_manager import export_charts_for_run
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
 # imported inside `main` to keep import-time side effects minimal and to
@@ -254,19 +255,32 @@ def _logging_monitor_loop(queue, listener):
 
 def _postrun_summary(paths, meta, logger):
     from pathlib import Path
-    run_id = meta.get("run_id") or (paths.get("run_id") if isinstance(paths, dict) else getattr(paths, "run_id", "<unknown>"))
+    run_id = meta.get("run_id") or (
+        paths.get("run_id") if isinstance(paths, dict) else getattr(paths, "run_id", "<unknown>")
+    )
     sym = getattr(paths, "symbol", meta.get("symbol", "?"))
     frm = getattr(paths, "frame", meta.get("frame", "?"))
-    charts_dir_base = Path(paths["reports"]) if isinstance(paths, dict) else paths.reports
-    charts_dir = charts_dir_base / "charts"
+
     reward_path_base = Path(paths["results"]) if isinstance(paths, dict) else paths.results
     reward_path = reward_path_base / "reward" / "reward.log"
     agents_base = Path(paths["agents_root"]) if isinstance(paths, dict) else paths.agents_root
     best = agents_base / "deep_rl_best.zip"
     last = agents_base / "deep_rl_last.zip"
     vecnorm = (paths.get("vecnorm") if isinstance(paths, dict) else getattr(paths, "vecnorm", None))
-    pngs = list(charts_dir.glob("*.png")) if charts_dir.exists() else []
-    images = len(pngs)
+
+    try:
+        charts_dir, images = export_charts_for_run(
+            symbol=sym,
+            frame=frm,
+            run_id=run_id,
+            base=str(Path.cwd()),
+            headless=True,
+        )
+        logger.info("[POSTRUN_EXPORT] charts=%s images=%d", charts_dir, images)
+    except Exception as e:
+        charts_dir, images = ((Path(paths["reports"]) if isinstance(paths, dict) else paths.reports) / "charts").resolve(), 0
+        logger.warning("[POSTRUN_EXPORT] export_failed err=%s", e)
+
     reward_lines = 0
     if reward_path.exists():
         with reward_path.open("r", encoding="utf-8", errors="ignore") as fh:
@@ -597,6 +611,13 @@ def train_one_file(args, data_file: str) -> bool:
             pass
 
     # 6) Load VecNormalize statistics
+    if getattr(args, "resume_auto", False):
+        try:
+            from pathlib import Path
+            if Path(paths["vecnorm"]).exists():
+                args.vecnorm = True
+        except Exception:
+            pass
     vec_env, vecnorm_applied = _try_apply_vecnorm(vec_env, args, paths, logging)
     vecnorm_ref = vec_env if getattr(args, "vecnorm", False) else None
     run_meta["vecnorm_applied"] = vecnorm_applied

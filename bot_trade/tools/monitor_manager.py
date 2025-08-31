@@ -115,6 +115,26 @@ def _export_charts(rp: RunPaths) -> Tuple[Path, int]:
     return charts_dir.resolve(), max(count, 5)
 
 
+def export_charts_for_run(symbol: str, frame: str, run_id: str, base: str | None = None, headless: bool = True) -> Tuple[Path, int]:
+    """Export charts for a given run and return the directory and image count."""
+    root = Path(base) if base else get_root()
+    rp = RunPaths(symbol, frame, run_id, root=root)
+    ensure_contract(rp.as_dict())
+    if headless:
+        matplotlib.use("Agg", force=True)
+    deadline = time.time() + 30
+    reward_new = rp.results / "reward" / "reward.log"
+    reward_old = rp.logs / "reward.log"
+    step_file = rp.logs / "step_log.csv"
+    while time.time() < deadline:
+        if (reward_new.exists() and reward_new.stat().st_size > 0) or \
+           (reward_old.exists() and reward_old.stat().st_size > 0) or \
+           (step_file.exists() and step_file.stat().st_size > 0):
+            break
+        time.sleep(0.5)
+    return _export_charts(rp)
+
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -136,6 +156,17 @@ def main(argv: List[str] | None = None) -> int:
     results_root = Path(args.data_dir) if args.data_dir else root / "results"
 
     run_id = args.run_id
+    if run_id == "latest":
+        base = results_root / args.symbol / args.frame
+        try:
+            run_dirs = sorted(
+                [d for d in base.iterdir() if d.is_dir() and not d.is_symlink()],
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            run_id = run_dirs[0].name if run_dirs else None
+        except Exception:
+            run_id = None
     if not run_id:
         rid, checked = _infer_run_id(args.symbol, args.frame, results_root)
         if not rid:
@@ -144,24 +175,10 @@ def main(argv: List[str] | None = None) -> int:
             return 2
         run_id = rid
 
-    rp = RunPaths(args.symbol, args.frame, run_id, root=root)
-    ensure_contract(rp.as_dict())
-
-    deadline = time.time() + 30
-    reward_new = rp.results / "reward" / "reward.log"
-    reward_old = rp.logs / "reward.log"
-    step_file = rp.logs / "step_log.csv"
-    while time.time() < deadline:
-        if reward_new.exists() and reward_new.stat().st_size > 0:
-            break
-        if reward_old.exists() and reward_old.stat().st_size > 0:
-            break
-        if step_file.exists() and step_file.stat().st_size > 0:
-            break
-        time.sleep(0.5)
-    charts_path, _ = _export_charts(rp)
+    charts_path, count = export_charts_for_run(
+        args.symbol, args.frame, run_id, base=str(root), headless=args.headless
+    )
     abs_dir = charts_path.resolve()
-    count = len(list(abs_dir.glob("*.png")))
     print(f"[CHARTS] dir={abs_dir} images={count}", flush=True)
     if count == 0:
         print("[ERROR] no charts generated", file=sys.stderr)
