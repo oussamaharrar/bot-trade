@@ -24,6 +24,11 @@ from typing import Optional, Dict, Any
 
 from stable_baselines3.common.callbacks import BaseCallback
 from bot_trade.tools.memory_manager import commit_snapshot
+from pathlib import Path
+import csv
+import shutil
+
+from bot_trade.config.rl_paths import stamp_name, _atomic_replace
 
 # Optional dependencies — كلّها اختيارية
 try:  # TensorBoard
@@ -206,21 +211,52 @@ class BestCheckpointCallback(BaseCallback):
         if avg <= self.best:
             return True
 
-        # save best
         try:
+            prev_metric = self.best
             self.best = float(avg)
-            self.model.save(self.paths["model_best_zip"])  # model.zip
-            saved = _save_vecnorm(
-                self.vecnorm_ref,
-                self.paths.get("vecnorm", self.paths.get("vecnorm_best", "vecnorm.pkl")),
-                logging,
-            )
-            meta = {"step": step, "ep_rew_mean": float(avg)}
+            run_id = self.paths.get("run_id", "run")
+            ts = dt.datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+            best_model = Path(self.paths["best_model"])
+            archive_best = Path(self.paths["archive_best_dir"])
+            archive_best.mkdir(parents=True, exist_ok=True)
+            archived_prev: Path | None = None
+            if best_model.exists():
+                archived_prev = archive_best / stamp_name(best_model.stem, run_id, ts, best_model.suffix)
+                shutil.copy2(best_model, archived_prev)
+                vec_best = Path(self.paths.get("vecnorm_best"))
+                vec_arch: Path | None = None
+                if vec_best.exists():
+                    vec_arch = archive_best / stamp_name(vec_best.stem, run_id, ts, vec_best.suffix)
+                    shutil.copy2(vec_best, vec_arch)
+                index = archive_best / "index.csv"
+                exists = index.exists()
+                with open(index, "a", encoding="utf-8", newline="") as fh:
+                    w = csv.writer(fh)
+                    if not exists:
+                        w.writerow(["ts", "run_id", "metric", "model_path", "vecnorm_path"])
+                    w.writerow([ts, run_id, prev_metric, str(archived_prev), str(vec_arch) if vec_arch else ""])
+            candidate = Path(self.paths["last_model"])
+            candidate.parent.mkdir(parents=True, exist_ok=True)
+            self.model.save(candidate)
+            _atomic_replace(candidate, best_model)
+            saved = _save_vecnorm(self.vecnorm_ref, self.paths["vecnorm"], logging)
             if saved:
-                meta["vecnorm_snapshot"] = True
+                _atomic_replace(self.paths["vecnorm"], self.paths["vecnorm_best"])
+            meta = {
+                "run_id": run_id,
+                "ts": dt.datetime.utcnow().isoformat(),
+                "metric": {"name": "ep_rew_mean", "value": float(avg)},
+                "model": str(best_model.resolve()),
+                "vecnorm": str(Path(self.paths["vecnorm_best"]).resolve()) if Path(self.paths["vecnorm_best"]).exists() else None,
+            }
             with open(self.paths["best_meta"], "w", encoding="utf-8") as f:
                 json.dump(meta, f, indent=2, ensure_ascii=False)
-            logging.info("[BEST] step=%d | ep_rew_mean=%.6f | saved", step, avg)
+            logging.info(
+                "[BEST] promoted run_id=%s metric=%.6f archived_prev_best=%s",
+                run_id,
+                avg,
+                archived_prev,
+            )
         except Exception as e:
             logging.error("[BEST] save failed: %s", e)
         return True

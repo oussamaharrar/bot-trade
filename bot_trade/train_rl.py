@@ -337,51 +337,89 @@ def _manage_models(paths: Dict[str, str], summary: Dict[str, Any], run_id: str) 
 
     Returns the absolute path to the current best model if available.
     """
-    import json, shutil, time
+    import json, shutil, csv, datetime as dt
     from bot_trade.tools.memory_manager import atomic_json, load_memory
-    from bot_trade.config.rl_paths import memory_dir
+    from bot_trade.config.rl_paths import memory_dir, _atomic_replace, stamp_name
 
-    best_zip = pathlib.Path(paths["model_best_zip"])
-    model_zip = pathlib.Path(paths["model_zip"])
-    archive_dir = pathlib.Path(paths["agents"]) / "archive"
-    archive_dir.mkdir(parents=True, exist_ok=True)
-    best_meta = pathlib.Path(paths.get("best_meta", best_zip.with_suffix(".json")))
+    best_model = pathlib.Path(paths["best_model"])
+    last_model = pathlib.Path(paths["last_model"])
+    archive_dir = pathlib.Path(paths["archive_dir"])
+    archive_best_dir = pathlib.Path(paths["archive_best_dir"])
+    vecnorm = pathlib.Path(paths["vecnorm"])
+    vecnorm_best = pathlib.Path(paths["vecnorm_best"])
+    best_meta = pathlib.Path(paths["best_meta"])
 
-    def _archive(src: Path) -> None:
-        if src.exists():
-            dst = archive_dir / f"{src.stem}-{int(time.time())}.zip"
-            shutil.move(str(src), dst)
+    for d in (archive_dir, archive_best_dir):
+        d.mkdir(parents=True, exist_ok=True)
 
     metric_new = summary.get("metric")
-    candidate = pathlib.Path(summary.get("best_model_path") or model_zip)
+    candidate = pathlib.Path(summary.get("best_model_path") or last_model)
+    ts = dt.datetime.utcnow().strftime("%Y%m%d-%H%M%S")
 
     best_metric = float("-inf")
     if best_meta.exists():
         try:
-            best_metric = float(json.loads(best_meta.read_text(encoding="utf-8")).get("metric", float("-inf")))
+            data = json.loads(best_meta.read_text(encoding="utf-8"))
+            metric_obj = data.get("metric")
+            if isinstance(metric_obj, dict):
+                best_metric = float(metric_obj.get("value", float("-inf")))
+            else:
+                best_metric = float(metric_obj)
         except Exception:
             pass
 
     best_path: Path | None = None
-    if metric_new is not None and candidate.exists():
-        if metric_new >= best_metric:
-            if best_zip.exists():
-                _archive(best_zip)
-            shutil.copy(str(candidate), str(best_zip))
-            atomic_json(best_meta, {"metric": metric_new, "run_id": run_id})
-            best_path = best_zip
-        else:
-            _archive(candidate)
-            if best_zip.exists():
-                best_path = best_zip
-    elif candidate.exists():
-        _archive(candidate)
-        if best_zip.exists():
-            best_path = best_zip
+    if metric_new is not None and candidate.exists() and (
+        metric_new >= best_metric or not best_model.exists()
+    ):
+        archived_prev: Path | None = None
+        if best_model.exists():
+            archived_prev = archive_best_dir / stamp_name(
+                best_model.stem, run_id, ts, best_model.suffix
+            )
+            shutil.copy2(best_model, archived_prev)
+            vec_arch: Path | None = None
+            if vecnorm_best.exists():
+                vec_arch = archive_best_dir / stamp_name(
+                    vecnorm_best.stem, run_id, ts, vecnorm_best.suffix
+                )
+                shutil.copy2(vecnorm_best, vec_arch)
+            index = archive_best_dir / "index.csv"
+            exists = index.exists()
+            with open(index, "a", encoding="utf-8", newline="") as fh:
+                w = csv.writer(fh)
+                if not exists:
+                    w.writerow(["ts", "run_id", "metric", "model_path", "vecnorm_path"])
+                w.writerow([ts, run_id, best_metric, str(archived_prev), str(vec_arch) if vec_arch else ""])
+        _atomic_replace(candidate, best_model)
+        if vecnorm.exists():
+            _atomic_replace(vecnorm, vecnorm_best)
+        meta = {
+            "run_id": run_id,
+            "ts": dt.datetime.utcnow().isoformat(),
+            "metric": {"name": "metric", "value": float(metric_new)},
+            "model": str(best_model.resolve()),
+            "vecnorm": str(vecnorm_best.resolve()) if vecnorm_best.exists() else None,
+        }
+        with open(best_meta, "w", encoding="utf-8") as fh:
+            json.dump(meta, fh, ensure_ascii=False, indent=2)
+        logging.info("[BEST] promoted -> %s; archived_prev_best -> %s", best_model, archived_prev)
+        best_path = best_model
+    else:
+        if candidate.exists():
+            archived = archive_dir / stamp_name(
+                candidate.stem, run_id, ts, candidate.suffix
+            )
+            shutil.copy2(candidate, archived)
+            logging.info("[ARCHIVE] stored -> %s", archived)
+        if best_model.exists():
+            best_path = best_model
 
     try:
         mem = load_memory()
-        mem.setdefault("runs", {}).setdefault(run_id, {})["best_model_path"] = str(best_path) if best_path else None
+        run_mem = mem.setdefault("runs", {}).setdefault(run_id, {})
+        run_mem["best_model_path"] = str(best_path) if best_path else None
+        run_mem["best_model"] = str(best_path) if best_path else None
         atomic_json(memory_dir() / "memory.json", mem)
     except Exception:
         pass
@@ -424,6 +462,7 @@ def train_one_file(args, data_file: str) -> bool:
 
     # 1) Paths + logging + state
     paths_obj = RunPaths(args.symbol, args.frame, run_id)
+    paths_obj.ensure()
     paths = paths_obj.as_dict()
     ensure_contract(paths)
     log_queue, listener, _ = create_loggers(
@@ -883,13 +922,17 @@ def train_one_file(args, data_file: str) -> bool:
             run_meta.update({
                 "vecnorm_applied": vecnorm_applied,
                 "best_model_path": best_path,
+                "best_model": best_path,
                 "vecnorm_snapshot_saved": saved_vec,
             })
             paths_obj.write_run_meta({
                 "vecnorm_applied": vecnorm_applied,
                 "best_model_path": best_path,
+                "best_model": best_path,
                 "vecnorm_snapshot_saved": saved_vec,
             })
+            summary["best_model_path"] = best_path
+            summary["best_model"] = best_path
             try:
                 meta = {"step": end_ts}
                 if saved_vec:
@@ -933,6 +976,7 @@ def train_one_file(args, data_file: str) -> bool:
             "status": status,
             "vecnorm_applied": vecnorm_applied,
             "best_model_path": best_path,
+            "best_model": best_path,
             "vecnorm_snapshot_saved": saved_vec,
         }
         commit_snapshot(run_id, step_now, payload)

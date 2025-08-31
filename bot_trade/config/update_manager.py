@@ -25,7 +25,7 @@ import os
 import shutil
 from pathlib import Path
 
-from bot_trade.config.rl_paths import ensure_utf8, memory_dir
+from bot_trade.config.rl_paths import ensure_utf8, memory_dir, _atomic_replace
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -158,18 +158,22 @@ class UpdateManager:
 
         if not src_path:
             return
-        dst = self.paths.get("best_zip") or self.paths.get("model_best_zip")
+        dst = (
+            self.paths.get("best_model")
+            or self.paths.get("best_zip")
+            or self.paths.get("model_best_zip")
+        )
         if not dst:
             return
         if not os.path.exists(src_path):
             return
         os.makedirs(os.path.dirname(dst), exist_ok=True)
-        shutil.copy2(src_path, dst)
+        _atomic_replace(src_path, dst)
         logging.info("[UpdateManager] saved best model to %s", dst)
 
         # Record metadata for easy inspection
         meta_path = self.paths.get("best_meta") or os.path.join(os.path.dirname(dst), "best_ckpt.json")
-        meta = {"ts": _utcnow(), "path": dst}
+        meta = {"ts": _utcnow(), "path": os.path.abspath(dst)}
         if metric is not None:
             meta["metric"] = float(metric)
         try:
