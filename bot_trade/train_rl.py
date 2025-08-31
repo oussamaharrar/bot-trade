@@ -277,13 +277,8 @@ def _postrun_summary(paths, meta):
     frm = getattr(paths, "frame", meta.get("frame", "?"))
 
     try:
-        charts_dir, img_count = export_charts_for_run(
-            symbol=sym,
-            frame=frm,
-            run_id=str(paths["run_id"]) if isinstance(paths, dict) else getattr(paths, "run_id"),
-            base=str(pathlib.Path.cwd()),
-            headless=True,
-        )
+        rp = paths if isinstance(paths, RunPaths) else RunPaths(sym, frm, str(run_id))
+        charts_dir, img_count = export_charts_for_run(rp)
         logger.info("[POSTRUN_EXPORT] charts=%s images=%d", charts_dir, img_count)
     except Exception as e:
         charts_dir = (pathlib.Path(paths["reports"]) / "charts").resolve() if isinstance(paths, dict) else (paths.reports / "charts").resolve()
@@ -292,7 +287,7 @@ def _postrun_summary(paths, meta):
 
     reward_path_base = pathlib.Path(paths["results"]) if isinstance(paths, dict) else paths.results
     reward_path = reward_path_base / "reward" / "reward.log"
-    agents_base = pathlib.Path(paths["agents_root"]) if isinstance(paths, dict) else paths.agents_root
+    agents_base = pathlib.Path(paths["agents_root"]) if isinstance(paths, dict) else paths.agents
     best = agents_base / "deep_rl_best.zip"
     last = agents_base / "deep_rl_last.zip"
     vecnorm = (paths.get("vecnorm") if isinstance(paths, dict) else getattr(paths, "vecnorm", None))
