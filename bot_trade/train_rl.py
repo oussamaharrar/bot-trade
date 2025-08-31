@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 from bot_trade.config.rl_paths import dataset_path, RunPaths, ensure_contract
 from bot_trade.config.device import normalize_device
+from bot_trade.config.rl_callbacks import _save_vecnorm
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
 # imported inside `main` to keep import-time side effects minimal and to
@@ -494,6 +495,7 @@ def train_one_file(args, data_file: str) -> bool:
         normalize=True,
         seed=getattr(args, "seed", None),
     )
+    vecnorm_ref = vec_env if getattr(args, "vecnorm", False) else None
 
     # expose risk manager for snapshots/resume
     risk_manager = None
@@ -562,6 +564,7 @@ def train_one_file(args, data_file: str) -> bool:
 
     # 6) Load VecNormalize statistics
     vec_env, vecnorm_applied = _try_apply_vecnorm(vec_env, args, paths, logging)
+    vecnorm_ref = vec_env if getattr(args, "vecnorm", False) else None
     paths_obj.write_run_meta({"vecnorm_applied": vecnorm_applied})
 
     # 7) Action space detection
@@ -647,8 +650,14 @@ def train_one_file(args, data_file: str) -> bool:
 
     # 10) Callbacks (base from rl_builders + optional extras)
     base_callbacks = build_callbacks(
-        paths, writers, args, update_manager,
-        run_id=run_id, risk_manager=risk_manager, dataset_info=dataset_info,
+        paths,
+        writers,
+        args,
+        update_manager,
+        run_id=run_id,
+        risk_manager=risk_manager,
+        dataset_info=dataset_info,
+        vecnorm_ref=vecnorm_ref,
     )
     cb = base_callbacks
     extras = []
@@ -675,6 +684,7 @@ def train_one_file(args, data_file: str) -> bool:
             vecnorm_path=paths["vecnorm_pkl"],
             vecnorm_best=paths["vecnorm_best"],
             best_meta=paths["best_meta"],
+            vecnorm_ref=vecnorm_ref,
             n_eval_episodes=int(cfg["eval"].get("n_episodes", 5)),
             eval_freq=int(cfg["eval"].get("eval_freq", int(args.n_steps))),
             deterministic=True,
@@ -750,17 +760,24 @@ def train_one_file(args, data_file: str) -> bool:
                 writers.eval.write([now, args.frame, args.symbol, "ep_rew_mean", avg])
         except Exception:
             pass
+        saved_vec = False
         try:
             end_ts = int(getattr(model, "num_timesteps", 0))
             model.save(paths["model_zip"])  # final
-            if hasattr(vec_env, "save_running_average"):
-                vec_env.save_running_average(paths["vecnorm_pkl"])  # last
-            logging.info("[SAVE] model -> %s | vecnorm -> %s", paths["model_zip"], paths["vecnorm_pkl"])
+            saved_vec = _save_vecnorm(vecnorm_ref, paths["vecnorm"], logging)
+            logging.info("[SAVE] model -> %s | vecnorm -> %s", paths["model_zip"], paths["vecnorm"])
             best_path = _manage_models(paths, summary, run_id)
-            paths_obj.write_run_meta({"vecnorm_applied": vecnorm_applied, "best_model_path": best_path})
+            paths_obj.write_run_meta({
+                "vecnorm_applied": vecnorm_applied,
+                "best_model_path": best_path,
+                "vecnorm_snapshot_saved": saved_vec,
+            })
             try:
+                meta = {"step": end_ts}
+                if saved_vec:
+                    meta["vecnorm_snapshot"] = True
                 with open(paths["last_meta"], "w", encoding="utf-8") as fh:
-                    json.dump({"step": end_ts}, fh, ensure_ascii=False, indent=2)
+                    json.dump(meta, fh, ensure_ascii=False, indent=2)
             except Exception:
                 pass
         except Exception as e:
@@ -798,6 +815,7 @@ def train_one_file(args, data_file: str) -> bool:
             "status": status,
             "vecnorm_applied": vecnorm_applied,
             "best_model_path": best_path,
+            "vecnorm_snapshot_saved": saved_vec,
         }
         commit_snapshot(run_id, step_now, payload)
     except Exception:
@@ -966,6 +984,7 @@ def main():
             vecnorm_path: str,
             vecnorm_best: str,
             best_meta: str,
+            vecnorm_ref=None,
             patience: int = 3,
             lr_factor: float = 0.5,
             lr_limit: int = 2,
@@ -979,6 +998,7 @@ def main():
             self._vecnorm_path = vecnorm_path
             self._vecnorm_best = vecnorm_best
             self._best_meta = best_meta
+            self._vecnorm_ref = vecnorm_ref
             self._last_mtime = 0.0
             self._patience = int(patience)
             self._lr_factor = float(lr_factor)
@@ -987,24 +1007,12 @@ def main():
             self._lr_updates = 0
             self._best_metric = -float("inf")
 
-        def _save_vecnorm(self, path: str) -> None:
-            try:
-                vec = self.model.get_vec_normalize_env()
-                if vec is None:
-                    return
-                if hasattr(vec, "save_running_average"):
-                    vec.save_running_average(path)
-                elif hasattr(vec, "save"):
-                    vec.save(path)
-            except Exception:
-                pass
-
         def _on_step(self) -> bool:  # type: ignore[override]
             result = super()._on_step()
             if self.eval_freq and self.n_calls % self.eval_freq == 0:
                 try:
                     self.model.save(self._latest_path)
-                    self._save_vecnorm(self._vecnorm_path)
+                    _save_vecnorm(self._vecnorm_ref, self._vecnorm_path, logging)
                 except Exception:
                     pass
                 src = getattr(self, "best_model_path", None)
@@ -1017,6 +1025,7 @@ def main():
                             meta = {
                                 "metric": float(getattr(self, "best_mean_reward", 0.0)),
                                 "timestamp": dt.datetime.utcnow().isoformat(),
+                                "vecnorm_snapshot": True,
                             }
                             with open(self._best_meta, "w", encoding="utf-8") as fh:
                                 json.dump(meta, fh)
