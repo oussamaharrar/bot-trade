@@ -208,6 +208,18 @@ class RunPaths:
     def vecnorm_path(self) -> Path:
         return self.agents / "vecnorm.pkl"
 
+    @property
+    def vecnorm(self) -> Path:
+        return self.vecnorm_path
+
+    @property
+    def vecnorm_best(self) -> Path:
+        return self.vecnorm
+
+    @property
+    def vecnorm_last(self) -> Path:
+        return self.vecnorm
+
     def as_dict(self) -> Dict[str, str]:
         """Return mapping used by writers/callbacks."""
 
@@ -236,6 +248,9 @@ class RunPaths:
             "model_zip": _p(self.agents, "deep_rl_last.zip"),
             "model_best_zip": _p(self.agents, "deep_rl_best.zip"),
             "vecnorm_pkl": str(self.vecnorm_path),
+            "vecnorm": str(self.vecnorm),
+            "vecnorm_best": str(self.vecnorm_best),
+            "vecnorm_last": str(self.vecnorm_last),
         }
         return paths
 
@@ -367,8 +382,11 @@ def build_paths(
 
     paths["model_zip"] = os.path.join(paths["agents"], "deep_rl.zip")
     paths["model_best_zip"] = os.path.join(paths["agents"], "deep_rl_best.zip")
-    paths["vecnorm_pkl"] = os.path.join(paths["agents"], "vecnorm.pkl")
-    paths["vecnorm_best"] = os.path.join(paths["agents"], "vecnorm_best.pkl")
+    vecnorm_file = os.path.join(paths["agents"], "vecnorm.pkl")
+    paths["vecnorm_pkl"] = vecnorm_file
+    paths["vecnorm"] = vecnorm_file
+    paths["vecnorm_best"] = vecnorm_file
+    paths["vecnorm_last"] = vecnorm_file
     paths["best_meta"] = os.path.join(paths["agents"], "best_ckpt.json")
 
     return paths
