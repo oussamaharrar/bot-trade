@@ -23,6 +23,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Iterator
+import datetime as dt
 
 
 # ---------------------------------------------------------------------------
@@ -139,10 +140,12 @@ def reports_dir(symbol: str, frame: str) -> Path:
     return d
 
 
-def logs_dir(symbol: str, frame: str) -> Path:
-    d = results_dir(symbol, frame) / "logs"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+def logs_dir(symbol: str, frame: str, run_base: str | None = None) -> Path:
+    root = Path(DEFAULT_LOGS_DIR) / symbol.upper() / str(frame)
+    if run_base:
+        root = root / run_base
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
 def dataset_path(p: str | Path) -> Path:
@@ -171,6 +174,7 @@ ROOT = get_root()
 DEFAULT_AGENTS_DIR = os.environ.get("BOT_AGENTS_DIR", str(ROOT / "agents"))
 DEFAULT_RESULTS_DIR = os.environ.get("BOT_RESULTS_DIR", str(ROOT / "results"))
 DEFAULT_REPORTS_DIR = os.environ.get("BOT_REPORTS_DIR", str(ROOT / "reports"))
+DEFAULT_LOGS_DIR = os.environ.get("BOT_LOGS_DIR", str(ROOT / "logs"))
 DEFAULT_MEMORY_FILE = os.environ.get(
     "BOT_MEMORY_FILE", str(memory_dir() / "memory.json")
 )
@@ -192,32 +196,57 @@ def _mk(*parts: str) -> str:
 def build_paths(
     symbol: str,
     frame: str,
+    run_id: str | None = None,
+    *,
     agents_dir: str | None = None,
     results_dir: str | None = None,
     reports_dir: str | None = None,
+    logs_dir: str | None = None,
 ) -> dict:
+    """Return run-aware directory map for training artefacts.
+
+    Parameters
+    ----------
+    run_id: str | None
+        Unique identifier for this run.  If ``None`` a placeholder ``dev`` is
+        used.  A timestamp suffix is added so multiple runs with the same
+        identifier do not collide.
+    """
+
     agents_dir = agents_dir or DEFAULT_AGENTS_DIR
     results_dir = results_dir or DEFAULT_RESULTS_DIR
     reports_dir = reports_dir or DEFAULT_REPORTS_DIR
+    logs_root = logs_dir or DEFAULT_LOGS_DIR
 
     sym, frm = symbol.upper(), str(frame)
-    paths: dict[str, str] = {}
+    rid = run_id or "dev"
+    run_ts = dt.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    run_base = f"rl-{rid}-{run_ts}"
+
+    paths: dict[str, str] = {
+        "run_id": rid,
+        "run_ts": run_ts,
+        "run_base": run_base,
+    }
+
     paths["agents"] = _mk(agents_dir, sym, frm)
-    paths["results"] = _mk(results_dir, sym, frm)
-    paths["reports"] = _mk(reports_dir, sym, frm)
-    paths["logs"] = _mk(paths["results"], "logs")
+    paths["results"] = _mk(results_dir, sym, frm, run_base)
+    paths["logs"] = _mk(logs_root, sym, frm, run_base)
+    paths["reports"] = _mk(reports_dir, sym, frm, run_base)
 
     paths["error_log"] = os.path.join(paths["logs"], "error.log")
     paths["benchmark_log"] = os.path.join(paths["logs"], "benchmark.log")
-    paths["train_log"] = os.path.join(paths["logs"], f"train_rl_{frm}.log")
-    paths["risk_log"] = os.path.join(paths["logs"], "risk_manager.log")
+    paths["train_log"] = os.path.join(paths["logs"], "train_log.csv")
+    paths["risk_log"] = os.path.join(paths["logs"], "risk_log.csv")
     paths["risk_csv"] = os.path.join(paths["logs"], "risk.csv")
+    paths["signals_log"] = os.path.join(paths["logs"], "signals_log.csv")
+    paths["callbacks_log"] = os.path.join(paths["logs"], "callbacks_log.csv")
     paths["decisions_jsonl"] = os.path.join(paths["logs"], "entry_decisions.jsonl")
-    paths["tb_dir"] = os.path.join(paths["results"], "tb")
+    paths["tb_dir"] = os.path.join(paths["logs"], "events")
 
     paths["step_csv"] = os.path.join(paths["logs"], "step_log.csv")
     paths["steps_csv"] = paths["step_csv"]
-    paths["reward_csv"] = os.path.join(paths["logs"], "reward.csv")
+    paths["reward_csv"] = os.path.join(paths["logs"], "reward.log")
     paths["train_csv"] = os.path.join(paths["logs"], "train_log.csv")
     paths["eval_csv"] = os.path.join(paths["logs"], "evaluation.csv")
     paths["trade_csv"] = os.path.join(paths["logs"], "deep_rl_trades.csv")

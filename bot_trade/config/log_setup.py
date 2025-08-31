@@ -308,6 +308,7 @@ def create_loggers(
     *,
     level: int = logging.INFO,
     console: bool = True,
+    logs_path: str | os.PathLike | None = None,
 ) -> tuple[mp.Queue, logging.handlers.QueueListener, logging.Logger]:
     """
     Adapter expected by Train_RL.py.
@@ -317,8 +318,8 @@ def create_loggers(
         log_queue, listener, root_logger = create_loggers(results_dir, frame, symbol)
     """
     # Canonical logs directory
-    logs_path = logs_dir(symbol, frame)
-    paths = {"logs": logs_path}
+    log_dir = Path(logs_path) if logs_path else logs_dir(symbol, frame)
+    paths = {"logs": log_dir}
 
     # Optional: add JSONL streams here if desired (kept empty by default).
     jsonl_extra: Dict[str, Path] = {}

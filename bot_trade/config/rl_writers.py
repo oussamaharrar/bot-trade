@@ -112,6 +112,22 @@ class CSVWriter(_BaseWriter):
             self._fh = None
             self._csv = None
 
+
+class RunIDCSVWriter(CSVWriter):
+    """CSVWriter that prepends a fixed ``run_id`` column."""
+
+    def __init__(self, path: str, run_id: str, header: Optional[list] = None):
+        header = ["run_id"] + (header or [])
+        super().__init__(path, header=header)
+        self._run_id = run_id
+
+    def write(self, row: Union[dict, Iterable]):  # type: ignore[override]
+        if isinstance(row, dict):
+            row = {"run_id": self._run_id, **row}
+        else:
+            row = [self._run_id, *row]
+        super().write(row)
+
 class JSONLWriter(_BaseWriter):
     def __init__(self, path: str):
         super().__init__(path, header=None)
@@ -217,12 +233,15 @@ class RewardWriter:
 
     def write_row(self, row: Dict[str, Any]) -> None:
         """Write a reward record tolerating missing components."""
+        reward_val = row.get("reward_total", row.get("reward"))
+        if reward_val in (None, ""):
+            reward_val = 0.0
         base = {
             "run_id": self.run_id,
             "ts": row.get("ts", ""),
             "global_step": row.get("global_step", ""),
             "env_idx": row.get("env_idx", ""),
-            "reward_total": row.get("reward_total", row.get("reward", "")),
+            "reward_total": reward_val,
             "pnl": row.get("pnl", ""),
             "cost": row.get("cost", ""),
             "stability": row.get("stability", ""),
@@ -249,20 +268,25 @@ class WritersBundle:
 
         logs_dir = self.paths.get("logs", self.paths.get("results"))
 
-        self.trades = CSVWriter(
+        self.trades = RunIDCSVWriter(
             paths["trade_csv"],
+            run_id,
             header=["ts", "frame", "symbol", "step", "side", "price", "size", "pnl", "equity", "reason"],
         )
-        self.benchmark = CSVWriter(
+        self.benchmark = RunIDCSVWriter(
             paths["benchmark_log"],
+            run_id,
             header=["ts", "frame", "symbol", "step", "fps", "cpu_percent", "ram_gb", "gpu0_mb", "gpu1_mb", "gpu2_mb", "gpu3_mb"],
         )
-        self.error = CSVWriter(os.path.join(logs_dir, "error.csv"), header=["ts", "step", "message"])
-        self.train = CSVWriter(
+        self.error = RunIDCSVWriter(os.path.join(logs_dir, "error.csv"), run_id, header=["ts", "step", "message"])
+        self.train = RunIDCSVWriter(
             paths["train_csv"],
-            header=["run_id", "ts", "frame", "symbol", "file", "timesteps", "status"],
+            run_id,
+            header=["ts", "frame", "symbol", "file", "timesteps", "status"],
         )
-        self.eval = CSVWriter(paths["eval_csv"], header=["ts", "frame", "symbol", "metric", "value"])
+        self.eval = RunIDCSVWriter(paths["eval_csv"], run_id, header=["ts", "frame", "symbol", "metric", "value"])
+        self.signals = RunIDCSVWriter(paths["signals_log"], run_id, header=["ts", "event", "detail"])
+        self.callbacks = RunIDCSVWriter(paths["callbacks_log"], run_id, header=["ts", "callback", "action"])
 
         try:
             self.reward = RewardWriter(Path(logs_dir) / "reward.log", run_id)
@@ -288,14 +312,14 @@ class WritersBundle:
         """سجّل قرارًا منسّقًا إلى JSONL داخل مجلد logs إن توفر."""
         try:
             if getattr(self, "decisions", None) is not None:
-                base = {"ts": now_iso()}
+                base = {"run_id": self.run_id, "ts": now_iso()}
                 base.update(payload)
                 self.decisions.write(base)
         except Exception:
             pass
 
     def flush(self):
-        for w in (self.trades, self.benchmark, self.error, self.train, self.eval):
+        for w in (self.trades, self.benchmark, self.error, self.train, self.eval, self.signals, self.callbacks):
             w.flush()
         try:
             if getattr(self, "reward", None) is not None:
@@ -318,7 +342,7 @@ class WritersBundle:
 
     def close(self):
         self.flush()
-        for w in (self.trades, self.benchmark, self.error, self.train, self.eval):
+        for w in (self.trades, self.benchmark, self.error, self.train, self.eval, self.signals, self.callbacks):
             w.close()
         try:
             if getattr(self, "reward", None) is not None:

@@ -9,13 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict
 
-from bot_trade.tools.paths import (
-    ROOT,
-    results_dir,
-    report_dir,
-    logs_dir,
-    agents_dir,
-)
+from bot_trade.tools.paths import ROOT
+from bot_trade.config.rl_paths import build_paths
 
 
 def _git_hash() -> str:
@@ -42,11 +37,12 @@ def new_run_id(symbol: str, frame: str) -> str:
 
 
 def run_paths(symbol: str, frame: str, run_id: str) -> Dict[str, Path]:
+    p = build_paths(symbol, frame, run_id)
     return {
-        "results": results_dir(symbol, frame),
-        "report": report_dir(symbol, frame, run_id),
-        "logs": logs_dir(symbol, frame, run_id),
-        "agents": agents_dir(symbol, frame),
+        "results": Path(p["results"]),
+        "report": Path(p["reports"]),
+        "logs": Path(p["logs"]),
+        "agents": Path(p["agents"]),
     }
 
 
