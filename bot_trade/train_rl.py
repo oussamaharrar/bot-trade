@@ -23,7 +23,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from bot_trade.config.rl_paths import dataset_path, RunPaths
+from bot_trade.config.rl_paths import dataset_path, RunPaths, ensure_contract
 from bot_trade.config.device import normalize_device
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
@@ -253,18 +253,20 @@ def _logging_monitor_loop(queue, listener):
 
 def _try_apply_vecnorm(venv, cfg, paths, logger):
     from stable_baselines3.common.vec_env import VecNormalize
-    get = (lambda k: paths.get(k)) if hasattr(paths, "get") else (lambda k: getattr(paths, k, None))
-    candidates = [get("vecnorm_best"), get("vecnorm_last"), get("vecnorm")]
-    candidates = [p for p in candidates if p is not None]
-    chosen = next((p for p in candidates if hasattr(p, "exists") and p.exists()), None)
-    if cfg.vecnorm and chosen is not None:
-        venv = VecNormalize.load(chosen, venv)
+    from pathlib import Path
+    get = paths.get if isinstance(paths, dict) else lambda k: getattr(paths, k, None)
+    candidates = [
+        Path(p) for p in (get("vecnorm_best"), get("vecnorm_last"), get("vecnorm")) if p
+    ]
+    chosen = next((p for p in candidates if p.exists()), None)
+    if cfg.vecnorm and chosen:
+        venv = VecNormalize.load(str(chosen), venv)
         venv.training = True
         venv.norm_obs = cfg.norm_obs
         venv.norm_reward = cfg.norm_reward
         logger.info("[VECNORM] applied=True path=%s", chosen)
         return venv, True
-    logger.info("[VECNORM] applied=False path=%s", chosen or (candidates[0] if candidates else "<none>"))
+    logger.info("[VECNORM] applied=False")
     return venv, False
 
 def _manage_models(paths: Dict[str, str], summary: Dict[str, Any], run_id: str) -> str | None:
@@ -358,6 +360,7 @@ def train_one_file(args, data_file: str) -> bool:
     # 1) Paths + logging + state
     paths_obj = RunPaths(args.symbol, args.frame, run_id)
     paths = paths_obj.as_dict()
+    ensure_contract(paths)
     log_queue, listener, _ = create_loggers(
         paths["results"],
         args.frame,
@@ -566,7 +569,14 @@ def train_one_file(args, data_file: str) -> bool:
     logging.info("[ENV] action_space=%s | is_discrete=%s", action_space, is_discrete)
 
     # 8) Batch clamping
-    clamp_batch(args)
+    n_envsn_steps = int(args.n_envs) * int(args.n_steps)
+    if int(args.batch_size) > n_envsn_steps:
+        logging.warning(
+            "[PPO] batch_size (%d) > n_envsn_steps (%d) — clipping",
+            args.batch_size,
+            n_envsn_steps,
+        )
+        args.batch_size = n_envsn_steps
     logging.info("[PPO] effective batch_size=%d", args.batch_size)
 
     # 8b) Evaluation environment
@@ -741,12 +751,18 @@ def train_one_file(args, data_file: str) -> bool:
         except Exception:
             pass
         try:
+            end_ts = int(getattr(model, "num_timesteps", 0))
             model.save(paths["model_zip"])  # final
             if hasattr(vec_env, "save_running_average"):
                 vec_env.save_running_average(paths["vecnorm_pkl"])  # last
             logging.info("[SAVE] model -> %s | vecnorm -> %s", paths["model_zip"], paths["vecnorm_pkl"])
             best_path = _manage_models(paths, summary, run_id)
             paths_obj.write_run_meta({"vecnorm_applied": vecnorm_applied, "best_model_path": best_path})
+            try:
+                with open(paths["last_meta"], "w", encoding="utf-8") as fh:
+                    json.dump({"step": end_ts}, fh, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
         except Exception as e:
             logging.error("[SAVE] failed: %s", e)
         try:

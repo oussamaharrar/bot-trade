@@ -182,7 +182,8 @@ class WritersBundle:
         self.callbacks = RunIDCSVWriter(paths["callbacks_log"], run_id, header=["ts", "callback", "action"])
 
         try:
-            self.reward = RewardWriter(Path(logs_dir) / "reward.log", run_id)
+            reward_path = Path(paths.get("reward_csv", Path(logs_dir) / "reward.log"))
+            self.reward = RewardWriter(reward_path, run_id)
         except Exception:
             self.reward = None  # type: ignore
 

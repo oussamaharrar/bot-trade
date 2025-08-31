@@ -226,6 +226,8 @@ class RunPaths:
         def _p(base: Path, name: str) -> str:
             return str(base / name)
 
+        reward_dir = self.results / "reward"
+        reward_dir.mkdir(parents=True, exist_ok=True)
         paths: Dict[str, str] = {
             "run_id": self.run_id,
             "logs": str(self.logs),
@@ -234,19 +236,22 @@ class RunPaths:
             "base": str(self.results),
             "reports": str(self.reports),
             "agents": str(self.agents),
+            "agents_root": str(self.agents),
             "train_csv": _p(self.logs, "train_log.csv"),
             "benchmark_log": _p(self.logs, "benchmark.log"),
             "risk_log": _p(self.logs, "risk_log.csv"),
             "signals_log": _p(self.logs, "signals_log.csv"),
             "callbacks_log": _p(self.logs, "callbacks_log.csv"),
             "step_csv": _p(self.logs, "step_log.csv"),
-            "reward_csv": _p(self.logs, "reward.log"),
+            "reward_csv": _p(reward_dir, "reward.log"),
             "trade_csv": _p(self.logs, "deep_rl_trades.csv"),
             "eval_csv": _p(self.logs, "evaluation.csv"),
             "perf_csv": _p(self.logs, "performance.csv"),
             "tb_dir": _p(self.logs, "events"),
             "model_zip": _p(self.agents, "deep_rl_last.zip"),
             "model_best_zip": _p(self.agents, "deep_rl_best.zip"),
+            "best_meta": _p(self.agents, "best_meta.json"),
+            "last_meta": _p(self.agents, "last_meta.json"),
             "vecnorm_pkl": str(self.vecnorm_path),
             "vecnorm": str(self.vecnorm),
             "vecnorm_best": str(self.vecnorm_best),
@@ -276,6 +281,28 @@ def new_run_id() -> str:
     """Return a short unique run identifier."""
 
     return uuid.uuid4().hex[:8]
+
+REQUIRED_KEYS = [
+    "agents_root",
+    "logs",
+    "results",
+    "reports",
+    "vecnorm",
+    "vecnorm_best",
+    "vecnorm_last",
+    "best_meta",
+    "last_meta",
+    "reward_csv",
+    "step_csv",
+    "train_csv",
+]
+
+
+def ensure_contract(paths: Dict[str, str]) -> None:
+    """Assert that all required run path keys are present."""
+
+    missing = [k for k in REQUIRED_KEYS if k not in paths or paths[k] is None]
+    assert not missing, f"[PATHS] missing keys: {missing}"
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +382,7 @@ def build_paths(
     }
 
     paths["agents"] = _mk(agents_dir, sym, frm)
+    paths["agents_root"] = paths["agents"]
     paths["results"] = _mk(results_dir, sym, frm, run_base)
     paths["logs"] = _mk(logs_root, sym, frm, run_base)
     paths["reports"] = _mk(reports_dir, sym, frm, run_base)
@@ -371,7 +399,8 @@ def build_paths(
 
     paths["step_csv"] = os.path.join(paths["logs"], "step_log.csv")
     paths["steps_csv"] = paths["step_csv"]
-    paths["reward_csv"] = os.path.join(paths["logs"], "reward.log")
+    paths["reward_csv"] = os.path.join(paths["results"], "reward", "reward.log")
+    os.makedirs(os.path.dirname(paths["reward_csv"]), exist_ok=True)
     paths["train_csv"] = os.path.join(paths["logs"], "train_log.csv")
     paths["eval_csv"] = os.path.join(paths["logs"], "evaluation.csv")
     paths["trade_csv"] = os.path.join(paths["logs"], "deep_rl_trades.csv")
@@ -387,7 +416,8 @@ def build_paths(
     paths["vecnorm"] = vecnorm_file
     paths["vecnorm_best"] = vecnorm_file
     paths["vecnorm_last"] = vecnorm_file
-    paths["best_meta"] = os.path.join(paths["agents"], "best_ckpt.json")
+    paths["best_meta"] = os.path.join(paths["agents"], "best_meta.json")
+    paths["last_meta"] = os.path.join(paths["agents"], "last_meta.json")
 
     return paths
 
@@ -513,6 +543,7 @@ __all__ = [
     "ensure_utf8",
     "RunPaths",
     "new_run_id",
+    "ensure_contract",
     "build_paths",
     "setup_logging",
     "ensure_state_files",
