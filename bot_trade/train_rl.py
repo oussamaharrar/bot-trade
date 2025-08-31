@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 from bot_trade.config.rl_paths import dataset_path, RunPaths, ensure_contract
 from bot_trade.config.device import normalize_device
 from bot_trade.config.rl_callbacks import _save_vecnorm
+from bot_trade.tools.monitor_manager import export_charts_for_run
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
 # imported inside `main` to keep import-time side effects minimal and to
@@ -269,9 +270,22 @@ def _postrun_summary(paths, meta, logger):
     last = agents_base / "deep_rl_last.zip"
     vecnorm = (paths.get("vecnorm") if isinstance(paths, dict) else getattr(paths, "vecnorm", None))
 
+    try:
+        charts_dir, images = export_charts_for_run(
+            symbol=sym,
+            frame=frm,
+            run_id=run_id,
+            base=str(Path.cwd()),
+            headless=True,
+        )
+        logger.info("[POSTRUN_EXPORT] charts=%s images=%d", charts_dir, images)
+    except Exception as e:
+        charts_dir, images = ((Path(paths["reports"]) if isinstance(paths, dict) else paths.reports) / "charts").resolve(), 0
+        logger.warning("[POSTRUN_EXPORT] export_failed err=%s", e)
+
     # ensure charts exist by invoking exporter synchronously
     try:  # best effort; avoid crashing summary
-        from bot_trade.tools.monitor_manager import main as _mm_main
+        from bot_trade.tools.monitor_manager import as _mm_main
         root_dir = getattr(paths, "root", None)
         if root_dir is None and isinstance(paths, dict):
             try:
@@ -287,6 +301,7 @@ def _postrun_summary(paths, meta, logger):
 
     pngs = list(charts_dir.glob("*.png")) if charts_dir.exists() else []
     images = len(pngs)
+main
     reward_lines = 0
     if reward_path.exists():
         with reward_path.open("r", encoding="utf-8", errors="ignore") as fh:
@@ -620,7 +635,11 @@ def train_one_file(args, data_file: str) -> bool:
     if getattr(args, "resume_auto", False):
         try:
             from pathlib import Path
+            vec_path = paths["vecnorm"] if isinstance(paths, dict) else getattr(paths, "vecnorm", None)
+            if vec_path and Path(vec_path).exists():
+
             if Path(paths["vecnorm"]).exists():
+main
                 args.vecnorm = True
         except Exception:
             pass
