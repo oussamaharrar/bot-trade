@@ -214,11 +214,39 @@ class RunPaths:
 
     @property
     def vecnorm_best(self) -> Path:
-        return self.vecnorm
+        return self.agents / "vecnorm_best.pkl"
 
     @property
     def vecnorm_last(self) -> Path:
         return self.vecnorm
+
+    @property
+    def best_model(self) -> Path:
+        return self.agents / "deep_rl_best.zip"
+
+    @property
+    def last_model(self) -> Path:
+        return self.agents / "deep_rl_last.zip"
+
+    @property
+    def archive_dir(self) -> Path:
+        return self.agents / "archive"
+
+    @property
+    def archive_best_dir(self) -> Path:
+        return self.agents / "archive_best"
+
+    @property
+    def best_meta_path(self) -> Path:
+        return self.agents / "best_meta.json"
+
+    @property
+    def last_meta_path(self) -> Path:
+        return self.agents / "last_meta.json"
+
+    def ensure(self) -> None:
+        for d in (self.agents, self.archive_dir, self.archive_best_dir):
+            d.mkdir(parents=True, exist_ok=True)
 
     def as_dict(self) -> Dict[str, str]:
         """Return mapping used by writers/callbacks."""
@@ -237,6 +265,10 @@ class RunPaths:
             "reports": str(self.reports),
             "agents": str(self.agents),
             "agents_root": str(self.agents),
+            "best_model": str(self.best_model),
+            "last_model": str(self.last_model),
+            "archive_dir": str(self.archive_dir),
+            "archive_best_dir": str(self.archive_best_dir),
             "train_csv": _p(self.logs, "train_log.csv"),
             "benchmark_log": _p(self.logs, "benchmark.log"),
             "risk_log": _p(self.logs, "risk_log.csv"),
@@ -248,10 +280,10 @@ class RunPaths:
             "eval_csv": _p(self.logs, "evaluation.csv"),
             "perf_csv": _p(self.logs, "performance.csv"),
             "tb_dir": _p(self.logs, "events"),
-            "model_zip": _p(self.agents, "deep_rl_last.zip"),
-            "model_best_zip": _p(self.agents, "deep_rl_best.zip"),
-            "best_meta": _p(self.agents, "best_meta.json"),
-            "last_meta": _p(self.agents, "last_meta.json"),
+            "model_zip": str(self.last_model),
+            "model_best_zip": str(self.best_model),
+            "best_meta": str(self.best_meta_path),
+            "last_meta": str(self.last_meta_path),
             "vecnorm_pkl": str(self.vecnorm_path),
             "vecnorm": str(self.vecnorm),
             "vecnorm_best": str(self.vecnorm_best),
@@ -284,12 +316,15 @@ def new_run_id() -> str:
 
 REQUIRED_KEYS = [
     "agents_root",
+    "best_model",
+    "last_model",
+    "archive_dir",
+    "archive_best_dir",
     "logs",
     "results",
     "reports",
     "vecnorm",
     "vecnorm_best",
-    "vecnorm_last",
     "best_meta",
     "last_meta",
     "reward_csv",
@@ -318,6 +353,22 @@ def ensure_utf8(path: Path | str, csv_newline: bool = True) -> Iterator[object]:
     newline = "" if csv_newline else None
     with p.open("w", encoding="utf-8", newline=newline) as fh:
         yield fh
+
+
+def _atomic_replace(src: str | Path, dst: str | Path) -> None:
+    """Atomically replace ``dst`` with ``src`` via a ``.tmp`` copy."""
+
+    src_p, dst_p = Path(src), Path(dst)
+    dst_p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst_p.with_name(dst_p.name + ".tmp")
+    shutil.copy2(src_p, tmp)
+    os.replace(tmp, dst_p)
+
+
+def stamp_name(stem: str, run_id: str, ts: str, ext: str) -> str:
+    """Return run-aware archive filename."""
+
+    return f"{stem}-{run_id}-{ts}{ext}"
 
 
 # Default paths -------------------------------------------------------------
@@ -541,6 +592,8 @@ __all__ = [
     "logs_dir",
     "dataset_path",
     "ensure_utf8",
+    "_atomic_replace",
+    "stamp_name",
     "RunPaths",
     "new_run_id",
     "ensure_contract",
