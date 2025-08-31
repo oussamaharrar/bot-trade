@@ -2,7 +2,6 @@ import argparse
 import sys
 import time
 from pathlib import Path
-from typing import Tuple, List
 
 import matplotlib
 
@@ -13,8 +12,8 @@ from bot_trade.config.rl_paths import RunPaths, get_root, ensure_contract
 # helpers
 # ---------------------------------------------------------------------------
 
-def _infer_run_id(symbol: str, frame: str, results_root: Path) -> Tuple[str | None, List[Path]]:
-    checked: List[Path] = []
+def _infer_run_id(symbol: str, frame: str, results_root: Path) -> tuple[str | None, list[Path]]:
+    checked: list[Path] = []
     base = results_root / symbol / frame
     if base.exists():
         run_dirs = sorted(
@@ -56,7 +55,7 @@ def export_charts_for_run(
     run_id: str,
     base: str | None = None,
     headless: bool = True,
-) -> Tuple[Path, int]:
+) -> tuple[Path, int]:
     """Export charts for a given run and return the directory and image count."""
     root = Path(base) if base else get_root()
     rp = RunPaths(symbol, frame, run_id, root=root)
@@ -99,7 +98,7 @@ def export_charts_for_run(
 # main
 # ---------------------------------------------------------------------------
 
-def main(argv: List[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser("monitor manager")
     ap.add_argument("--symbol", default="BTCUSDT")
     ap.add_argument("--frame", default="1m")
