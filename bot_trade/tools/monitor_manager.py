@@ -159,9 +159,10 @@ def main(argv: List[str] | None = None) -> int:
         if step_file.exists() and step_file.stat().st_size > 0:
             break
         time.sleep(0.5)
-
-    charts_path, count = _export_charts(rp)
-    print(str(charts_path), count)
+    charts_path, _ = _export_charts(rp)
+    abs_dir = charts_path.resolve()
+    count = len(list(abs_dir.glob("*.png")))
+    print(f"[CHARTS] dir={abs_dir} images={count}", flush=True)
     if count == 0:
         print("[ERROR] no charts generated", file=sys.stderr)
         return 2

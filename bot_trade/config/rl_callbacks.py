@@ -84,6 +84,23 @@ def _save_vecnormalize(training_env, model, out_path: str) -> bool:
     return False
 
 
+def _save_vecnorm(vecnorm_ref, out_path, logger=logging) -> bool:
+    """Save VecNormalize snapshot from a live reference."""
+    if vecnorm_ref is None:
+        return False
+    try:
+        from pathlib import Path
+
+        p = Path(out_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        vecnorm_ref.save(str(p))
+        logger.info("[VECNORM] snapshot_saved path=%s", p)
+        return True
+    except Exception as e:  # pragma: no cover
+        logger.warning("[VECNORM] snapshot_save_failed path=%s err=%s", out_path, e)
+        return False
+
+
 # ------------------------------------------------------------
 # Callbacks
 # ------------------------------------------------------------
@@ -165,11 +182,18 @@ class StepsAndRewardCallback(BaseCallback):
 class BestCheckpointCallback(BaseCallback):
     """حفظ أفضل نموذج وفق ep_rew_mean + حفظ VecNormalize بأمان."""
 
-    def __init__(self, paths: Dict[str, str], check_every: int = 50_000, verbose: int = 0):
+    def __init__(
+        self,
+        paths: Dict[str, str],
+        check_every: int = 50_000,
+        vecnorm_ref=None,
+        verbose: int = 0,
+    ):
         super().__init__(verbose)
         self.paths = paths
         self.check_every = int(max(1, check_every))
         self.best = float("-inf")
+        self.vecnorm_ref = vecnorm_ref
 
     def _on_step(self) -> bool:  # noqa: D401
         step = int(self.num_timesteps)
@@ -186,9 +210,16 @@ class BestCheckpointCallback(BaseCallback):
         try:
             self.best = float(avg)
             self.model.save(self.paths["model_best_zip"])  # model.zip
-            _save_vecnormalize(self.training_env, self.model, self.paths.get("vecnorm_best", "vecnorm_best.pkl"))
+            saved = _save_vecnorm(
+                self.vecnorm_ref,
+                self.paths.get("vecnorm", self.paths.get("vecnorm_best", "vecnorm.pkl")),
+                logging,
+            )
+            meta = {"step": step, "ep_rew_mean": float(avg)}
+            if saved:
+                meta["vecnorm_snapshot"] = True
             with open(self.paths["best_meta"], "w", encoding="utf-8") as f:
-                json.dump({"step": step, "ep_rew_mean": float(avg)}, f, indent=2, ensure_ascii=False)
+                json.dump(meta, f, indent=2, ensure_ascii=False)
             logging.info("[BEST] step=%d | ep_rew_mean=%.6f | saved", step, avg)
         except Exception as e:
             logging.error("[BEST] save failed: %s", e)
