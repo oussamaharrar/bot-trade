@@ -23,7 +23,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from bot_trade.config.rl_paths import dataset_path
+from bot_trade.config.rl_paths import dataset_path, RunPaths
 from bot_trade.config.device import normalize_device
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
@@ -318,16 +318,13 @@ def train_one_file(args, data_file: str) -> bool:
 
     data_file = str(dataset_path(data_file))
     logging.info("[DATA] dataset path resolved to %s", data_file)
+    if not Path(data_file).exists():
+        print(f"[DATA] missing dataset: {data_file}", file=sys.stderr)
+        sys.exit(3)
 
     # 1) Paths + logging + state
-    paths = build_paths(
-        args.symbol,
-        args.frame,
-        run_id,
-        agents_dir=args.agents_dir,
-        results_dir=args.results_dir,
-        reports_dir=args.reports_dir,
-    )
+    paths_obj = RunPaths(args.symbol, args.frame, run_id)
+    paths = paths_obj.as_dict()
     log_queue, listener, _ = create_loggers(
         paths["results"],
         args.frame,
@@ -521,18 +518,16 @@ def train_one_file(args, data_file: str) -> bool:
 
     # 6) Load VecNormalize statistics
     vecnorm_applied = False
-    if getattr(args, "vecnorm", True):
-        try:
-            from bot_trade.config.rl_builders import load_vecnormalize_safe
+    if getattr(args, "vecnorm", True) and Path(paths["vecnorm_pkl"]).exists():
+        from stable_baselines3.common.vec_env import VecNormalize
 
-            vecnorm_applied = load_vecnormalize_safe(
-                vec_env,
-                paths.get("vecnorm_pkl"),
-                paths.get("vecnorm_best"),
-            )
-        except Exception as e:  # pragma: no cover
-            logging.warning("[VECNORM] load failed: %s", e)
-    logging.info("[VECNORM] applied=%s", vecnorm_applied)
+        vec_env = VecNormalize.load(paths["vecnorm_pkl"], vec_env)
+        vec_env.training = True
+        vec_env.norm_obs = bool(getattr(args, "norm_obs", True))
+        vec_env.norm_reward = bool(getattr(args, "norm_reward", True))
+        vecnorm_applied = True
+    logging.info("[VECNORM] applied=%s path=%s", vecnorm_applied, paths["vecnorm_pkl"])
+    paths_obj.write_run_meta({"vecnorm_applied": vecnorm_applied})
 
     # 7) Action space detection
     action_space, is_discrete = detect_action_space(vec_env)
@@ -676,7 +671,7 @@ def train_one_file(args, data_file: str) -> bool:
         logging.warning("[MEMORY] initial snapshot failed: %s", e)
 
     if getattr(args, "monitor", True):
-        root_dir = os.path.abspath(os.path.join(args.results_dir, os.pardir))
+        root_dir = str(paths_obj.root)
         _spawn_monitor(root_dir, args, run_id, headless=getattr(args, "headless", False))
 
     # 11) Learn
@@ -718,6 +713,7 @@ def train_one_file(args, data_file: str) -> bool:
                 vec_env.save_running_average(paths["vecnorm_pkl"])  # last
             logging.info("[SAVE] model -> %s | vecnorm -> %s", paths["model_zip"], paths["vecnorm_pkl"])
             best_path = _manage_models(paths, summary, run_id)
+            paths_obj.write_run_meta({"vecnorm_applied": vecnorm_applied, "best_model_path": best_path})
         except Exception as e:
             logging.error("[SAVE] failed: %s", e)
         try:

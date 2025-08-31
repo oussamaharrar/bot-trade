@@ -27,90 +27,34 @@ class _BaseWriter:
 class CSVWriter(_BaseWriter):
     def __init__(self, path: str, header: Optional[list] = None):
         super().__init__(path, header=header)
-        self._fh = None
-        self._csv = None
-        self._open()
-
-    def _open(self) -> None:
-        """(Re)open the underlying file handle as needed."""
-        if self._fh is None or self._fh.closed:
-            self._sanitize_tail()
-            self._fh = open(self.path, mode="a", encoding="utf-8", newline="")
-            self._csv = csv.writer(self._fh)
-            self._maybe_write_header()
-
-    def _sanitize_tail(self) -> None:
-        """Remove blank/partial trailing lines before appending."""
-        try:
-            if not os.path.exists(self.path):
-                return
-            with open(self.path, "rb+") as fh:
-                fh.seek(0, os.SEEK_END)
-                size = fh.tell()
-                if size == 0:
-                    return
-                pos = size - 1
-                fh.seek(pos)
-                last = fh.read(1)
-                # strip trailing newlines
-                while pos >= 0 and last in b"\r\n":
-                    pos -= 1
-                    fh.seek(pos)
-                    last = fh.read(1)
-                fh.truncate(pos + 1)
-                fh.seek(pos + 1)
-                fh.write(b"\n")
-        except Exception:
-            pass
-
-    def _maybe_write_header(self) -> None:
-        if not self._header:
-            return
-        try:
-            need = (not os.path.exists(self.path)) or (os.path.getsize(self.path) == 0)
-        except Exception:
-            need = True
-        if need:
-            with self._lock:
-                self._csv.writerow(self._header)
-                self._fh.flush()
 
     def _from_dict(self, row_dict: dict) -> list:
         if self._header:
             return [row_dict.get(k, "") for k in self._header]
-        # fallback to values order (unstable but ok if no header)
         return list(row_dict.values())
 
     def write(self, row: Union[dict, Iterable]):
+        if isinstance(row, dict):
+            row = self._from_dict(row)
         with self._lock:
-            self._open()
-            if isinstance(row, dict):
-                row = self._from_dict(row)
-            self._csv.writerow(row)
-            self._fh.flush()
+            existing = ""
+            if os.path.exists(self.path):
+                with open(self.path, "r", encoding="utf-8") as fh:
+                    existing = fh.read().rstrip("\n")
+            tmp = self.path + ".tmp"
+            with open(tmp, "w", encoding="utf-8", newline="") as fh:
+                if existing:
+                    fh.write(existing + "\n")
+                elif self._header:
+                    csv.writer(fh).writerow(self._header)
+                csv.writer(fh).writerow(row)
+            os.replace(tmp, self.path)
 
     def flush(self):
-        with self._lock:
-            try:
-                if self._fh is not None and not self._fh.closed:
-                    self._fh.flush()
-            except Exception:
-                pass
+        pass
 
     def close(self):
-        with self._lock:
-            try:
-                if self._fh is not None and not self._fh.closed:
-                    self._fh.flush()
-            except Exception:
-                pass
-            try:
-                if self._fh is not None and not self._fh.closed:
-                    self._fh.close()
-            except Exception:
-                pass
-            self._fh = None
-            self._csv = None
+        pass
 
 
 class RunIDCSVWriter(CSVWriter):
@@ -131,77 +75,26 @@ class RunIDCSVWriter(CSVWriter):
 class JSONLWriter(_BaseWriter):
     def __init__(self, path: str):
         super().__init__(path, header=None)
-        self._fh = None
-        self._open()
-
-    def _open(self) -> None:
-        if self._fh is None or self._fh.closed:
-            self._sanitize_tail()
-            self._fh = open(self.path, mode="a", encoding="utf-8", newline="\n")
-
-    def _sanitize_tail(self) -> None:
-        """Remove partial trailing line before appending."""
-        try:
-            if not os.path.exists(self.path):
-                return
-            with open(self.path, "rb+") as fh:
-                fh.seek(0, os.SEEK_END)
-                size = fh.tell()
-                if size == 0:
-                    return
-                pos = size - 1
-                fh.seek(pos)
-                last = fh.read(1)
-                if last in b"\r\n":
-                    while pos >= 0 and last in b"\r\n":
-                        pos -= 1
-                        fh.seek(pos)
-                        last = fh.read(1)
-                    fh.truncate(pos + 1)
-                    fh.seek(pos + 1)
-                    fh.write(b"\n")
-                else:
-                    while pos >= 0 and last not in b"\n\r":
-                        pos -= 1
-                        if pos < 0:
-                            break
-                        fh.seek(pos)
-                        last = fh.read(1)
-                    fh.truncate(pos + 1 if pos >= 0 else 0)
-                    if pos >= 0:
-                        fh.seek(pos + 1)
-                        fh.write(b"\n")
-        except Exception:
-            pass
 
     def write(self, obj: dict):
         line = json.dumps(obj, ensure_ascii=False)
         with self._lock:
-            self._open()
-            self._fh.write(line + "\n")
-            self._fh.flush()
+            existing = ""
+            if os.path.exists(self.path):
+                with open(self.path, "r", encoding="utf-8") as fh:
+                    existing = fh.read().rstrip("\n")
+            tmp = self.path + ".tmp"
+            with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+                if existing:
+                    fh.write(existing + "\n")
+                fh.write(line + "\n")
+            os.replace(tmp, self.path)
 
     def flush(self):
-        with self._lock:
-            try:
-                if self._fh is not None and not self._fh.closed:
-                    self._fh.flush()
-            except Exception:
-                pass
+        pass
 
     def close(self):
-        with self._lock:
-            try:
-                if self._fh is not None and not self._fh.closed:
-                    self._fh.flush()
-            except Exception:
-                pass
-            try:
-                if self._fh is not None and not self._fh.closed:
-                    self._fh.close()
-            except Exception:
-                pass
-            self._fh = None
+        pass
 
 
 class RewardWriter:

@@ -22,8 +22,10 @@ import sys
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Dict, Any
 import datetime as dt
+import json
+import uuid
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +153,114 @@ def logs_dir(symbol: str, frame: str, run_base: str | None = None) -> Path:
 def dataset_path(p: str | Path) -> Path:
     p = Path(p)
     return p if p.is_absolute() else get_root() / p
+
+
+# ---------------------------------------------------------------------------
+# RunPaths dataclass
+# ---------------------------------------------------------------------------
+
+
+class RunPaths:
+    """Central path helper for a single training run.
+
+    Directories are structured as::
+
+        logs/<SYMBOL>/<FRAME>/<RUN_ID>/
+        results/<SYMBOL>/<FRAME>/<RUN_ID>/
+        reports/<SYMBOL>/<FRAME>/<RUN_ID>/
+
+    ``RUN_ID`` is expected to be a short identifier (no timestamps).
+    """
+
+    def __init__(self, symbol: str, frame: str, run_id: str, root: Path | None = None) -> None:
+        self.symbol = symbol.upper()
+        self.frame = str(frame)
+        self.run_id = run_id
+        self.root = root or get_root()
+
+        self.logs = Path(DEFAULT_LOGS_DIR) / self.symbol / self.frame / self.run_id
+        self.results = Path(DEFAULT_RESULTS_DIR) / self.symbol / self.frame / self.run_id
+        self.reports = Path(DEFAULT_REPORTS_DIR) / self.symbol / self.frame / self.run_id
+        self.agents = agents_dir(self.symbol, self.frame)
+
+        for d in (self.logs, self.results, self.reports):
+            d.mkdir(parents=True, exist_ok=True)
+            latest = d.parent / "latest"
+            try:
+                if latest.exists() or latest.is_symlink():
+                    if latest.is_dir() and not latest.is_symlink():
+                        shutil.rmtree(latest)
+                    else:
+                        latest.unlink()
+                os.symlink(self.run_id, latest)
+            except Exception:
+                try:
+                    if latest.exists() and latest.is_dir():
+                        shutil.rmtree(latest)
+                    shutil.copytree(d, latest)
+                except Exception:
+                    pass
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+    @property
+    def vecnorm_path(self) -> Path:
+        return self.agents / "vecnorm.pkl"
+
+    def as_dict(self) -> Dict[str, str]:
+        """Return mapping used by writers/callbacks."""
+
+        def _p(base: Path, name: str) -> str:
+            return str(base / name)
+
+        paths: Dict[str, str] = {
+            "run_id": self.run_id,
+            "logs": str(self.logs),
+            "logs_dir": str(self.logs),
+            "results": str(self.results),
+            "base": str(self.results),
+            "reports": str(self.reports),
+            "agents": str(self.agents),
+            "train_csv": _p(self.logs, "train_log.csv"),
+            "benchmark_log": _p(self.logs, "benchmark.log"),
+            "risk_log": _p(self.logs, "risk_log.csv"),
+            "signals_log": _p(self.logs, "signals_log.csv"),
+            "callbacks_log": _p(self.logs, "callbacks_log.csv"),
+            "step_csv": _p(self.logs, "step_log.csv"),
+            "reward_csv": _p(self.logs, "reward.log"),
+            "trade_csv": _p(self.logs, "deep_rl_trades.csv"),
+            "eval_csv": _p(self.logs, "evaluation.csv"),
+            "perf_csv": _p(self.logs, "performance.csv"),
+            "tb_dir": _p(self.logs, "events"),
+            "model_zip": _p(self.agents, "deep_rl_last.zip"),
+            "model_best_zip": _p(self.agents, "deep_rl_best.zip"),
+            "vecnorm_pkl": str(self.vecnorm_path),
+        }
+        return paths
+
+    def write_run_meta(self, extra: Dict[str, Any] | None = None) -> None:
+        meta = {
+            "schema": 1,
+            "run_id": self.run_id,
+            "symbol": self.symbol,
+            "frame": self.frame,
+            "ts": dt.datetime.utcnow().isoformat(),
+            "base": str(self.root),
+        }
+        if extra:
+            meta.update(extra)
+        for d in (self.logs, self.results, self.reports):
+            tmp = d / "run.json.tmp"
+            with tmp.open("w", encoding="utf-8") as fh:
+                json.dump(meta, fh, ensure_ascii=False, indent=2)
+            os.replace(tmp, d / "run.json")
+
+
+def new_run_id() -> str:
+    """Return a short unique run identifier."""
+
+    return uuid.uuid4().hex[:8]
 
 
 # ---------------------------------------------------------------------------
@@ -383,6 +493,8 @@ __all__ = [
     "logs_dir",
     "dataset_path",
     "ensure_utf8",
+    "RunPaths",
+    "new_run_id",
     "build_paths",
     "setup_logging",
     "ensure_state_files",
