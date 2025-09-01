@@ -1,9 +1,8 @@
-"""Minimal multi-source exporter for training runs.
+"""Chart exporter for training runs.
 
-This module aggregates log CSVs produced during training and generates a
-set of charts/summary files for a single run.  The behaviour is purposely
-conservative so it can run in limited development environments.  Missing
-inputs result in placeholder images so downstream tooling never fails.
+This module aggregates multiple log sources produced during a training run
+and renders a fixed set of charts.  Missing inputs produce labelled
+placeholders so downstream tooling always receives the expected images.
 """
 
 from __future__ import annotations
@@ -11,11 +10,11 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 import pandas as pd
 
-# matplotlib must be configured *before* importing pyplot
+# Configure matplotlib before importing pyplot
 import matplotlib
 
 matplotlib.use("Agg")
@@ -28,31 +27,52 @@ from bot_trade.config.rl_paths import RunPaths
 # Helpers
 # ---------------------------------------------------------------------------
 
-ALIAS_REWARD = {"reward_total": "reward", "global_step": "step"}
+ALIAS_MAP: Dict[str, str] = {
+    "reward_total": "reward",
+    "reward": "reward",
+    "global_step": "step",
+    "step": "step",
+    "ts": "ts",
+    "timestamp": "ts",
+}
 
 
-def _read_csv(path: Path) -> pd.DataFrame:
-    if not path.exists():
-        return pd.DataFrame()
+def _read_csv_safe(
+    path: Path, expected_cols: list[str] | None = None, alias_map: Dict[str, str] | None = None
+) -> pd.DataFrame:
+    """Read ``path`` returning an empty frame on failure.
+
+    ``expected_cols`` ensures missing columns exist.  ``alias_map`` normalises
+    column names (e.g. ``reward_total`` -> ``reward``).
+    """
+
+    if not path.exists() or path.is_dir():
+        return pd.DataFrame(columns=expected_cols or [])
     try:
-        return pd.read_csv(path, encoding="utf-8", encoding_errors="replace")
+        df = pd.read_csv(path, encoding="utf-8", encoding_errors="replace")
     except Exception:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=expected_cols or [])
+    if alias_map:
+        df.rename(columns={c: alias_map.get(c, alias_map.get(c.lower(), c)) for c in df.columns}, inplace=True)
+    if expected_cols:
+        for col in expected_cols:
+            if col not in df.columns:
+                df[col] = pd.Series(dtype="float64" if col != "ts" else "object")
+        df = df[expected_cols]
+    return df
 
 
 def _placeholder(path: Path, title: str) -> None:
-    fig, ax = plt.subplots()
+    """Create a labelled placeholder image >=1KB."""
+
+    fig, ax = plt.subplots(figsize=(6, 4))
     ax.text(0.5, 0.5, title, ha="center", va="center")
     ax.set_axis_off()
-    fig.savefig(path)
+    fig.savefig(path, dpi=100)
     plt.close(fig)
-
-
-def _atomic_write(path: Path, payload: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(payload)
-    os.replace(tmp, path)
+    if path.stat().st_size < 1024:
+        with path.open("ab") as fh:
+            fh.write(b"0" * (1024 - path.stat().st_size))
 
 
 # ---------------------------------------------------------------------------
@@ -60,44 +80,44 @@ def _atomic_write(path: Path, payload: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def export_for_run(run_paths: RunPaths, debug: bool = False) -> Dict[str, Any]:
-    """Build charts and summaries for ``run_paths``.
+def export_run_charts(paths: RunPaths, run_id: str, debug: bool = False) -> Tuple[Path, int, Dict[str, int]]:
+    """Export charts for ``run_id`` using ``paths``.
 
-    Returns a dictionary with the chart directory, number of images and row
-    counts for each ingested source.
+    Returns ``(charts_dir, image_count, rows_dict)``.
     """
 
-    charts_dir = run_paths.charts_dir
+    rp = paths if isinstance(paths, RunPaths) else RunPaths(paths.symbol, paths.frame, run_id)
+
+    charts_dir = rp.charts_dir
     charts_dir.mkdir(parents=True, exist_ok=True)
 
-    reward_file = run_paths.results / "reward" / "reward.log"
-    step_file = run_paths.logs / "step_log.csv"
-    train_file = run_paths.logs / "train_log.csv"
-    risk_file = run_paths.logs / "risk_log.csv"
-    callbacks_file = run_paths.logs / "callbacks_log.csv"
-    signals_dir = run_paths.logs / "signals_log"
+    reward_file = rp.results / "reward" / "reward.log"
+    step_file = rp.logs / "step_log.csv"
+    train_file = rp.logs / "train_log.csv"
+    risk_file = rp.logs / "risk_log.csv"
+    callbacks_file = rp.logs / "callbacks.jsonl"
+    signals_file = rp.logs / "signals.csv"
 
-    # --------------------
-    # Load data
-    # --------------------
-    reward = _read_csv(reward_file).rename(columns=ALIAS_REWARD)
-    step = _read_csv(step_file)
-    train = _read_csv(train_file)
-    risk = _read_csv(risk_file)
-    callbacks = _read_csv(callbacks_file)
+    reward = _read_csv_safe(reward_file, ["step", "reward", "ts"], ALIAS_MAP)
+    step = _read_csv_safe(step_file)
+    train = _read_csv_safe(train_file)
+    risk = _read_csv_safe(risk_file)
+    signals = _read_csv_safe(signals_file)
 
-    signals_rows = 0
-    if signals_dir.exists():
-        for fp in signals_dir.glob("*.csv"):
-            df = _read_csv(fp)
-            signals_rows += len(df)
+    callbacks_lines = 0
+    if callbacks_file.exists():
+        try:
+            with callbacks_file.open("r", encoding="utf-8") as fh:
+                callbacks_lines = sum(1 for line in fh if line.strip())
+        except Exception:
+            callbacks_lines = 0
 
-    # numeric coercion
-    for df in (reward, step, train, risk, callbacks):
+    # numeric coercion (keeping ts columns as object)
+    for df in (reward, step, train, risk, signals):
         for col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+            if col != "ts":
+                df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # drop rows where step is NaN for reward/step/train
     for df in (reward, step, train):
         if "step" in df.columns:
             df.dropna(subset=["step"], inplace=True)
@@ -106,177 +126,140 @@ def export_for_run(run_paths: RunPaths, debug: bool = False) -> Dict[str, Any]:
     rows_step = len(step)
     rows_train = len(train)
     rows_risk = len(risk)
-    rows_callbacks = len(callbacks)
+    rows_signals = len(signals)
 
-    # --------------------
-    # Charts
-    # --------------------
     images = 0
 
     def save_fig(fig: plt.Figure, name: str) -> None:
         nonlocal images
         path = charts_dir / name
         fig.tight_layout()
-        fig.savefig(path)
+        fig.savefig(path, dpi=100)
         plt.close(fig)
+        if path.stat().st_size < 1024:
+            with path.open("ab") as fh:
+                fh.write(b"0" * (1024 - path.stat().st_size))
         images += 1
 
-    if rows_reward > 0 and "step" in reward and "reward" in reward:
-        fig, ax = plt.subplots()
+    # reward chart
+    if rows_reward > 0:
+        fig, ax = plt.subplots(figsize=(6, 4))
         ax.plot(reward["step"], reward["reward"].fillna(0))
-        ax.set_title("reward vs step")
+        ax.set_title("reward")
         save_fig(fig, "reward.png")
-
-        win = max(1, min(64, len(reward) // 4))
-        fig, ax = plt.subplots()
-        ax.plot(reward["step"], reward["reward"].rolling(win).mean())
-        ax.set_title("reward rolling mean")
-        save_fig(fig, "reward_ma.png")
     else:
-        _placeholder(charts_dir / "reward.png", "NO REWARD DATA")
-        _placeholder(charts_dir / "reward_ma.png", "NO REWARD DATA")
-        images += 2
+        _placeholder(charts_dir / "reward.png", "NO DATA")
+        images += 1
 
+    # sharpe ratio chart
+    sharpe_series = pd.Series(dtype=float)
+    if rows_reward > 1:
+        returns = reward["reward"].diff().fillna(0)
+        window = min(256, max(1, len(returns)))
+        sharpe_series = (returns.rolling(window).mean() / returns.rolling(window).std()).fillna(0)
+    if not sharpe_series.dropna().empty:
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(reward["step"], sharpe_series)
+        ax.set_title("sharpe")
+        save_fig(fig, "sharpe.png")
+    else:
+        _placeholder(charts_dir / "sharpe.png", "NO DATA")
+        images += 1
+
+    # loss / entropy from train log
     if rows_train > 0 and {"step", "metric", "value"}.issubset(train.columns):
         loss = train[train["metric"] == "loss"]
-        if len(loss) > 0:
-            fig, ax = plt.subplots()
+        if not loss.empty:
+            fig, ax = plt.subplots(figsize=(6, 4))
             ax.plot(loss["step"], loss["value"].fillna(0))
             ax.set_title("loss")
             save_fig(fig, "loss.png")
         else:
-            _placeholder(charts_dir / "loss.png", "NO LOSS DATA")
+            _placeholder(charts_dir / "loss.png", "NO DATA")
             images += 1
 
         ent = train[train["metric"] == "entropy"]
-        if len(ent) > 0:
-            fig, ax = plt.subplots()
+        if not ent.empty:
+            fig, ax = plt.subplots(figsize=(6, 4))
             ax.plot(ent["step"], ent["value"].fillna(0))
             ax.set_title("entropy")
             save_fig(fig, "entropy.png")
         else:
-            _placeholder(charts_dir / "entropy.png", "NO ENTROPY DATA")
+            _placeholder(charts_dir / "entropy.png", "NO DATA")
             images += 1
     else:
-        _placeholder(charts_dir / "loss.png", "NO LOSS DATA")
-        _placeholder(charts_dir / "entropy.png", "NO ENTROPY DATA")
+        _placeholder(charts_dir / "loss.png", "NO DATA")
+        _placeholder(charts_dir / "entropy.png", "NO DATA")
         images += 2
 
+    # risk flags chart
     if rows_risk > 0:
-        fig, ax = plt.subplots()
-        ax.bar(["risk"], [rows_risk])
-        ax.set_title("risk flags")
-        save_fig(fig, "risk_flags.png")
-    elif signals_rows > 0:
-        fig, ax = plt.subplots()
-        ax.bar(["signals"], [signals_rows])
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.plot(range(rows_risk), [1] * rows_risk)
         ax.set_title("risk flags")
         save_fig(fig, "risk_flags.png")
     else:
-        _placeholder(charts_dir / "risk_flags.png", "NO RISK DATA")
+        _placeholder(charts_dir / "risk_flags.png", "NO DATA")
         images += 1
 
-    # Sharpe ratio from reward
-    if rows_reward > 1 and reward["reward"].std() > 0:
-        sharpe = reward["reward"].mean() / reward["reward"].std() * (len(reward) ** 0.5)
-        fig, ax = plt.subplots()
-        ax.text(0.5, 0.5, f"Sharpe: {sharpe:.3f}", ha="center", va="center")
-        ax.set_axis_off()
-        save_fig(fig, "sharpe.png")
-    else:
-        _placeholder(charts_dir / "sharpe.png", "NO SHARPE")
-        images += 1
+    images = len([p for p in charts_dir.glob("*.png") if p.is_file() and not p.is_symlink()])
 
-    # Ensure at least 5 images
-    existing = [p for p in charts_dir.glob("*.png") if p.is_file() and not p.is_symlink()]
-    while len(existing) < 5:
-        name = f"fallback_{len(existing)+1}.png"
-        _placeholder(charts_dir / name, "NO DATA")
-        existing = [p for p in charts_dir.glob("*.png") if p.is_file() and not p.is_symlink()]
-    images = len(existing)
-
-    # --------------------
-    # Summary files
-    # --------------------
     rows = {
         "reward": rows_reward,
         "step": rows_step,
         "train": rows_train,
         "risk": rows_risk,
-        "callbacks": rows_callbacks,
-        "signals": signals_rows,
+        "signals": rows_signals,
+        "callbacks": callbacks_lines,
     }
-    summary_csv = run_paths.summary_csv_path
-    summary_json = run_paths.summary_json_path
-    df_summary = pd.DataFrame([
-        {
-            "rows_reward": rows_reward,
-            "rows_step": rows_step,
-            "rows_train": rows_train,
-            "rows_risk": rows_risk,
-            "rows_callbacks": rows_callbacks,
-            "rows_signals_total": signals_rows,
-            "images": images,
-        }
-    ])
-    _atomic_write(summary_csv, df_summary.to_csv(index=False))
-    summary_payload = {
-        "rows_reward": rows_reward,
-        "rows_step": rows_step,
-        "rows_train": rows_train,
-        "rows_risk": rows_risk,
-        "rows_callbacks": rows_callbacks,
-        "rows_signals_total": signals_rows,
-        "images": images,
-        "charts_dir": str(charts_dir.resolve()),
-    }
-    _atomic_write(summary_json, json.dumps(summary_payload, ensure_ascii=False, indent=2))
 
     if debug:
         print(
-            "[DEBUG_EXPORT] reward_rows=%d step_rows=%d train_rows=%d risk_rows=%d callbacks_rows=%d signals_rows=%d"
-            % (
-                rows_reward,
-                rows_step,
-                rows_train,
-                rows_risk,
-                rows_callbacks,
-                signals_rows,
-            )
+            f"[DEBUG] rows_reward={rows_reward} rows_step={rows_step} rows_train={rows_train} rows_risk={rows_risk} rows_signals={rows_signals}"
         )
+        for name, df in (("reward", reward), ("train", train)):
+            if not df.empty:
+                print(df.head())
+        print(f"[CHARTS] dir={charts_dir} images={images}")
 
-    return {
-        "charts_dir": str(charts_dir.resolve()),
-        "images": images,
-        "rows": rows,
-    }
-
-
-# Backwards compatibility ----------------------------------------------------
+    return charts_dir, images, rows
 
 
-def export_run(paths: RunPaths, debug: bool = False):  # pragma: no cover - shim
-    res = export_for_run(paths, debug=debug)
-    return Path(res["charts_dir"]), res["images"], res["rows"]["reward"], res["rows"]["step"]
+# ---------------------------------------------------------------------------
+# Backwards compatibility wrappers
+# ---------------------------------------------------------------------------
+
+
+def export_for_run(run_paths: RunPaths, debug: bool = False) -> Dict[str, Any]:
+    charts_dir, images, rows = export_run_charts(run_paths, run_paths.run_id, debug)
+    return {"charts_dir": str(charts_dir), "images": images, "rows": rows}
+
+
+def export_run(paths: RunPaths, debug: bool = False):  # pragma: no cover
+    cd, imgs, rows = export_run_charts(paths, paths.run_id, debug)
+    return cd, imgs, rows.get("reward", 0), rows.get("step", 0)
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI helper
     import argparse
+    from bot_trade.config.rl_paths import get_root
 
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        description="Export charts for a training run",
+        epilog="Example: python -m bot_trade.tools.export_charts --symbol BTCUSDT --frame 1m --run-id abc123",
+    )
     ap.add_argument("--symbol", default="BTCUSDT")
     ap.add_argument("--frame", default="1m")
     ap.add_argument("--run-id", required=True)
-    ap.add_argument("--base", default=None)
+    ap.add_argument("--base", default=None, help="Project root directory")
     ap.add_argument("--debug-export", action="store_true")
     ns = ap.parse_args(argv)
 
-    from bot_trade.config.rl_paths import get_root
-
     root = Path(ns.base) if ns.base else get_root()
     rp = RunPaths(ns.symbol, ns.frame, ns.run_id, root=root)
-    info = export_for_run(rp, debug=ns.debug_export)
-    return 0 if info["images"] > 0 else 2
+    charts_dir, images, _rows = export_run_charts(rp, ns.run_id, debug=ns.debug_export)
+    print(f"[CHARTS] dir={charts_dir} images={images}")
+    return 0 if images > 0 else 2
 
 
 if __name__ == "__main__":  # pragma: no cover

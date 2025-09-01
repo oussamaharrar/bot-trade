@@ -416,7 +416,7 @@ DEFAULT_MEMORY_FILE = os.environ.get(
     "BOT_MEMORY_FILE", str(memory_dir() / "memory.json")
 )
 DEFAULT_KB_FILE = os.environ.get(
-    "BOT_KB_FILE", str(memory_dir() / "knowledge_base_full.json")
+    "BOT_KB_FILE", str(memory_dir() / "Knowlogy" / "kb.jsonl")
 )
 
 
