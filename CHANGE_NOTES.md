@@ -100,3 +100,9 @@ PY`
 - Legacy flags like `--no-wait` and `--debug-export` remain accepted but are no-ops.
 - Risks/Migration: tools now emit extra lines; parsers expecting silence must adapt. KB records include `rows_callbacks` and may change ordering.
 - Next: track KB size growth, richer eval metrics, and automation around smoke tests.
+
+## 2025-09-24
+- **Files**: `bot_trade/tools/export_run_charts.py`, `bot_trade/tools/monitor_manager.py`, `bot_trade/tools/eval_run.py`, `bot_trade/train_rl.py`, `DEV_NOTES.md`, `CHANGE_NOTES.md`
+- **Rationale**: finalize Delta Pack with standardized debug/charts lines, headless notices, atomic PNG params, and non-silent eval.
+- **Risks**: scripts parsing old outputs may need updates; additional prints could affect log consumers.
+- **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py`; `python -m bot_trade.tools.monitor_manager --help`; `python -m bot_trade.tools.export_run_charts --help`; `python -m bot_trade.tools.eval_run --help`; run synthetic training and verify [DEBUG_EXPORT]/[CHARTS]/[EVAL] lines.

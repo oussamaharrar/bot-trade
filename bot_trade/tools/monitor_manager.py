@@ -51,20 +51,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
         rp = RunPaths(ns.symbol, ns.frame, run_id, root=root)
         from bot_trade.tools import export_run_charts  # lazy heavy import
-
-        charts_dir, images, rows = export_run_charts.export_for_run(rp)
-        print(
-            "[DEBUG_EXPORT] reward_rows=%d step_rows=%d train_rows=%d risk_rows=%d callbacks_rows=%d signals_rows=%d"
-            % (
-                rows.get("reward", 0),
-                rows.get("step", 0),
-                rows.get("train", 0),
-                rows.get("risk", 0),
-                rows.get("callbacks", 0),
-                rows.get("signals", 0),
-            )
-        )
-        print(f"[CHARTS] dir={charts_dir.resolve()} images={images}")
+        charts_dir, images, _rows = export_run_charts.export_for_run(rp)
         return 0 if images > 0 else 2
     except Exception as exc:  # pragma: no cover
         print(f"[ERROR] {exc}", file=sys.stderr)
