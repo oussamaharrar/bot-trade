@@ -88,7 +88,7 @@ class UpdateManager:
         # ------------------------------------------------------------------
         # Knowledge aggregation
         self._knowledge_events = os.path.join(self.logs_dir, "knowledge_events.jsonl")
-        self._kb_full = paths.get("kb_file") or str(memory_dir() / "knowledge_base_full.json")
+        self._kb_full = paths.get("kb_file") or str(memory_dir() / "Knowlogy" / "kb.jsonl")
 
     # ------------------------------------------------------------------
     # API methods

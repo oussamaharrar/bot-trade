@@ -32,10 +32,13 @@ def generate(symbol: str, frame: str, out_dir: Path) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser("generate synthetic dataset")
-    ap.add_argument("--symbol", default="BTCUSDT")
-    ap.add_argument("--frame", default="1m")
-    ap.add_argument("--out", default="data_ready")
+    ap = argparse.ArgumentParser(
+        description="Generate synthetic OHLCV data for development",
+        epilog="Example: python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready",
+    )
+    ap.add_argument("--symbol", default="BTCUSDT", help="Trading symbol")
+    ap.add_argument("--frame", default="1m", help="Time frame")
+    ap.add_argument("--out", default="data_ready", help="Output data directory")
     ns = ap.parse_args(argv)
 
     dest = generate(ns.symbol, ns.frame, Path(ns.out))

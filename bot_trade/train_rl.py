@@ -23,10 +23,10 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from bot_trade.config.rl_paths import dataset_path, RunPaths, ensure_contract
+from bot_trade.config.rl_paths import dataset_path, RunPaths, ensure_contract, memory_dir
 from bot_trade.config.device import normalize_device
 from bot_trade.config.rl_callbacks import _save_vecnorm
-from bot_trade.tools.export_charts import export_for_run
+from bot_trade.tools.export_charts import export_run_charts
 from bot_trade.tools.evaluate_model import evaluate_for_run
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
@@ -269,6 +269,54 @@ def _logging_monitor_loop(queue, listener):
             pass
 
 
+def _atomic_json(path: Path, data: dict) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8", newline="\n") as fh:
+        json.dump(data, fh, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def _update_portfolio_state(path: Path, steps: int) -> None:
+    state = {"equity": 0.0, "steps": 0, "last_ts": "", "version": 1}
+    if path.exists():
+        try:
+            state.update(json.loads(path.read_text(encoding="utf-8")))
+        except Exception:
+            pass
+    state["steps"] = int(state.get("steps", 0)) + int(steps)
+    state["last_ts"] = dt.datetime.utcnow().isoformat()
+    _atomic_json(path, state)
+
+
+def _append_kb(path: Path, entry: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = ""
+    if path.exists():
+        try:
+            existing = path.read_text(encoding="utf-8")
+        except Exception:
+            existing = ""
+    tmp = path.with_suffix(".tmp")
+    with tmp.open("w", encoding="utf-8", newline="\n") as fh:
+        if existing:
+            fh.write(existing.rstrip("\n") + "\n")
+        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    os.replace(tmp, path)
+
+
+def _ensure_aux_files(run_id: str) -> None:
+    mem = memory_dir()
+    mem.mkdir(parents=True, exist_ok=True)
+    (mem / "events.lock").touch(exist_ok=True)
+    now = dt.datetime.utcnow().isoformat()
+    run_state = mem / "run_state.json"
+    if not run_state.exists() or run_state.stat().st_size == 0:
+        _atomic_json(run_state, {"status": "idle", "updated_at": now})
+    latest = mem / "state_latest.json"
+    if not latest.exists() or latest.stat().st_size == 0:
+        _atomic_json(latest, {"last_run_id": run_id, "updated_at": now})
+
+
 def _postrun_summary(paths, meta):
     logger = logging.getLogger()
     run_id = meta.get("run_id") or (
@@ -292,20 +340,19 @@ def _postrun_summary(paths, meta):
         eval_summary = {}
 
     try:
-        export_info = export_for_run(rp, debug=bool(meta.get("debug_export", False)))
-        charts_dir = Path(export_info["charts_dir"])
-        img_count = int(export_info.get("images", 0))
-        rows_reward = export_info.get("rows", {}).get("reward", 0)
-        rows_step = export_info.get("rows", {}).get("step", 0)
-        rows_train = export_info.get("rows", {}).get("train", 0)
-        rows_risk = export_info.get("rows", {}).get("risk", 0)
-        rows_callbacks = export_info.get("rows", {}).get("callbacks", 0)
-        rows_signals = export_info.get("rows", {}).get("signals", 0)
+        charts_dir, img_count, row_counts = export_run_charts(
+            rp, str(run_id), debug=bool(meta.get("debug_export", False))
+        )
+        rows_reward = row_counts.get("reward", 0)
+        rows_step = row_counts.get("step", 0)
+        rows_train = row_counts.get("train", 0)
+        rows_risk = row_counts.get("risk", 0)
+        rows_signals = row_counts.get("signals", 0)
         logger.info("[POSTRUN_EXPORT] charts=%s images=%d", charts_dir, img_count)
     except Exception as e:
         charts_dir = rp.charts_dir
         img_count = 0
-        rows_reward = rows_step = rows_train = rows_risk = rows_callbacks = rows_signals = 0
+        rows_reward = rows_step = rows_train = rows_risk = rows_signals = 0
         logger.warning("[POSTRUN_EXPORT] export_failed err=%s", e)
 
     agents_base = Path(rp.agents)
@@ -317,6 +364,39 @@ def _postrun_summary(paths, meta):
     vec_snapshot = vecnorm.exists()
     best_ok = best.exists()
     last_ok = last.exists()
+
+    steps_this_run = int(meta.get("total_steps", 0))
+    try:
+        _update_portfolio_state(rp.performance_dir / "portfolio_state.json", steps_this_run)
+    except Exception as e:
+        logger.warning("[PORTFOLIO] update_failed err=%s", e)
+
+    try:
+        kb_entry = {
+            "run_id": run_id,
+            "symbol": sym,
+            "frame": frm,
+            "rows_reward": rows_reward,
+            "rows_step": rows_step,
+            "rows_train": rows_train,
+            "rows_risk": rows_risk,
+            "rows_signals": rows_signals,
+            "images": img_count,
+            "vecnorm_applied": vec_applied,
+            "best": best_ok,
+            "last": last_ok,
+            "agent_best": str(rp.best_model),
+            "ts": dt.datetime.utcnow().isoformat(),
+        }
+        _append_kb(rp.kb_file, kb_entry)
+    except Exception as e:
+        logger.warning("[KB] append_failed err=%s", e)
+
+    try:
+        _ensure_aux_files(str(run_id))
+    except Exception:
+        pass
+
     line = (
         f"[POSTRUN] run_id={run_id} symbol={sym} frame={frm} "
         f"charts={charts_dir.resolve()} images={img_count} reward_lines={reward_lines} "
@@ -337,7 +417,6 @@ def _postrun_summary(paths, meta):
         "rows_step": rows_step,
         "rows_train": rows_train,
         "rows_risk": rows_risk,
-        "rows_callbacks": rows_callbacks,
         "rows_signals": rows_signals,
         "best": best_ok,
         "last": last_ok,
@@ -485,6 +564,7 @@ def train_one_file(args, data_file: str) -> bool:
         "run_id": run_id,
         "symbol": args.symbol,
         "frame": args.frame,
+        "total_steps": int(getattr(args, "total_steps", 0)),
         "eval_episodes": int(getattr(args, "eval_episodes", 3)),
         "export_min_images": int(getattr(args, "export_min_images", 5)),
         "debug_export": bool(getattr(args, "debug_export", False)),
@@ -1071,11 +1151,6 @@ def train_one_file(args, data_file: str) -> bool:
         pass
 
     summary_meta = _postrun_summary(paths, run_meta)
-    kb_meta = {**run_meta, **summary_meta, "ts": dt.datetime.utcnow().isoformat()}
-    try:
-        update_manager.append_kb(kb_meta)
-    except Exception as exc:
-        logging.warning("[KB] update failed: %s", exc)
 
     if mon_proc is not None:
         try:
@@ -1343,7 +1418,8 @@ def main():
             from bot_trade.tools.gen_synth_data import generate
 
             base = Path(args.data_root or "data_ready")
-            generate(args.symbol, args.frame, base)
+            dest = generate(args.symbol, args.frame, base)
+            print(f"[SYNTH] generated {dest}")
             files = discover_files(args.frame, args.symbol, data_root=args.data_root)
         else:
             base = pathlib.Path(args.data_root) / args.frame

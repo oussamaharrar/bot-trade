@@ -43,7 +43,10 @@ def build_policy_kwargs(net_arch_str: str, activation: str, ortho_init: bool) ->
     return kw
 
 def parse_args():
-    ap = argparse.ArgumentParser("train_rl — orchestrator")
+    ap = argparse.ArgumentParser(
+        description="Train reinforcement learning agent",
+        epilog="Example: python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m",
+    )
     ap.add_argument("--symbol", type=str, default="BTCUSDT")
     ap.add_argument("--frame", type=str, default="1m")
     ap.add_argument("--policy", type=str, default="MlpPolicy")
