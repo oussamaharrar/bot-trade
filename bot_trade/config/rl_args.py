@@ -47,7 +47,7 @@ def parse_args():
         description="Train reinforcement learning agent",
         epilog=(
             "Example: python -m bot_trade.train_rl "
-            "--symbol BTCUSDT --frame 1m --allow-synth"
+            "--symbol BTCUSDT --frame 1m --device cpu --allow-synth"
         ),
     )
     ap.add_argument("--symbol", type=str, default="BTCUSDT")

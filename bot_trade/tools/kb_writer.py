@@ -10,17 +10,16 @@ performed atomically to avoid corrupting the file.
 from pathlib import Path
 import json
 import os
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 from bot_trade.config.rl_paths import DEFAULT_KB_FILE
 
 
-def _resolve_kb_path(run_paths: Any) -> Path:
-    """Return KB path from a RunPaths instance or mapping.
+def _resolve_kb_path(run_paths: Any, kb_file: Optional[str] = None) -> Path:
+    """Return KB path derived from ``run_paths`` or explicit override."""
 
-    Falls back to the canonical location when ``kb_file`` is missing.
-    """
-
+    if kb_file:
+        return Path(kb_file)
     if isinstance(run_paths, (str, Path)):
         return Path(run_paths)
     if isinstance(run_paths, Mapping):
@@ -33,30 +32,19 @@ def _resolve_kb_path(run_paths: Any) -> Path:
     return Path(DEFAULT_KB_FILE)
 
 
-def kb_append(run_paths: Any, payload: dict) -> None:
-    """Atomically append ``payload`` to the knowledge base.
+def kb_append(run_paths: Any, payload: dict, kb_file: Optional[str] = None) -> None:
+    """Append ``payload`` as JSON to the knowledge base.
 
-    Parameters
-    ----------
-    run_paths:
-        RunPaths instance, mapping, or path-like pointing to the KB file.
-    payload:
-        Dictionary payload to serialize as JSON.
+    Writes are performed using ``os.O_APPEND`` to avoid clobbering existing
+    data. The file is created if missing and always written with a trailing
+    newline to maintain JSON Lines format.
     """
 
-    path = _resolve_kb_path(run_paths)
+    path = _resolve_kb_path(run_paths, kb_file)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    existing = ""
-    if path.exists():
-        try:
-            existing = path.read_text(encoding="utf-8")
-        except Exception:
-            existing = ""
-
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8", newline="\n") as fh:
-        if existing:
-            fh.write(existing.rstrip("\n") + "\n")
-        fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    os.replace(tmp, path)
+    line = json.dumps(payload, ensure_ascii=False) + "\n"
+    data = line.encode("utf-8")
+    fd = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o644)
+    with os.fdopen(fd, "ab") as fh:
+        fh.write(data)

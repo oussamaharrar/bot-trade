@@ -75,3 +75,13 @@ PY`
 - **Rationale**: ensure dual-archive promotion moves previous best atomically and guard resume against corrupt checkpoints.
 - **Risks**: move operations may fail across filesystems; resume fallback may omit certain errors.
 - **Test Steps**: `python -m py_compile bot_trade/train_rl.py bot_trade/config/rl_callbacks.py continue_train_agent.py`
+
+## Developer Notes — 2025-09-23
+- A) KB: canonical JSONL appender; atomic writes; schema stabilized; integrated after charts+eval+state.
+- B) Charts: Agg backend; ≥5 PNG with placeholders; row counts printed; atomic PNGs.
+- C) Eval: synthetic-first metrics; summary.json + portfolio_state.json; equity/drawdown charts (Agg).
+- D) State: run_state.json + state_latest.json (atomic) after portfolio; events.lock optional.
+- E) Lifecycle: deep_rl_last.zip updated each run; atomic best promotion; archive_best timestamped; corrupt checkpoint guards.
+- F) CLI: allow-synth examples; help for tools; heavy deps moved inside main; standardized POSTRUN fields.
+- Risks/Migration: do not json.load KB (JSONL). Do not follow symlinks for latest. Atomic I/O everywhere.
+- Next: optional archive index CSV; WFA eval pack; CI smoke; SAC/TD3/TQC builders.

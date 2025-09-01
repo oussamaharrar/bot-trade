@@ -7,11 +7,13 @@ malformed files so it is safe to run after every training session.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, TYPE_CHECKING
 
 import os
 import sys
-import pandas as pd
+
+if TYPE_CHECKING:  # pragma: no cover
+    import pandas as pd
 
 # use non-interactive backend at import time
 import matplotlib
@@ -39,13 +41,15 @@ STEP_ALIASES = {
 # helpers
 # ---------------------------------------------------------------------------
 
-def _read_csv(path: Path, aliases: Dict[str, str] | None = None) -> pd.DataFrame:
+def _read_csv(path: Path, aliases: Dict[str, str] | None = None) -> "pd.DataFrame":
     """Read ``path`` returning empty frame on failure.
 
     Columns are renamed using ``aliases`` if provided.  All non timestamp
     columns are coerced to numeric and rows consisting solely of ``NaN`` are
     dropped (zeros are preserved).
     """
+
+    import pandas as pd
 
     if not path.exists() or path.is_dir():
         return pd.DataFrame()
@@ -79,7 +83,8 @@ def _save(fig: plt.Figure, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
     tmp = path.with_suffix(path.suffix + ".tmp")
-    fig.savefig(tmp, dpi=120)
+    fmt = path.suffix.lstrip(".") or "png"
+    fig.savefig(tmp, dpi=120, format=fmt)
     os.replace(tmp, path)
     plt.close(fig)
     if path.stat().st_size < 1024:
@@ -96,6 +101,8 @@ def export_for_run(run_paths: RunPaths, debug: bool = False) -> Tuple[Path, int,
 
     Returns ``(charts_dir, image_count, rows_dict)``.
     """
+
+    import pandas as pd
 
     rp = run_paths
     charts_dir = rp.charts_dir
