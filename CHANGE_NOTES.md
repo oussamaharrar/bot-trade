@@ -163,3 +163,9 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Risks: callers that skip the helper may display GUI backends; consumers must handle the new `[HEADLESS]` line.
 - Migration: call `ensure_headless_once` in new CLIs before plotting; update log parsers for the headless notice.
 - Next: expand smoke coverage and track chart file sizes.
+
+## 2025-09-26
+- **Files**: `bot_trade/config/rl_builders.py`, `bot_trade/train_rl.py`, `bot_trade/config/rl_args.py`, `bot_trade/config/rl_paths.py`, `bot_trade/tools/paths.py`, `bot_trade/config/config.yaml`, `DEV_NOTES.md`, `CHANGE_NOTES.md`
+- **Rationale**: Phase 1: introduce SAC alongside PPO with algorithm switch and algorithm-scoped artefact directories.
+- **Risks**: new directory layout may break existing scripts; SAC requires continuous action spaces.
+- **Test Steps**: `python -m py_compile bot_trade/config/rl_builders.py bot_trade/train_rl.py bot_trade/config/rl_args.py bot_trade/config/rl_paths.py bot_trade/tools/paths.py`, `python -m bot_trade.train_rl --help`, `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --total-steps 1 --allow-synth --no-monitor --headless`, `python -m bot_trade.train_rl --algorithm SAC --symbol BTCUSDT --frame 1m --total-steps 1 --allow-synth --no-monitor --headless --buffer-size 1000 --learning-starts 1 --train-freq 1 --gradient-steps 1 --batch-size 2 --ent-coef auto`

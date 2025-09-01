@@ -15,7 +15,7 @@ import os, logging
 
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, SAC
 
 # استيراد بيئتك
 from .env_trading import TradingEnv
@@ -181,6 +181,8 @@ def build_ppo(args, vec_env, is_discrete: bool):
     # ضمان توافق batch_size مع عدد البيئات
     bs = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", 64)), vec_env)
 
+    ent_coef = float(args.ent_coef) if isinstance(args.ent_coef, str) else args.ent_coef
+
     model = PPO(
         "MlpPolicy",
         vec_env,
@@ -191,7 +193,7 @@ def build_ppo(args, vec_env, is_discrete: bool):
         gamma=args.gamma,
         gae_lambda=args.gae_lambda,
         clip_range=args.clip_range,
-        ent_coef=args.ent_coef,
+        ent_coef=ent_coef,
         vf_coef=args.vf_coef,
         max_grad_norm=args.max_grad_norm,
         policy_kwargs=args.policy_kwargs,
@@ -203,6 +205,82 @@ def build_ppo(args, vec_env, is_discrete: bool):
         tensorboard_log=getattr(args, "tensorboard_log", None),
     )
     return model
+
+
+def build_sac(args, vec_env, is_discrete: bool):
+    """Return a configured SAC model (from stable_baselines3)."""
+    if is_discrete:
+        raise ValueError("SAC requires a continuous (Box) action space, but got Discrete")
+
+    from .env_config import get_config
+
+    cfg = get_config()
+    rl_cfg = cfg.get("rl", {}) if isinstance(cfg, dict) else {}
+    sac_cfg = rl_cfg.get("sac", {}) if isinstance(rl_cfg, dict) else {}
+
+    def _get(name, default):
+        val = getattr(args, name, None)
+        if val is None:
+            val = sac_cfg.get(name, rl_cfg.get(name, default))
+        return val
+
+    buffer_size = int(_get("buffer_size", 2_000_000))
+    learning_starts = int(_get("learning_starts", 20_000))
+    train_freq = int(_get("train_freq", 1))
+    gradient_steps = int(_get("gradient_steps", 1))
+    tau = float(_get("tau", 0.005))
+    ent_coef = _get("ent_coef", "auto")
+    try:
+        ent_coef = float(ent_coef)
+    except (TypeError, ValueError):
+        pass
+    gamma = _get("sac_gamma", None)
+    if gamma is None:
+        gamma = _get("gamma", 0.99)
+    learning_rate = _get("learning_rate", 3e-4)
+
+    bs_default = int(_get("batch_size", 512))
+    bs = _adjust_batch_size_for_envs(bs_default, vec_env)
+
+    logging.info(
+        "[SAC] buffer_size=%s learning_starts=%s train_freq=%s gradient_steps=%s batch_size=%s tau=%s ent_coef=%s gamma=%s",
+        buffer_size,
+        learning_starts,
+        train_freq,
+        gradient_steps,
+        bs,
+        tau,
+        ent_coef,
+        gamma,
+    )
+
+    model = SAC(
+        "MlpPolicy",
+        vec_env,
+        learning_rate=learning_rate,
+        buffer_size=buffer_size,
+        learning_starts=learning_starts,
+        train_freq=train_freq,
+        gradient_steps=gradient_steps,
+        batch_size=bs,
+        tau=tau,
+        ent_coef=ent_coef,
+        gamma=gamma,
+        policy_kwargs=args.policy_kwargs,
+        seed=args.seed,
+        device=args.device_str,
+        verbose=getattr(args, "sb3_verbose", 1),
+        tensorboard_log=getattr(args, "tensorboard_log", None),
+    )
+    return model
+
+
+def build_td3(args, vec_env, is_discrete: bool):  # noqa: ARG001
+    raise NotImplementedError("Phase 2")
+
+
+def build_tqc(args, vec_env, is_discrete: bool):  # noqa: ARG001
+    raise NotImplementedError("Phase 2")
 
 
 def build_callbacks(

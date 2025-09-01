@@ -27,21 +27,21 @@ def ensure_dirs(*paths: Path) -> None:
         p.mkdir(parents=True, exist_ok=True)
 
 
-def results_dir(symbol: str, frame: str) -> Path:
+def results_dir(symbol: str, frame: str, algo: str | None = None) -> Path:
     """Return the results directory for ``symbol``/``frame``."""
-    return _results_dir(symbol, frame)
+    return _results_dir(symbol, frame, algo)
 
 
-def agents_dir(symbol: str, frame: str) -> Path:
+def agents_dir(symbol: str, frame: str, algo: str | None = None, run_id: str | None = None) -> Path:
     """Return the agents directory for ``symbol``/``frame``."""
-    return _agents_dir(symbol, frame)
+    return _agents_dir(symbol, frame, algo, run_id)
 
 
-def report_dir(symbol: str, frame: str, run_id: str) -> Path:  # noqa: ARG001
-    """Return the report directory (run_id ignored for compatibility)."""
-    return _reports_dir(symbol, frame)
+def report_dir(symbol: str, frame: str, run_id: str | None = None, algo: str | None = None) -> Path:
+    """Return the report directory."""
+    return _reports_dir(symbol, frame, algo)
 
 
-def logs_dir(symbol: str, frame: str, run_id: str) -> Path:  # noqa: ARG001
-    """Return the logs directory under results (run_id ignored)."""
-    return _logs_dir(symbol, frame)
+def logs_dir(symbol: str, frame: str, run_id: str | None = None, algo: str | None = None) -> Path:
+    """Return the logs directory under results."""
+    return _logs_dir(symbol, frame, run_base=run_id, algo=algo)

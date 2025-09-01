@@ -68,10 +68,21 @@ def _postrun_summary(paths, meta):
     sym = getattr(paths, "symbol", meta.get("symbol", "?"))
     frm = getattr(paths, "frame", meta.get("frame", "?"))
 
+    algo = (
+        getattr(paths, "algo", None)
+        if isinstance(paths, RunPaths)
+        else (meta.get("algorithm") or "PPO")
+    )
     rp = (
         paths
         if isinstance(paths, RunPaths)
-        else RunPaths(sym, frm, str(run_id), kb_file=(paths.get("kb_file") if isinstance(paths, dict) else None))
+        else RunPaths(
+            sym,
+            frm,
+            str(run_id),
+            algo,
+            kb_file=(paths.get("kb_file") if isinstance(paths, dict) else None),
+        )
     )
 
     eval_summary: dict[str, Any] = meta.get("synthetic_eval") or {}
@@ -351,6 +362,7 @@ def train_one_file(args, data_file: str) -> bool:
         "run_id": run_id,
         "symbol": args.symbol,
         "frame": args.frame,
+        "algorithm": getattr(args, "algorithm", "PPO"),
         "total_steps": int(getattr(args, "total_steps", 0)),
         "eval_episodes": int(getattr(args, "eval_episodes", 3)),
         "export_min_images": int(getattr(args, "export_min_images", 5)),
@@ -365,8 +377,16 @@ def train_one_file(args, data_file: str) -> bool:
         print(f"[DATA] missing dataset: {data_file}", file=sys.stderr)
         sys.exit(3)
 
+    cfg = get_config()
+    algo = (
+        getattr(args, "algorithm", None)
+        or cfg.get("rl", {}).get("algorithm", "PPO")
+    ).upper()
+    args.algorithm = algo
+    logging.info("[ALG] Using %s", algo)
+
     # 1) Paths + logging + state
-    paths_obj = RunPaths(args.symbol, args.frame, run_id, kb_file=args.kb_file)
+    paths_obj = RunPaths(args.symbol, args.frame, run_id, algo, kb_file=args.kb_file)
     paths_obj.ensure()
     paths = paths_obj.as_dict()
     ensure_contract(paths)
@@ -397,21 +417,41 @@ def train_one_file(args, data_file: str) -> bool:
     except Exception:
         logging.info("[KB] initialized new knowledge base at %s", args.kb_file)
 
-    cfg = get_config()
     update_manager = UpdateManager(paths, args.symbol, args.frame, run_id, cfg)
 
+    cfg.setdefault("rl", {})["algorithm"] = algo
+
     # merge CLI overrides into cfg surface
-    ppo_cfg = cfg.setdefault("ppo", {})
-    ppo_cfg.update({
-        "n_envs": int(args.n_envs),
-        "n_steps": int(args.n_steps),
-        "batch_size": int(args.batch_size),
-        "learning_rate": float(args.learning_rate),
-        "gamma": float(args.gamma),
-        "gae_lambda": float(args.gae_lambda),
-        "clip_range": float(args.clip_range),
-        "n_epochs": int(args.epochs),
-    })
+    if algo == "SAC":
+        sac_cfg = cfg.setdefault("sac", {})
+        if args.buffer_size is not None:
+            sac_cfg["buffer_size"] = int(args.buffer_size)
+        if args.learning_starts is not None:
+            sac_cfg["learning_starts"] = int(args.learning_starts)
+        if args.train_freq is not None:
+            sac_cfg["train_freq"] = int(args.train_freq)
+        if args.gradient_steps is not None:
+            sac_cfg["gradient_steps"] = int(args.gradient_steps)
+        if args.batch_size is not None:
+            sac_cfg["batch_size"] = int(args.batch_size)
+        if args.tau is not None:
+            sac_cfg["tau"] = float(args.tau)
+        if args.ent_coef is not None:
+            sac_cfg["ent_coef"] = args.ent_coef
+        if getattr(args, "sac_gamma", None) is not None:
+            sac_cfg["gamma"] = float(args.sac_gamma)
+    else:
+        ppo_cfg = cfg.setdefault("ppo", {})
+        ppo_cfg.update({
+            "n_envs": int(args.n_envs),
+            "n_steps": int(args.n_steps),
+            "batch_size": int(args.batch_size),
+            "learning_rate": float(args.learning_rate),
+            "gamma": float(args.gamma),
+            "gae_lambda": float(args.gae_lambda),
+            "clip_range": float(args.clip_range),
+            "n_epochs": int(args.epochs),
+        })
     pol_cfg = cfg.setdefault("policy_kwargs", {})
     pol_cfg.update({
         "net_arch": args.policy_kwargs.get("net_arch"),
@@ -652,10 +692,12 @@ def train_one_file(args, data_file: str) -> bool:
         elif os.path.exists(paths["model_best_zip"]):
             resume_path = paths["model_best_zip"]
     if resume_path:
-        from stable_baselines3 import PPO
+        from stable_baselines3 import PPO as _PPO, SAC as _SAC
+
+        Loader = _SAC if algo == "SAC" else _PPO
         best_path = Path(paths.get("model_best_zip", ""))
         try:
-            model = PPO.load(
+            model = Loader.load(
                 resume_path, env=vec_env, device=args.device_str, print_system_info=False
             )
             logging.info("[RESUME] Loaded model from %s", resume_path)
@@ -667,7 +709,7 @@ def train_one_file(args, data_file: str) -> bool:
             )
             if best_path.exists() and Path(resume_path) != best_path:
                 try:
-                    model = PPO.load(
+                    model = Loader.load(
                         str(best_path),
                         env=vec_env,
                         device=args.device_str,
@@ -684,20 +726,46 @@ def train_one_file(args, data_file: str) -> bool:
             model = None
 
     if model is None:
-        sched = cfg.get("ppo", {}).get("lr_schedule", "constant")
-        if sched != "constant" and not callable(args.learning_rate):
-            warm = int(cfg["ppo"].get("warmup_steps", 0))
-            base_lr = float(args.learning_rate)
-            total = int(args.total_steps)
-            def lr_schedule(progress):
-                step = (1 - progress) * total
-                if step < warm:
-                    return base_lr * step / max(1, warm)
-                pct = (step - warm) / max(1, total - warm)
-                return 0.5 * base_lr * (1 + math.cos(math.pi * pct))
-            args.learning_rate = lr_schedule
-        model = build_ppo(args, vec_env, is_discrete)
-        logging.info("[PPO] Built new model (device=%s, use_sde=%s)", args.device_str, bool(args.sde and not is_discrete))
+        if algo == "SAC":
+            model = build_sac(args, vec_env, is_discrete)
+            logging.info("[SAC] Built new model (device=%s)", args.device_str)
+            if getattr(args, "warmstart_from_ppo", None):
+                try:
+                    from stable_baselines3 import PPO as _PPO
+
+                    if os.path.exists(args.warmstart_from_ppo):
+                        _ppo = _PPO.load(args.warmstart_from_ppo, device=args.device_str)
+                        model.policy.features_extractor.load_state_dict(
+                            _ppo.policy.features_extractor.state_dict(), strict=False
+                        )
+                        logger = logging.getLogger(__name__)
+                        logger.info(
+                            "Warm-started SAC feature extractor from PPO checkpoint."
+                        )
+                except Exception as e:
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Warm-start skipped: {e}")
+        else:
+            sched = cfg.get("ppo", {}).get("lr_schedule", "constant")
+            if sched != "constant" and not callable(args.learning_rate):
+                warm = int(cfg["ppo"].get("warmup_steps", 0))
+                base_lr = float(args.learning_rate)
+                total = int(args.total_steps)
+
+                def lr_schedule(progress):
+                    step = (1 - progress) * total
+                    if step < warm:
+                        return base_lr * step / max(1, warm)
+                    pct = (step - warm) / max(1, total - warm)
+                    return 0.5 * base_lr * (1 + math.cos(math.pi * pct))
+
+                args.learning_rate = lr_schedule
+            model = build_ppo(args, vec_env, is_discrete)
+            logging.info(
+                "[PPO] Built new model (device=%s, use_sde=%s)",
+                args.device_str,
+                bool(args.sde and not is_discrete),
+            )
 
     if resume_data:
         try:
@@ -998,7 +1066,7 @@ def main():
     args.device_str = device_str
     logging.info("Using device=%s", device_str)
     args.policy_kwargs = build_policy_kwargs(args.net_arch, args.activation, args.ortho_init)
-    global build_env_fns, make_vec_env, detect_action_space, build_ppo, build_callbacks
+    global build_env_fns, make_vec_env, detect_action_space, build_ppo, build_sac, build_td3, build_tqc, build_callbacks
     global build_paths, ensure_state_files
     global Writers, create_loggers, setup_worker_logging, UpdateManager, CompositeCallback, get_config
     global EvalCallback, EvalSaveCallback, load_run_state, save_run_state, MemoryManager
@@ -1014,6 +1082,9 @@ def main():
         make_vec_env,
         detect_action_space,
         build_ppo,
+        build_sac,
+        build_td3,
+        build_tqc,
         build_callbacks,
     )
     from bot_trade.config.rl_paths import build_paths, ensure_state_files
