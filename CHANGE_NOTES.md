@@ -69,3 +69,9 @@ PY`
 - **Rationale**: persist run and latest state snapshots under performance reports with atomic writes.
 - **Risks**: directories without write access may miss state files.
 - **Test Steps**: `python -m py_compile bot_trade/train_rl.py`, `pytest -q || echo "no tests found"`
+
+## 2025-09-22
+- **Files**: `bot_trade/train_rl.py`, `bot_trade/config/rl_callbacks.py`, `continue_train_agent.py`, `CHANGE_NOTES.md`
+- **Rationale**: ensure dual-archive promotion moves previous best atomically and guard resume against corrupt checkpoints.
+- **Risks**: move operations may fail across filesystems; resume fallback may omit certain errors.
+- **Test Steps**: `python -m py_compile bot_trade/train_rl.py bot_trade/config/rl_callbacks.py continue_train_agent.py`

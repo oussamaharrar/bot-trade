@@ -518,7 +518,7 @@ def _manage_models(paths: Dict[str, str], summary: Dict[str, Any], run_id: str) 
             archived_prev = archive_best_dir / stamp_name(
                 best_model.stem, run_id, ts, best_model.suffix
             )
-            shutil.copy2(best_model, archived_prev)
+            best_model.replace(archived_prev)
             vec_arch: Path | None = None
             if vecnorm_best.exists():
                 vec_arch = archive_best_dir / stamp_name(
