@@ -1,16 +1,15 @@
-"""Run context helpers: run id generation and atomic filesystem utils."""
+"""Run context helpers: run id generation and filesystem utilities."""
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict
 
 from bot_trade.tools.paths import ROOT
 from bot_trade.config.rl_paths import build_paths, new_run_id as _new_run_id
+from bot_trade.tools.atomic_io import write_json
 
 
 def _git_hash() -> str:
@@ -40,15 +39,9 @@ def run_paths(symbol: str, frame: str, run_id: str) -> Dict[str, Path]:
     }
 
 
-def atomic_write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(path)
-
-
 def atomic_write_json(path: Path, data: Dict) -> None:
-    atomic_write_text(path, json.dumps(data, indent=2, ensure_ascii=False))
+    """[DEPRECATED] use :func:`bot_trade.tools.atomic_io.write_json`."""
+    write_json(path, data)
 
 
 @contextmanager
