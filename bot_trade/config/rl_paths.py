@@ -172,11 +172,20 @@ class RunPaths:
     ``RUN_ID`` is expected to be a short identifier (no timestamps).
     """
 
-    def __init__(self, symbol: str, frame: str, run_id: str, root: Path | None = None) -> None:
+    def __init__(
+        self,
+        symbol: str,
+        frame: str,
+        run_id: str,
+        root: Path | None = None,
+        kb_file: str | Path | None = None,
+    ) -> None:
         self.symbol = symbol.upper()
         self.frame = str(frame)
         self.run_id = run_id
         self.root = root or get_root()
+        self.kb_file = Path(kb_file) if kb_file else Path(DEFAULT_KB_FILE)
+        self.kb_file.parent.mkdir(parents=True, exist_ok=True)
 
         self.logs = Path(DEFAULT_LOGS_DIR) / self.symbol / self.frame / self.run_id
         self.results = Path(DEFAULT_RESULTS_DIR) / self.symbol / self.frame / self.run_id
@@ -288,6 +297,7 @@ class RunPaths:
             "vecnorm": str(self.vecnorm),
             "vecnorm_best": str(self.vecnorm_best),
             "vecnorm_last": str(self.vecnorm_last),
+            "kb_file": str(self.kb_file),
         }
         return paths
 

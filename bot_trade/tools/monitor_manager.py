@@ -4,8 +4,23 @@ import time
 from pathlib import Path
 
 import matplotlib
+import logging
+
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 from bot_trade.config.rl_paths import RunPaths, get_root, ensure_contract
+
+COL_ALIASES = {
+    "reward_total": "reward",
+    "reward": "reward",
+    "r": "reward",
+    "global_step": "step",
+    "step": "step",
+    "steps": "step",
+    "t": "step",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -49,13 +64,18 @@ def _infer_run_id(symbol: str, frame: str, results_root: Path) -> tuple[str | No
     return None, checked
 
 
-def export_charts_for_run(paths: RunPaths, wait_sec: int = 10, min_images: int = 5) -> tuple[Path, int]:
-    """Export charts for ``paths`` and ensure a minimum number of images."""
+def export_charts_for_run(
+    paths: RunPaths,
+    wait_sec: int = 10,
+    min_images: int = 5,
+    debug: bool = False,
+) -> tuple[Path, int, int, int]:
+    """Export charts and ensure a minimum number of non-empty images.
 
-    matplotlib.use("Agg", force=True)
+    Returns a tuple ``(charts_dir, image_count, rows_reward, rows_step)``.
+    """
 
     import pandas as pd
-    import matplotlib.pyplot as plt
     from bot_trade.tools import export_charts as ec
 
     ensure_contract(paths.as_dict())
@@ -80,6 +100,79 @@ def export_charts_for_run(paths: RunPaths, wait_sec: int = 10, min_images: int =
     charts_dir = paths.reports / "charts"
     charts_dir.mkdir(parents=True, exist_ok=True)
 
+    # ------------------------------------------------------------------
+    # Load data with aliasing and numeric coercion
+    # ------------------------------------------------------------------
+    def _load_reward(path: Path) -> tuple[pd.Series, int]:
+        data: list[float] = []
+        raw = 0
+        try:
+            with path.open("r", encoding="utf-8", errors="ignore") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    raw += 1
+                    first = line.split(",", 1)[0]
+                    try:
+                        data.append(float(first))
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        return pd.Series(data, dtype=float), raw
+
+    def _load_steps(path: Path) -> tuple[pd.DataFrame, int]:
+        raw = 0
+        try:
+            df = pd.read_csv(path)
+            raw = len(df)
+        except Exception:
+            df = pd.DataFrame()
+        df.rename(columns=COL_ALIASES, inplace=True)
+        for col in list(df.columns):
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+        df.dropna(axis=1, how="all", inplace=True)
+        df.dropna(inplace=True)
+        return df, raw
+
+    reward_series, reward_raw = _load_reward(reward_file)
+    steps_df, steps_raw = _load_steps(step_file)
+    rows_reward = int(len(reward_series))
+    rows_step = int(len(steps_df))
+    min_step = int(steps_df["step"].min()) if not steps_df.empty and "step" in steps_df else 0
+    max_step = int(steps_df["step"].max()) if not steps_df.empty and "step" in steps_df else 0
+    kept_pct = (rows_step / steps_raw * 100.0) if steps_raw else 0.0
+
+    logging.info(
+        "[EXPORT] run_id=%s rows_reward=%d rows_step=%d steps=[%s..%s] kept=%.1f%%",
+        paths.run_id,
+        rows_reward,
+        rows_step,
+        min_step,
+        max_step,
+        kept_pct,
+    )
+
+    if debug:
+        print(
+            f"[DEBUG_EXPORT] reward_file={reward_file} step_file={step_file}",
+            flush=True,
+        )
+        print(
+            f"[DEBUG_EXPORT] reward_rows={rows_reward} step_rows={rows_step}",
+            flush=True,
+        )
+        if rows_step:
+            sample = steps_df["step"].astype(float)
+            print(
+                f"[DEBUG_EXPORT] steps_sample={sample.head(3).tolist()}...{sample.tail(3).tolist()}",
+                flush=True,
+            )
+
+    # ------------------------------------------------------------------
+    # Run full exporter
+    # ------------------------------------------------------------------
     try:
         ec.export(
             str(paths.results.parent.parent),
@@ -94,50 +187,57 @@ def export_charts_for_run(paths: RunPaths, wait_sec: int = 10, min_images: int =
     except Exception:
         pass
 
-    def _load_series(path: Path) -> pd.Series:
-        try:
-            data = []
-            with path.open("r", encoding="utf-8", errors="ignore") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    first = line.split(",", 1)[0]
-                    try:
-                        data.append(float(first))
-                    except Exception:
-                        continue
-            return pd.Series(data)
-        except Exception:
-            return pd.Series(dtype=float)
-
+    # ------------------------------------------------------------------
+    # Helper for plots / placeholders
+    # ------------------------------------------------------------------
     def _plot(series: pd.Series, path: Path, title: str) -> None:
-        plt.figure()
-        plt.plot(series.values)
-        plt.title(title)
-        plt.tight_layout()
-        plt.savefig(path)
-        plt.close()
+        fig, ax = plt.subplots()
+        if series.dropna().nunique() > 1:
+            ax.plot(series.values)
+        if not ax.has_data() or series.dropna().nunique() < 2:
+            ax.text(
+                0.5,
+                0.5,
+                f"NO DATA (run={paths.run_id}) rows_reward={rows_reward} rows_step={rows_step} {path.name}",
+                ha="center",
+                va="center",
+                wrap=True,
+            )
+            ax.set_axis_off()
+        ax.set_title(title)
+        fig.tight_layout()
+        fig.savefig(path)
+        plt.close(fig)
 
-    count = sum(1 for p in charts_dir.glob("*.png") if p.is_file() and not p.is_symlink())
+    # Replace empty images with placeholders
+    for p in charts_dir.glob("*.png"):
+        if not p.is_file() or p.is_symlink() or p.stat().st_size <= 1024:
+            _plot(pd.Series(dtype=float), p, p.stem)
 
-    reward_series = _load_series(reward_file)
-    step_series = _load_series(step_file)
+    pngs = [
+        p
+        for p in charts_dir.glob("*.png")
+        if p.is_file() and not p.is_symlink() and p.stat().st_size > 1024
+    ]
+    count = len(pngs)
+
+    # Ensure minimum image count
     idx = 0
     while count < min_images:
         target = charts_dir / f"fallback_{idx}.png"
-        if not reward_series.empty:
+        if rows_reward > 0:
             _plot(reward_series, target, "reward")
-        elif not step_series.empty:
-            _plot(step_series, target, "steps")
+        elif rows_step > 0 and "step" in steps_df:
+            _plot(steps_df["step"], target, "steps")
         else:
-            _plot(pd.Series([0]), target, "empty")
-        count += 1
+            _plot(pd.Series(dtype=float), target, "empty")
+        if target.is_file() and target.stat().st_size > 1024:
+            count += 1
         idx += 1
 
     abs_dir = charts_dir.resolve()
     print(f"[CHARTS] dir={abs_dir} images={count}", flush=True)
-    return abs_dir, count
+    return abs_dir, count, rows_reward, rows_step
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--data-dir", default=None)
     ap.add_argument("--base", default=None)
     ap.add_argument("--headless", action="store_true")
+    ap.add_argument("--debug-export", action="store_true")
     args = ap.parse_args(argv)
 
     if args.headless:
@@ -181,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
         run_id = rid
 
     rp = RunPaths(args.symbol, args.frame, run_id, root=root)
-    charts_path, count = export_charts_for_run(rp)
+    charts_path, count, _, _ = export_charts_for_run(rp, debug=args.debug_export)
     if count == 0:
         print("[ERROR] no charts generated", file=sys.stderr)
         return 2

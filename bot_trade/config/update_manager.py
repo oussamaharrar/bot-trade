@@ -212,6 +212,31 @@ class UpdateManager:
         except Exception as exc:  # pragma: no cover
             logging.warning("[UpdateManager] failed to update knowledge base: %s", exc)
 
+    def append_kb(self, run_meta: dict) -> None:
+        """Append ``run_meta`` as JSONL to the knowledge base file."""
+
+        if not run_meta:
+            return
+        kb_path = Path(self._kb_full)
+        kb_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = kb_path.with_name(kb_path.name + ".tmp")
+        existing = ""
+        try:
+            if kb_path.exists():
+                existing = kb_path.read_text(encoding="utf-8")
+            with tmp.open("w", encoding="utf-8") as fh:
+                if existing:
+                    fh.write(existing.rstrip("\n") + "\n")
+                fh.write(json.dumps(run_meta, ensure_ascii=False) + "\n")
+            os.replace(tmp, kb_path)
+            logging.info("[KB] updated file=%s entries_delta=+1", kb_path)
+        except Exception:
+            try:
+                tmp.unlink(missing_ok=True)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            raise
+
     # ------------------------------------------------------------------
     # Lifecycle helpers
     # ------------------------------------------------------------------

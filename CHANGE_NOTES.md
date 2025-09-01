@@ -43,3 +43,5 @@ Template:
 - **Risks**: chart generation still depends on log availability.
 - **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py`, `pytest -q || echo "no tests found"`, `python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --headless`
 2025-09-03 — Dual-archive model lifecycle: previous BEST models now moved to agents/<S>/<F>/archive_best/ (stamped filenames + optional vecnorm_best snapshot + index.csv). Non-best artifacts remain under archive/. Atomic promotions; best_meta.json updated.
+## 2025-09-16
+- chart export made robust (column aliases, non-empty guarantee, Agg backend), synchronous post-run export, and atomic KB updates with JSONL entries.
