@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 from bot_trade.config.rl_paths import dataset_path, RunPaths, ensure_contract, memory_dir
 from bot_trade.config.device import normalize_device
 from bot_trade.config.rl_callbacks import _save_vecnorm
-from bot_trade.tools.export_charts import export_run_charts
+from bot_trade.tools import export_run_charts
 from bot_trade.tools.evaluate_model import evaluate_for_run
 from bot_trade.tools.kb_writer import kb_append
 
@@ -325,13 +325,14 @@ def _postrun_summary(paths, meta):
         eval_summary = {}
 
     try:
-        charts_dir, img_count, row_counts = export_run_charts(
-            rp, str(run_id), debug=bool(meta.get("debug_export", False))
+        charts_dir, img_count, row_counts = export_run_charts.export_for_run(
+            rp, debug=bool(meta.get("debug_export", False))
         )
         rows_reward = row_counts.get("reward", 0)
         rows_step = row_counts.get("step", 0)
         rows_train = row_counts.get("train", 0)
         rows_risk = row_counts.get("risk", 0)
+        rows_callbacks = row_counts.get("callbacks", 0)
         rows_signals = row_counts.get("signals", 0)
         logger.info("[POSTRUN_EXPORT] charts=%s images=%d", charts_dir, img_count)
     except Exception as e:
@@ -345,6 +346,7 @@ def _postrun_summary(paths, meta):
     last = agents_base / "deep_rl_last.zip"
     vecnorm = rp.vecnorm
     reward_lines = rows_reward
+    callbacks_lines = rows_callbacks
     vec_applied = bool(meta.get("vecnorm_applied", False))
     vec_snapshot = vecnorm.exists()
     best_ok = best.exists()
@@ -388,6 +390,7 @@ def _postrun_summary(paths, meta):
             "rows_step": rows_step,
             "rows_train": rows_train,
             "rows_risk": rows_risk,
+            "rows_callbacks": rows_callbacks,
             "rows_signals": rows_signals,
             "vecnorm_applied": vec_applied,
             "vecnorm_snapshot_saved": vec_snapshot,
@@ -410,7 +413,7 @@ def _postrun_summary(paths, meta):
     line = (
         f"[POSTRUN] run_id={run_id} symbol={sym} frame={frm} "
         f"charts={charts_dir.resolve()} images={img_count} reward_lines={reward_lines} "
-        f"step_lines={rows_step} train_lines={rows_train} risk_lines={rows_risk} signals_lines={rows_signals} "
+        f"step_lines={rows_step} train_lines={rows_train} risk_lines={rows_risk} callbacks_lines={callbacks_lines} signals_lines={rows_signals} "
         f"vecnorm_applied={str(vec_applied).lower()} vecnorm_snapshot={str(vec_snapshot).lower()} "
         f"best={str(best_ok).lower()} last={str(last_ok).lower()}"
     )
@@ -427,6 +430,7 @@ def _postrun_summary(paths, meta):
         "rows_step": rows_step,
         "rows_train": rows_train,
         "rows_risk": rows_risk,
+        "rows_callbacks": callbacks_lines,
         "rows_signals": rows_signals,
         "best": best_ok,
         "last": last_ok,
