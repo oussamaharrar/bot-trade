@@ -28,6 +28,7 @@ from bot_trade.config.device import normalize_device
 from bot_trade.config.rl_callbacks import _save_vecnorm
 from bot_trade.tools import export_run_charts
 from bot_trade.tools.evaluate_model import evaluate_for_run
+from bot_trade.tools.eval_run import evaluate_run
 from bot_trade.tools.kb_writer import kb_append
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
@@ -316,13 +317,14 @@ def _postrun_summary(paths, meta):
         else RunPaths(sym, frm, str(run_id), kb_file=(paths.get("kb_file") if isinstance(paths, dict) else None))
     )
 
-    eval_summary: dict[str, Any] = {}
-    try:
-        eval_summary = evaluate_for_run(rp, episodes=int(meta.get("eval_episodes", 3)))
-        logger.info("[EVAL] done episodes=%s", meta.get("eval_episodes", 3))
-    except Exception as e:
-        logger.warning("[EVAL] failed err=%s", e)
-        eval_summary = {}
+    eval_summary: dict[str, Any] = meta.get("synthetic_eval") or {}
+    if not eval_summary:
+        try:
+            eval_summary = evaluate_for_run(rp, episodes=int(meta.get("eval_episodes", 3)))
+            logger.info("[EVAL] done episodes=%s", meta.get("eval_episodes", 3))
+        except Exception as e:
+            logger.warning("[EVAL] failed err=%s", e)
+            eval_summary = {}
 
     try:
         charts_dir, img_count, row_counts = export_run_charts.export_for_run(
@@ -1164,6 +1166,17 @@ def train_one_file(args, data_file: str) -> bool:
             save_portfolio_state(args.symbol, args.frame, port_state)
     except Exception:
         pass
+
+    # synthetic evaluation of the run
+    try:
+        run_meta["synthetic_eval"] = evaluate_run(
+            args.symbol,
+            args.frame,
+            run_id=run_id,
+            episodes=int(run_meta.get("eval_episodes", 10)),
+        )
+    except Exception as e:
+        logging.warning("[EVAL_RUN] failed: %s", e)
 
     summary_meta = _postrun_summary(paths, run_meta)
 
