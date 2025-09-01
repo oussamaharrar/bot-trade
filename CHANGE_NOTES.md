@@ -51,3 +51,15 @@ Template:
 - **Rationale**: reports now ingest reward/step/train/risk/callbacks/signals with ≥5 charts, automatic evaluation and summary export, knowledge base JSONL updates, synthetic data generator for dev, and refreshed CLI defaults.
 - **Risks**: synthetic evaluation is simplistic; chart placeholders may hide data issues.
 - **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py`; run smoke `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`, `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --policy MlpPolicy --device cpu --n-envs 2 --n-steps 512 --batch-size 1024 --total-steps 2048 --net-arch "1024,512,256" --activation silu --vecnorm --headless --allow-synth --kb-file Knowlogy/kb.jsonl --data-dir data_ready`, then `python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --run-id latest --debug-export`.
+
+## 2025-09-20
+- **Files**: `bot_trade/tools/kb_writer.py`, `bot_trade/train_rl.py`, `CHANGE_NOTES.md`
+- **Rationale**: centralize knowledge base writes with canonical path and richer run metadata.
+- **Risks**: KB file may grow large; portfolio metrics depend on state availability.
+- **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py`, `python - <<'PY'
+from bot_trade.config.rl_paths import RunPaths
+from bot_trade.tools.kb_writer import kb_append
+rp = RunPaths('BTCUSDT','1m','testrun')
+kb_append(rp, {"run_id":"testrun","symbol":"BTCUSDT","frame":"1m","ts":"0","images":0,"rows_reward":0,"rows_step":0,"rows_train":0,"rows_risk":0,"rows_signals":0,"vecnorm_applied":False,"vecnorm_snapshot_saved":False,"best":False,"last":False,"best_model_path":"/tmp","eval":{},"portfolio":{},"notes":""})
+print('KB', rp.kb_file)
+PY`

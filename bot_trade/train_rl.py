@@ -28,6 +28,7 @@ from bot_trade.config.device import normalize_device
 from bot_trade.config.rl_callbacks import _save_vecnorm
 from bot_trade.tools.export_charts import export_run_charts
 from bot_trade.tools.evaluate_model import evaluate_for_run
+from bot_trade.tools.kb_writer import kb_append
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
 # imported inside `main` to keep import-time side effects minimal and to
@@ -288,22 +289,6 @@ def _update_portfolio_state(path: Path, steps: int) -> None:
     _atomic_json(path, state)
 
 
-def _append_kb(path: Path, entry: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    existing = ""
-    if path.exists():
-        try:
-            existing = path.read_text(encoding="utf-8")
-        except Exception:
-            existing = ""
-    tmp = path.with_suffix(".tmp")
-    with tmp.open("w", encoding="utf-8", newline="\n") as fh:
-        if existing:
-            fh.write(existing.rstrip("\n") + "\n")
-        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    os.replace(tmp, path)
-
-
 def _ensure_aux_files(run_id: str) -> None:
     mem = memory_dir()
     mem.mkdir(parents=True, exist_ok=True)
@@ -372,23 +357,48 @@ def _postrun_summary(paths, meta):
         logger.warning("[PORTFOLIO] update_failed err=%s", e)
 
     try:
+        from bot_trade.ai_core.portfolio import load_state as load_portfolio_state
+
+        port_state = load_portfolio_state(sym, frm) or {}
+    except Exception:
+        port_state = {}
+
+    eval_entry = {
+        "win_rate": eval_summary.get("win_rate"),
+        "sharpe": eval_summary.get("sharpe"),
+        "max_drawdown": eval_summary.get("max_dd"),
+        "avg_trade_pnl": eval_summary.get("avg_trade_pnl"),
+    }
+
+    portfolio_entry = {
+        "equity": float(port_state.get("equity", 0.0)),
+        "cash": float(port_state.get("balance", 0.0)),
+        "positions": len(port_state.get("positions", []) or []),
+        "step": int(port_state.get("last_update_step", 0)),
+    }
+
+    try:
         kb_entry = {
             "run_id": run_id,
             "symbol": sym,
             "frame": frm,
+            "ts": dt.datetime.utcnow().isoformat(),
+            "images": img_count,
             "rows_reward": rows_reward,
             "rows_step": rows_step,
             "rows_train": rows_train,
             "rows_risk": rows_risk,
             "rows_signals": rows_signals,
-            "images": img_count,
             "vecnorm_applied": vec_applied,
+            "vecnorm_snapshot_saved": vec_snapshot,
             "best": best_ok,
             "last": last_ok,
-            "agent_best": str(rp.best_model),
-            "ts": dt.datetime.utcnow().isoformat(),
+            "best_model_path": str(rp.best_model.resolve()),
+            "eval": eval_entry,
+            "portfolio": portfolio_entry,
+            "notes": str(meta.get("notes", "")),
         }
-        _append_kb(rp.kb_file, kb_entry)
+        kb_append(rp, kb_entry)
     except Exception as e:
         logger.warning("[KB] append_failed err=%s", e)
 
@@ -421,6 +431,7 @@ def _postrun_summary(paths, meta):
         "best": best_ok,
         "last": last_ok,
         "vecnorm_applied": vec_applied,
+        "vecnorm_snapshot_saved": vec_snapshot,
         "eval_summary": eval_summary,
     }
 
