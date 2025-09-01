@@ -13,12 +13,11 @@ import datetime as dt
 from pathlib import Path
 from typing import Dict, Any, List
 
-import numpy as np
 import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
-from bot_trade.config.rl_paths import RunPaths, memory_dir
+matplotlib.use("Agg")
+
+from bot_trade.config.rl_paths import RunPaths, DEFAULT_REPORTS_DIR
 
 
 def _atomic_json(path: Path, data: Dict[str, Any]) -> None:
@@ -28,10 +27,13 @@ def _atomic_json(path: Path, data: Dict[str, Any]) -> None:
     tmp.replace(path)
 
 
-def _atomic_png(path: Path, fig: plt.Figure) -> None:
+def _atomic_png(path: Path, fig) -> None:
+    import matplotlib.pyplot as plt
+
     tmp = path.with_suffix(path.suffix + ".tmp")
+    fmt = path.suffix.lstrip(".") or "png"
     fig.tight_layout()
-    fig.savefig(tmp)
+    fig.savefig(tmp, format=fmt)
     os.replace(tmp, path)
     plt.close(fig)
     if path.stat().st_size < 1024:
@@ -39,22 +41,25 @@ def _atomic_png(path: Path, fig: plt.Figure) -> None:
             fh.write(b"0" * (1024 - path.stat().st_size))
 
 
-def _latest_run_id() -> str | None:
-    state = memory_dir() / "state_latest.json"
-    if not state.exists():
+def _latest_run(symbol: str, frame: str) -> str | None:
+    base = Path(DEFAULT_REPORTS_DIR) / symbol / frame
+    if not base.exists():
         return None
-    try:
-        data = json.loads(state.read_text(encoding="utf-8"))
-        rid = data.get("last_run_id")
-        return str(rid) if rid else None
-    except Exception:
+    run_dirs = [d for d in base.iterdir() if d.is_dir() and not d.is_symlink()]
+    if not run_dirs:
         return None
+    run_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return run_dirs[0].name
 
 
 def evaluate_run(symbol: str, frame: str, run_id: str | None = None, episodes: int = 10) -> Dict[str, float]:
     """Evaluate a training run using logged rewards or signals."""
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+
     if not run_id or str(run_id).lower() in {"latest", "last"}:
-        run_id = _latest_run_id()
+        run_id = _latest_run(symbol, frame)
         if not run_id:
             raise RuntimeError("latest run-id not found")
 

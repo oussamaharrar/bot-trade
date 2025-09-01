@@ -356,7 +356,7 @@ def _postrun_summary(paths, meta):
     except Exception as e:
         charts_dir = rp.charts_dir
         img_count = 0
-        rows_reward = rows_step = rows_train = rows_risk = rows_signals = 0
+        rows_reward = rows_step = rows_train = rows_risk = rows_signals = rows_callbacks = 0
         logger.warning("[POSTRUN_EXPORT] export_failed err=%s", e)
 
     agents_base = Path(rp.agents)
@@ -390,7 +390,7 @@ def _postrun_summary(paths, meta):
     eval_entry = {
         "win_rate": eval_summary.get("win_rate"),
         "sharpe": eval_summary.get("sharpe"),
-        "max_drawdown": eval_summary.get("max_dd"),
+        "max_drawdown": eval_summary.get("max_drawdown"),
         "avg_trade_pnl": eval_summary.get("avg_trade_pnl"),
     }
 
@@ -412,7 +412,6 @@ def _postrun_summary(paths, meta):
             "rows_step": rows_step,
             "rows_train": rows_train,
             "rows_risk": rows_risk,
-            "rows_callbacks": rows_callbacks,
             "rows_signals": rows_signals,
             "vecnorm_applied": vec_applied,
             "vecnorm_snapshot_saved": vec_snapshot,
