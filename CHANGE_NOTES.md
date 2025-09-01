@@ -63,3 +63,9 @@ rp = RunPaths('BTCUSDT','1m','testrun')
 kb_append(rp, {"run_id":"testrun","symbol":"BTCUSDT","frame":"1m","ts":"0","images":0,"rows_reward":0,"rows_step":0,"rows_train":0,"rows_risk":0,"rows_signals":0,"vecnorm_applied":False,"vecnorm_snapshot_saved":False,"best":False,"last":False,"best_model_path":"/tmp","eval":{},"portfolio":{},"notes":""})
 print('KB', rp.kb_file)
 PY`
+
+## 2025-09-21
+- **Files**: `bot_trade/train_rl.py`, `CHANGE_NOTES.md`
+- **Rationale**: persist run and latest state snapshots under performance reports with atomic writes.
+- **Risks**: directories without write access may miss state files.
+- **Test Steps**: `python -m py_compile bot_trade/train_rl.py`, `pytest -q || echo "no tests found"`

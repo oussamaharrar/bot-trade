@@ -290,10 +290,20 @@ def _update_portfolio_state(path: Path, steps: int) -> None:
     _atomic_json(path, state)
 
 
-def _ensure_aux_files(run_id: str) -> None:
+def _write_run_states(perf_dir: Path, run_id: str, create_lock: bool = False) -> None:
+    perf_dir.mkdir(parents=True, exist_ok=True)
+    now = dt.datetime.utcnow().isoformat()
+    _atomic_json(perf_dir / "run_state.json", {"status": "idle", "updated_at": now})
+    _atomic_json(perf_dir / "state_latest.json", {"last_run_id": run_id, "updated_at": now})
+    if create_lock:
+        (perf_dir / "events.lock").touch()
+
+
+def _ensure_aux_files(run_id: str, create_lock: bool = False) -> None:
     mem = memory_dir()
     mem.mkdir(parents=True, exist_ok=True)
-    (mem / "events.lock").touch(exist_ok=True)
+    if create_lock:
+        (mem / "events.lock").touch(exist_ok=True)
     now = dt.datetime.utcnow().isoformat()
     run_state = mem / "run_state.json"
     if not run_state.exists() or run_state.stat().st_size == 0:
@@ -359,6 +369,10 @@ def _postrun_summary(paths, meta):
         _update_portfolio_state(rp.performance_dir / "portfolio_state.json", steps_this_run)
     except Exception as e:
         logger.warning("[PORTFOLIO] update_failed err=%s", e)
+    try:
+        _write_run_states(rp.performance_dir, str(run_id))
+    except Exception:
+        pass
 
     try:
         from bot_trade.ai_core.portfolio import load_state as load_portfolio_state
