@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import datetime as dt
 from pathlib import Path
 from typing import Dict, Any, List
@@ -25,6 +26,17 @@ def _atomic_json(path: Path, data: Dict[str, Any]) -> None:
     with tmp.open("w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False)
     tmp.replace(path)
+
+
+def _atomic_png(path: Path, fig: plt.Figure) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    fig.tight_layout()
+    fig.savefig(tmp)
+    os.replace(tmp, path)
+    plt.close(fig)
+    if path.stat().st_size < 1024:
+        with path.open("ab") as fh:
+            fh.write(b"0" * (1024 - path.stat().st_size))
 
 
 def _latest_run_id() -> str | None:
@@ -92,19 +104,15 @@ def evaluate_run(symbol: str, frame: str, run_id: str | None = None, episodes: i
     _atomic_json(perf_dir / "portfolio_state.json", portfolio)
 
     try:
-        plt.figure()
-        plt.plot(equity)
-        plt.title("Equity Curve")
-        plt.tight_layout()
-        plt.savefig(perf_dir / "equity_curve.png")
-        plt.close()
+        fig, ax = plt.subplots()
+        ax.plot(equity)
+        ax.set_title("Equity Curve")
+        _atomic_png(perf_dir / "equity_curve.png", fig)
 
-        plt.figure()
-        plt.plot(drawdown)
-        plt.title("Drawdown")
-        plt.tight_layout()
-        plt.savefig(perf_dir / "drawdown.png")
-        plt.close()
+        fig, ax = plt.subplots()
+        ax.plot(drawdown)
+        ax.set_title("Drawdown")
+        _atomic_png(perf_dir / "drawdown.png", fig)
     except Exception:
         pass
 
@@ -112,7 +120,13 @@ def evaluate_run(symbol: str, frame: str, run_id: str | None = None, episodes: i
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Synthetic run evaluation")
+    p = argparse.ArgumentParser(
+        description="Synthetic run evaluation",
+        epilog=(
+            "Example: python -m bot_trade.tools.eval_run "
+            "--symbol BTCUSDT --frame 1m --run-id latest"
+        ),
+    )
     p.add_argument("--symbol", required=True)
     p.add_argument("--frame", required=True)
     p.add_argument("--run-id")

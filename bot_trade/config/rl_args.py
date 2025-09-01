@@ -45,7 +45,10 @@ def build_policy_kwargs(net_arch_str: str, activation: str, ortho_init: bool) ->
 def parse_args():
     ap = argparse.ArgumentParser(
         description="Train reinforcement learning agent",
-        epilog="Example: python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m",
+        epilog=(
+            "Example: python -m bot_trade.train_rl "
+            "--symbol BTCUSDT --frame 1m --allow-synth"
+        ),
     )
     ap.add_argument("--symbol", type=str, default="BTCUSDT")
     ap.add_argument("--frame", type=str, default="1m")

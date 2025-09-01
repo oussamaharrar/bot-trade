@@ -23,7 +23,13 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from bot_trade.config.rl_paths import dataset_path, RunPaths, ensure_contract, memory_dir
+from bot_trade.config.rl_paths import (
+    dataset_path,
+    RunPaths,
+    ensure_contract,
+    memory_dir,
+    DEFAULT_KB_FILE,
+)
 from bot_trade.config.device import normalize_device
 from bot_trade.config.rl_callbacks import _save_vecnorm
 from bot_trade.tools import export_run_charts
@@ -426,18 +432,17 @@ def _postrun_summary(paths, meta):
     except Exception:
         pass
 
+    win_rate = eval_summary.get("win_rate")
+    sharpe = eval_summary.get("sharpe")
     line = (
         f"[POSTRUN] run_id={run_id} symbol={sym} frame={frm} "
         f"charts={charts_dir.resolve()} images={img_count} reward_lines={reward_lines} "
-        f"step_lines={rows_step} train_lines={rows_train} risk_lines={rows_risk} callbacks_lines={callbacks_lines} signals_lines={rows_signals} "
+        f"step_lines={rows_step} train_lines={rows_train} risk_lines={rows_risk} signals_lines={rows_signals} "
         f"vecnorm_applied={str(vec_applied).lower()} vecnorm_snapshot={str(vec_snapshot).lower()} "
-        f"best={str(best_ok).lower()} last={str(last_ok).lower()}"
+        f"best={str(best_ok).lower()} last={str(last_ok).lower()} "
+        f"eval_win_rate={(f'{win_rate:.3f}' if win_rate is not None else 'null')} "
+        f"eval_sharpe={(f'{sharpe:.3f}' if sharpe is not None else 'null')}"
     )
-    if eval_summary:
-        line += (
-            f" eval_win_rate={eval_summary.get('win_rate', 0):.3f}"
-            f" eval_sharpe={eval_summary.get('sharpe', 0):.3f}"
-        )
     logger.info(line)
     print(line, flush=True)
     return {
@@ -1213,6 +1218,7 @@ def main():
     global torch, np, pd, psutil, subprocess, shutil
 
     args = parse_args()
+    args.kb_file = str(Path(getattr(args, "kb_file", DEFAULT_KB_FILE) or DEFAULT_KB_FILE))
 
     device_str = normalize_device(getattr(args, "device", None), os.environ)
     try:
