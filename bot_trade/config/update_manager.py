@@ -26,8 +26,12 @@ import shutil
 from pathlib import Path
 
 from bot_trade.config.rl_paths import ensure_utf8, memory_dir, _atomic_replace
+from bot_trade.tools.atomic_io import append_jsonl
+from bot_trade.tools.kb_writer import kb_append
 from datetime import datetime
 from typing import Any, Dict, Optional
+
+_APPEND_WARNED = False
 
 
 def _utcnow() -> str:
@@ -194,48 +198,19 @@ class UpdateManager:
         if not event:
             return
         os.makedirs(os.path.dirname(self._knowledge_events), exist_ok=True)
-        with open(self._knowledge_events, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(event, ensure_ascii=False) + "\n")
-
-        # Aggregate into knowledge_base_full.json
-        kb: list[Any]
-        try:
-            kb = json.loads(Path(self._kb_full).read_text(encoding="utf-8"))
-            if not isinstance(kb, list):
-                kb = []
-        except Exception:
-            kb = []
-        kb.append(event)
-        try:
-            with ensure_utf8(self._kb_full, csv_newline=False) as fh:
-                json.dump(kb, fh, ensure_ascii=False, indent=2)
-        except Exception as exc:  # pragma: no cover
-            logging.warning("[UpdateManager] failed to update knowledge base: %s", exc)
+        append_jsonl(self._knowledge_events, event)
+        kb_append({"kb_file": self._kb_full}, event)
 
     def append_kb(self, run_meta: dict) -> None:
         """Append ``run_meta`` as JSONL to the knowledge base file."""
 
         if not run_meta:
             return
-        kb_path = Path(self._kb_full)
-        kb_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = kb_path.with_name(kb_path.name + ".tmp")
-        existing = ""
-        try:
-            if kb_path.exists():
-                existing = kb_path.read_text(encoding="utf-8")
-            with tmp.open("w", encoding="utf-8") as fh:
-                if existing:
-                    fh.write(existing.rstrip("\n") + "\n")
-                fh.write(json.dumps(run_meta, ensure_ascii=False) + "\n")
-            os.replace(tmp, kb_path)
-            logging.info("[KB] updated file=%s entries_delta=+1", kb_path)
-        except Exception:
-            try:
-                tmp.unlink(missing_ok=True)  # type: ignore[attr-defined]
-            except Exception:
-                pass
-            raise
+        global _APPEND_WARNED
+        if not _APPEND_WARNED:
+            logging.warning("[DEPRECATED] UpdateManager.append_kb is a shim; use kb_writer.kb_append")
+            _APPEND_WARNED = True
+        kb_append({"kb_file": self._kb_full}, run_meta)
 
     # ------------------------------------------------------------------
     # Lifecycle helpers

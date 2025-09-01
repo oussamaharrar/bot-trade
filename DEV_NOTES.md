@@ -67,3 +67,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Eval CLI emits a single `[EVAL]` line and guards `latest` lookups with exit code 2.
 - Legacy flags remain accepted as no-ops; CLIs are the supported interface for tests.
 - Migration: consumers should handle new debug lines and extended KB fields when parsing outputs.
+
+## Developer Notes — 2025-09-24 (Foundation Cleanup)
+- Deprecated `export_run_charts` and `evaluate_model` now shim to canonical tools.
+- `export_charts` and `eval_run` own exports/eval; strict KB schema enforced via single appender.
+- Added atomic I/O helpers and unified `[DEBUG_EXPORT]`/`[CHARTS]` prints with `latest` guards.
+- Risks/Migration: downstream parsers should tolerate new lines and deprecated shim notices.
+- Next: monitor KB growth and expand eval metrics.

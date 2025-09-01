@@ -19,38 +19,10 @@ matplotlib.use("Agg")
 print(f"[HEADLESS] backend={matplotlib.get_backend()}")
 
 from bot_trade.config.rl_paths import RunPaths, DEFAULT_REPORTS_DIR
+from bot_trade.tools.atomic_io import write_json, write_png
+from bot_trade.tools.latest import latest_run
 
 
-def _atomic_json(path: Path, data: Dict[str, Any]) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False)
-    tmp.replace(path)
-
-
-def _atomic_png(path: Path, fig) -> None:
-    import matplotlib.pyplot as plt
-
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    fmt = path.suffix.lstrip(".") or "png"
-    fig.tight_layout()
-    fig.savefig(tmp, format=fmt, dpi=100)
-    os.replace(tmp, path)
-    plt.close(fig)
-    if path.stat().st_size < 1024:
-        with path.open("ab") as fh:
-            fh.write(b"0" * (1024 - path.stat().st_size))
-
-
-def _latest_run(symbol: str, frame: str) -> str | None:
-    base = Path(DEFAULT_REPORTS_DIR) / symbol / frame
-    if not base.exists():
-        return None
-    run_dirs = [d for d in base.iterdir() if d.is_dir() and not d.is_symlink()]
-    if not run_dirs:
-        return None
-    run_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return run_dirs[0].name
 
 
 def evaluate_run(
@@ -100,7 +72,7 @@ def evaluate_run(
         "max_drawdown": max_dd,
         "avg_trade_pnl": avg_trade,
     }
-    _atomic_json(perf_dir / "summary.json", summary)
+    write_json(perf_dir / "summary.json", summary)
 
     portfolio = {
         "equity": float(equity[-1]),
@@ -109,18 +81,18 @@ def evaluate_run(
         "step": int(steps[-1]) if steps else 0,
         "ts": dt.datetime.utcnow().isoformat(),
     }
-    _atomic_json(perf_dir / "portfolio_state.json", portfolio)
+    write_json(perf_dir / "portfolio_state.json", portfolio)
 
     try:
         fig, ax = plt.subplots()
         ax.plot(equity)
         ax.set_title("Equity Curve")
-        _atomic_png(perf_dir / "equity_curve.png", fig)
+        write_png(perf_dir / "equity_curve.png", fig)
 
         fig, ax = plt.subplots()
         ax.plot(drawdown)
         ax.set_title("Drawdown")
-        _atomic_png(perf_dir / "drawdown.png", fig)
+        write_png(perf_dir / "drawdown.png", fig)
     except Exception:
         pass
 
@@ -142,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     run_id = args.run_id
     if not run_id or str(run_id).lower() in {"latest", "last"}:
-        rid = _latest_run(args.symbol, args.frame)
+        rid = latest_run(args.symbol, args.frame)
         if not rid:
             print("[LATEST] none")
             return 2

@@ -9,10 +9,10 @@ performed atomically to avoid corrupting the file.
 
 from pathlib import Path
 import json
-import os
 from typing import Any, Mapping, Optional
 
 from bot_trade.config.rl_paths import DEFAULT_KB_FILE
+from bot_trade.tools.atomic_io import append_jsonl
 
 
 KB_DEFAULTS = {
@@ -68,9 +68,8 @@ def _resolve_kb_path(run_paths: Any, kb_file: Optional[str] = None) -> Path:
 def kb_append(run_paths: Any, payload: dict, kb_file: Optional[str] = None) -> None:
     """Append ``payload`` as JSON to the knowledge base.
 
-    Writes are performed using ``os.O_APPEND`` to avoid clobbering existing
-    data. The file is created if missing and always written with a trailing
-    newline to maintain JSON Lines format.
+    Writes use an atomic temp+replace strategy to avoid corrupting existing
+    data. Each line is newline-terminated to maintain JSON Lines format.
     """
 
     path = _resolve_kb_path(run_paths, kb_file)
@@ -87,7 +86,7 @@ def kb_append(run_paths: Any, payload: dict, kb_file: Optional[str] = None) -> N
     if path.exists():
         try:
             with path.open("rb") as fh:
-                fh.seek(0, os.SEEK_END)
+                fh.seek(0, 2)
                 size = fh.tell()
                 fh.seek(max(size - 4096, 0))
                 data = fh.read()
@@ -98,16 +97,4 @@ def kb_append(run_paths: Any, payload: dict, kb_file: Optional[str] = None) -> N
         except Exception:
             pass
 
-    line = json.dumps(entry, ensure_ascii=False) + "\n"
-    data = line.encode("utf-8")
-    prefix = b""
-    if path.exists() and path.stat().st_size > 0:
-        with path.open("rb") as fh:
-            fh.seek(-1, os.SEEK_END)
-            if fh.read(1) != b"\n":
-                prefix = b"\n"
-    fd = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o644)
-    with os.fdopen(fd, "ab") as fh:
-        if prefix:
-            fh.write(prefix)
-        fh.write(data)
+    append_jsonl(path, entry)
