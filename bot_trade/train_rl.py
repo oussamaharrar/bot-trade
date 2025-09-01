@@ -359,18 +359,6 @@ def _postrun_summary(paths, meta):
     rows_risk = row_counts.get("risk", 0)
     rows_callbacks = row_counts.get("callbacks", 0)
     rows_signals = row_counts.get("signals", 0)
-    print(
-        "[DEBUG_EXPORT] reward_rows=%d step_rows=%d train_rows=%d risk_rows=%d callbacks_rows=%d signals_rows=%d"
-        % (
-            rows_reward,
-            rows_step,
-            rows_train,
-            rows_risk,
-            rows_callbacks,
-            rows_signals,
-        )
-    )
-    print(f"[CHARTS] dir={charts_dir.resolve()} images={img_count}")
     logger.info("[POSTRUN_EXPORT] charts=%s images=%d", charts_dir, img_count)
 
     agents_base = Path(rp.agents)

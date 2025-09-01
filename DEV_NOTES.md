@@ -59,3 +59,11 @@ python -m tools.export_charts --help
 This ensures that the project root is on `sys.path` and avoids `ImportError`
 issues. For convenience the scripts also include a small `sys.path` fix-up so
 that direct execution (`python tools/export_charts.py`) still works if needed.
+
+## Developer Notes — 2025-09-24 (Delta Pack — merged)
+- Standardized `[DEBUG_EXPORT]` and `[CHARTS]` lines with zero-defaulted counts.
+- Headless mode announced on import; PNGs saved atomically with explicit format and DPI and exports retry once.
+- Knowledge base writes enforce full schema and skip duplicate run IDs.
+- Eval CLI emits a single `[EVAL]` line and guards `latest` lookups with exit code 2.
+- Legacy flags remain accepted as no-ops; CLIs are the supported interface for tests.
+- Migration: consumers should handle new debug lines and extended KB fields when parsing outputs.

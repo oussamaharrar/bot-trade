@@ -19,6 +19,7 @@ if TYPE_CHECKING:  # pragma: no cover
 import matplotlib
 
 matplotlib.use("Agg")
+print(f"[HEADLESS] backend={matplotlib.get_backend()}")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from bot_trade.config.rl_paths import RunPaths
@@ -263,6 +264,19 @@ def export_for_run(run_paths: RunPaths, debug: bool = False) -> Tuple[Path, int,
         "signals": rows_signals,
     }
 
+    print(
+        "[DEBUG_EXPORT] reward_rows=%d step_rows=%d train_rows=%d risk_rows=%d callbacks_rows=%d signals_rows=%d"
+        % (
+            rows_reward,
+            rows_step,
+            rows_train,
+            rows_risk,
+            callbacks_lines,
+            rows_signals,
+        )
+    )
+    print(f"[CHARTS] dir={charts_dir.resolve()} images={images}")
+
     return charts_dir, images, rows
 
 
@@ -305,19 +319,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         run_id = rid
     rp = RunPaths(ns.symbol, ns.frame, run_id, root=root)
-    charts_dir, images, rows = export_for_run(rp)
-    print(
-        "[DEBUG_EXPORT] reward_rows=%d step_rows=%d train_rows=%d risk_rows=%d callbacks_rows=%d signals_rows=%d"
-        % (
-            rows.get("reward", 0),
-            rows.get("step", 0),
-            rows.get("train", 0),
-            rows.get("risk", 0),
-            rows.get("callbacks", 0),
-            rows.get("signals", 0),
-        )
-    )
-    print(f"[CHARTS] dir={charts_dir.resolve()} images={images}")
+    charts_dir, images, _rows = export_for_run(rp)
     return 0 if images > 0 else 2
 
 

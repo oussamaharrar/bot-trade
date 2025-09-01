@@ -16,6 +16,7 @@ from typing import Dict, Any, List
 import matplotlib
 
 matplotlib.use("Agg")
+print(f"[HEADLESS] backend={matplotlib.get_backend()}")
 
 from bot_trade.config.rl_paths import RunPaths, DEFAULT_REPORTS_DIR
 
@@ -33,7 +34,7 @@ def _atomic_png(path: Path, fig) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     fmt = path.suffix.lstrip(".") or "png"
     fig.tight_layout()
-    fig.savefig(tmp, format=fmt)
+    fig.savefig(tmp, format=fmt, dpi=100)
     os.replace(tmp, path)
     plt.close(fig)
     if path.stat().st_size < 1024:
