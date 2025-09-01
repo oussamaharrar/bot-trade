@@ -125,6 +125,9 @@ def parse_args():
         action="store_true",
         help="Run training without GUI; monitor exports charts to reports.",
     )
+    ap.add_argument("--export-min-images", type=int, default=5)
+    ap.add_argument("--debug-export", action="store_true")
+    ap.add_argument("--allow-synth", action="store_true")
     args = ap.parse_args()
     level_name = str(getattr(args, "log_level", "INFO")).upper()
     import logging

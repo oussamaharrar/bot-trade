@@ -45,3 +45,9 @@ Template:
 2025-09-03 — Dual-archive model lifecycle: previous BEST models now moved to agents/<S>/<F>/archive_best/ (stamped filenames + optional vecnorm_best snapshot + index.csv). Non-best artifacts remain under archive/. Atomic promotions; best_meta.json updated.
 ## 2025-09-16
 - chart export made robust (column aliases, non-empty guarantee, Agg backend), synchronous post-run export, and atomic KB updates with JSONL entries.
+
+## 2025-09-03
+- **Files**: `bot_trade/config/rl_paths.py`, `bot_trade/tools/export_charts.py`, `bot_trade/tools/monitor_manager.py`, `bot_trade/tools/evaluate_model.py`, `bot_trade/tools/gen_synth_data.py`, `bot_trade/train_rl.py`, `bot_trade/config/rl_args.py`, `CHANGE_NOTES.md`
+- **Rationale**: reports now ingest reward/step/train/risk/callbacks/signals with ≥5 charts, automatic evaluation and summary export, knowledge base JSONL updates, synthetic data generator for dev, and refreshed CLI defaults.
+- **Risks**: synthetic evaluation is simplistic; chart placeholders may hide data issues.
+- **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py`; run smoke `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`, `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --policy MlpPolicy --device cpu --n-envs 2 --n-steps 512 --batch-size 1024 --total-steps 2048 --net-arch "1024,512,256" --activation silu --vecnorm --headless --allow-synth --kb-file Knowlogy/kb.jsonl --data-dir data_ready`, then `python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --run-id latest --debug-export`.
