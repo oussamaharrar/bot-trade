@@ -150,3 +150,16 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Standardized outputs & latest guards remain.
 - Risks/Migration: update imports from `runctx.atomic_write_json`; PNGs now saved at 120 DPI.
 - Next: prune deprecated helpers and monitor KB size.
+
+## 2025-09-26
+- **Files**: `bot_trade/tools/_headless.py`, `bot_trade/tools/monitor_manager.py`, `bot_trade/tools/export_charts.py`, `bot_trade/tools/eval_run.py`, `bot_trade/train_rl.py`, `CHANGE_NOTES.md`
+- **Rationale**: single headless notice helper, strict latest guards, and standardized debug/chart outputs.
+- **Risks**: missing helper calls may skip Agg backend; log parsers must handle new `[HEADLESS]` lines.
+- **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py`; synthetic run verifying `[HEADLESS]`, `[DEBUG_EXPORT]`, `[CHARTS]`, `[POSTRUN]`, `[EVAL]` lines; `--run-id latest` diagnostics.
+
+## Developer Notes — 2025-09-26 10:00 (Phase 1: Finish Foundations)
+- What: Introduced `ensure_headless_once` and enforced `[LATEST] none` exit guards with zero-defaulted row counts.
+- Why: avoid duplicate headless prints and guard missing runs across CLIs.
+- Risks: callers that skip the helper may display GUI backends; consumers must handle the new `[HEADLESS]` line.
+- Migration: call `ensure_headless_once` in new CLIs before plotting; update log parsers for the headless notice.
+- Next: expand smoke coverage and track chart file sizes.

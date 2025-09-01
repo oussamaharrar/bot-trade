@@ -6,16 +6,14 @@ import argparse
 import sys
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-
 from bot_trade.config.rl_paths import RunPaths, get_root
 from bot_trade.tools.latest import latest_run
 from bot_trade.tools import export_charts
+from bot_trade.tools._headless import ensure_headless_once
 
 
 def main(argv: list[str] | None = None) -> int:
+    ensure_headless_once("monitor_manager")
     ap = argparse.ArgumentParser(
         description="Generate charts for a finished training run",
         epilog=(

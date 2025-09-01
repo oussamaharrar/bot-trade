@@ -9,18 +9,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import datetime as dt
 from pathlib import Path
 from typing import Dict, Any, List
 
-import matplotlib
-
-matplotlib.use("Agg")
-print(f"[HEADLESS] backend={matplotlib.get_backend()}")
-
 from bot_trade.config.rl_paths import RunPaths, DEFAULT_REPORTS_DIR
 from bot_trade.tools.atomic_io import write_json, write_png
 from bot_trade.tools.latest import latest_run
+from bot_trade.tools._headless import ensure_headless_once
 
 
 
@@ -100,6 +97,7 @@ def evaluate_run(
 
 
 def main(argv: list[str] | None = None) -> int:
+    ensure_headless_once("eval_run")
     p = argparse.ArgumentParser(
         description="Synthetic run evaluation",
         epilog=(
