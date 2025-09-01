@@ -38,8 +38,8 @@ def append_jsonl(path: str | Path, data: Any) -> None:
     os.replace(tmp, p)
 
 
-def write_png(path: str | Path, fig) -> None:
-    """Atomically write ``fig`` to ``path`` ensuring size >=1KB."""
+def write_png(path: str | Path, fig, dpi: int = 120) -> None:
+    """Atomically write ``fig`` to ``path`` ensuring size >1KB."""
     from matplotlib.figure import Figure
 
     p = Path(path)
@@ -47,7 +47,7 @@ def write_png(path: str | Path, fig) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     assert isinstance(fig, Figure)
     fig.tight_layout()
-    fig.savefig(tmp, format="png", dpi=100)
+    fig.savefig(tmp, format="png", dpi=dpi)
     os.replace(tmp, p)
     size = p.stat().st_size
     if size < 1024:

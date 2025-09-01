@@ -82,3 +82,11 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Run-state and portfolio writers consolidated in `tools.run_state`; train orchestrator now slimmer.
 - Risks: callers using removed internals must import from new modules. Legacy global run_state files deprecated.
 - Next: finish lifecycle callback consolidation and monitor remaining shims.
+
+## Developer Notes — 2025-09-25 (Foundation + Split)
+- Centralized atomic I/O helpers: `atomic_io.write_json`, `append_jsonl` and `write_png(dpi=120)` are the canon.
+- `runctx.atomic_write_json` is now a deprecated shim delegating to `atomic_io.write_json`.
+- De-dup Map: `runctx.atomic_write_json` → `atomic_io.write_json`.
+- Standardized outputs and latest guards unchanged.
+- Risks/Migration: modules relying on `runctx.atomic_write_json` should migrate; PNGs slightly larger due to higher DPI.
+- Next: remove old text writer and audit remaining shims.

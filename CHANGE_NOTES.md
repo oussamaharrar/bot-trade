@@ -136,3 +136,17 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Rationale**: foundation cleanup—single KB appender with atomic helpers, canonical exporter/evaluator with shims, standardized prints and latest guards.
 - **Risks**: consumers parsing old outputs must handle new lines and deprecation warnings; KB writes now strictly JSONL.
 - **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py`; CLI `--help` for monitor/export/eval; synthetic run verifying [DEBUG_EXPORT] → [CHARTS] → [POSTRUN] and `[EVAL]` lines; `--run-id latest` diagnostics.
+## 2025-09-25
+- **Files**: `bot_trade/tools/atomic_io.py`, `bot_trade/tools/runctx.py`, `DEV_NOTES.md`, `CHANGE_NOTES.md`
+- **Rationale**: unify atomic writers under `atomic_io`; PNG writer defaults to `dpi=120`; `runctx.atomic_write_json` becomes a shim.
+- **Risks**: downstream imports should migrate to canonical helpers; increased PNG dpi may slightly enlarge files.
+- **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py`; synthetic training run with `--allow-synth` verifying `[DEBUG_EXPORT]`, `[CHARTS]`, `[POSTRUN]`, `[EVAL]` lines.
+
+## Developer Notes — 2025-09-25 (Foundation + Split)
+- Canonical: `bot_trade.tools.atomic_io.write_json/append_jsonl/write_png`.
+- Shimmed: `bot_trade.tools.runctx.atomic_write_json` → `atomic_io.write_json`.
+- Logic moved: runctx.atomic_write_json → atomic_io.write_json.
+- De-dup Map: atomic JSON writer consolidated; no duplicate text writer.
+- Standardized outputs & latest guards remain.
+- Risks/Migration: update imports from `runctx.atomic_write_json`; PNGs now saved at 120 DPI.
+- Next: prune deprecated helpers and monitor KB size.
