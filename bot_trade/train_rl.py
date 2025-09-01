@@ -26,7 +26,8 @@ logger = logging.getLogger(__name__)
 from bot_trade.config.rl_paths import dataset_path, RunPaths, ensure_contract
 from bot_trade.config.device import normalize_device
 from bot_trade.config.rl_callbacks import _save_vecnorm
-from bot_trade.tools.monitor_manager import export_charts_for_run
+from bot_trade.tools.export_charts import export_for_run
+from bot_trade.tools.evaluate_model import evaluate_for_run
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
 # imported inside `main` to keep import-time side effects minimal and to
@@ -276,50 +277,72 @@ def _postrun_summary(paths, meta):
     sym = getattr(paths, "symbol", meta.get("symbol", "?"))
     frm = getattr(paths, "frame", meta.get("frame", "?"))
 
+    rp = (
+        paths
+        if isinstance(paths, RunPaths)
+        else RunPaths(sym, frm, str(run_id), kb_file=(paths.get("kb_file") if isinstance(paths, dict) else None))
+    )
+
+    eval_summary: dict[str, Any] = {}
     try:
-        rp = (
-            paths
-            if isinstance(paths, RunPaths)
-            else RunPaths(sym, frm, str(run_id), kb_file=(paths.get("kb_file") if isinstance(paths, dict) else None))
-        )
-        charts_dir, img_count, rows_reward, rows_step = export_charts_for_run(
-            rp, wait_sec=10, min_images=5
-        )
+        eval_summary = evaluate_for_run(rp, episodes=int(meta.get("eval_episodes", 3)))
+        logger.info("[EVAL] done episodes=%s", meta.get("eval_episodes", 3))
+    except Exception as e:
+        logger.warning("[EVAL] failed err=%s", e)
+        eval_summary = {}
+
+    try:
+        export_info = export_for_run(rp, debug=bool(meta.get("debug_export", False)))
+        charts_dir = Path(export_info["charts_dir"])
+        img_count = int(export_info.get("images", 0))
+        rows_reward = export_info.get("rows", {}).get("reward", 0)
+        rows_step = export_info.get("rows", {}).get("step", 0)
+        rows_train = export_info.get("rows", {}).get("train", 0)
+        rows_risk = export_info.get("rows", {}).get("risk", 0)
+        rows_callbacks = export_info.get("rows", {}).get("callbacks", 0)
+        rows_signals = export_info.get("rows", {}).get("signals", 0)
         logger.info("[POSTRUN_EXPORT] charts=%s images=%d", charts_dir, img_count)
     except Exception as e:
-        charts_dir = (pathlib.Path(paths["reports"]) / "charts").resolve() if isinstance(paths, dict) else (paths.reports / "charts").resolve()
+        charts_dir = rp.charts_dir
         img_count = 0
-        rows_reward = 0
-        rows_step = 0
+        rows_reward = rows_step = rows_train = rows_risk = rows_callbacks = rows_signals = 0
         logger.warning("[POSTRUN_EXPORT] export_failed err=%s", e)
 
-    reward_path_base = pathlib.Path(paths["results"]) if isinstance(paths, dict) else paths.results
-    reward_path = reward_path_base / "reward" / "reward.log"
-    agents_base = pathlib.Path(paths["agents_root"]) if isinstance(paths, dict) else paths.agents
+    agents_base = Path(rp.agents)
     best = agents_base / "deep_rl_best.zip"
     last = agents_base / "deep_rl_last.zip"
-    vecnorm = (paths.get("vecnorm") if isinstance(paths, dict) else getattr(paths, "vecnorm", None))
-
+    vecnorm = rp.vecnorm
     reward_lines = rows_reward
     vec_applied = bool(meta.get("vecnorm_applied", False))
-    vec_snapshot = bool(vecnorm and pathlib.Path(vecnorm).exists())
+    vec_snapshot = vecnorm.exists()
     best_ok = best.exists()
     last_ok = last.exists()
     line = (
         f"[POSTRUN] run_id={run_id} symbol={sym} frame={frm} "
         f"charts={charts_dir.resolve()} images={img_count} reward_lines={reward_lines} "
+        f"step_lines={rows_step} train_lines={rows_train} risk_lines={rows_risk} signals_lines={rows_signals} "
         f"vecnorm_applied={str(vec_applied).lower()} vecnorm_snapshot={str(vec_snapshot).lower()} "
         f"best={str(best_ok).lower()} last={str(last_ok).lower()}"
     )
+    if eval_summary:
+        line += (
+            f" eval_win_rate={eval_summary.get('win_rate', 0):.3f}"
+            f" eval_sharpe={eval_summary.get('sharpe', 0):.3f}"
+        )
     logger.info(line)
     print(line, flush=True)
     return {
         "images": img_count,
         "rows_reward": reward_lines,
         "rows_step": rows_step,
+        "rows_train": rows_train,
+        "rows_risk": rows_risk,
+        "rows_callbacks": rows_callbacks,
+        "rows_signals": rows_signals,
         "best": best_ok,
         "last": last_ok,
         "vecnorm_applied": vec_applied,
+        "eval_summary": eval_summary,
     }
 
 
@@ -458,7 +481,14 @@ def train_one_file(args, data_file: str) -> bool:
     else:
         run_id = getattr(args, "run_id", None) or new_run_id(args.symbol, args.frame)
     args.run_id = run_id
-    run_meta = {"run_id": run_id, "symbol": args.symbol, "frame": args.frame}
+    run_meta = {
+        "run_id": run_id,
+        "symbol": args.symbol,
+        "frame": args.frame,
+        "eval_episodes": int(getattr(args, "eval_episodes", 3)),
+        "export_min_images": int(getattr(args, "export_min_images", 5)),
+        "debug_export": bool(getattr(args, "debug_export", False)),
+    }
 
     data_file = str(dataset_path(data_file))
     logging.info("[DATA] dataset path resolved to %s", data_file)
@@ -1309,16 +1339,23 @@ def main():
     try:
         files = discover_files(args.frame, args.symbol, data_root=args.data_root)
     except FileNotFoundError:
-        base = pathlib.Path(args.data_root) / args.frame
-        pats = [
-            f"{base}/{args.symbol}-{args.frame}-*.feather",
-            f"{base}/{args.symbol}-{args.frame}-*.parquet",
-            f"{base}/{args.symbol}-{args.frame}-*.csv",
-        ]
-        print("[NO DATA] Searched paths:", file=sys.stderr)
-        for p in pats:
-            print(f"  - {p}", file=sys.stderr)
-        raise SystemExit(3)
+        if getattr(args, "allow_synth", False):
+            from bot_trade.tools.gen_synth_data import generate
+
+            base = Path(args.data_root or "data_ready")
+            generate(args.symbol, args.frame, base)
+            files = discover_files(args.frame, args.symbol, data_root=args.data_root)
+        else:
+            base = pathlib.Path(args.data_root) / args.frame
+            pats = [
+                f"{base}/{args.symbol}-{args.frame}-*.feather",
+                f"{base}/{args.symbol}-{args.frame}-*.parquet",
+                f"{base}/{args.symbol}-{args.frame}-*.csv",
+            ]
+            print("[NO DATA] Searched paths:", file=sys.stderr)
+            for p in pats:
+                print(f"  - {p}", file=sys.stderr)
+            raise SystemExit(3)
     if not files:
         base = pathlib.Path(args.data_root) / args.frame
         pats = [

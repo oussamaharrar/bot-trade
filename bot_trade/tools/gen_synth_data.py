@@ -1,0 +1,48 @@
+"""Generate a synthetic OHLCV dataset for development and tests."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+
+def generate(symbol: str, frame: str, out_dir: Path) -> Path:
+    rng = np.random.default_rng(0)
+    periods = 90 * 24 * 60  # 90 days of minutes
+    start = pd.Timestamp.utcnow() - pd.Timedelta(minutes=periods)
+    idx = pd.date_range(start, periods=periods, freq="1min", tz="UTC")
+    price = 100 + np.cumsum(rng.normal(0, 0.5, periods))
+    df = pd.DataFrame({
+        "datetime": idx,
+        "open": price,
+        "high": price + rng.random(periods),
+        "low": price - rng.random(periods),
+        "close": price + rng.normal(0, 0.2, periods),
+        "volume": rng.random(periods) * 10,
+    })
+    out_dir.mkdir(parents=True, exist_ok=True)
+    sub = out_dir / frame
+    sub.mkdir(parents=True, exist_ok=True)
+    dest = sub / f"{symbol}-{frame}-synth.feather"
+    df.to_feather(dest)
+    return dest
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser("generate synthetic dataset")
+    ap.add_argument("--symbol", default="BTCUSDT")
+    ap.add_argument("--frame", default="1m")
+    ap.add_argument("--out", default="data_ready")
+    ns = ap.parse_args(argv)
+
+    dest = generate(ns.symbol, ns.frame, Path(ns.out))
+    print(dest)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())
+

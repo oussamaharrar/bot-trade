@@ -253,6 +253,26 @@ class RunPaths:
     def last_meta_path(self) -> Path:
         return self.agents / "last_meta.json"
 
+    @property
+    def charts_dir(self) -> Path:
+        d = self.reports / "charts"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @property
+    def performance_dir(self) -> Path:
+        d = self.reports / "performance"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @property
+    def summary_csv_path(self) -> Path:
+        return self.reports / "summary.csv"
+
+    @property
+    def summary_json_path(self) -> Path:
+        return self.reports / "summary.json"
+
     def ensure(self) -> None:
         for d in (self.agents, self.archive_dir, self.archive_best_dir):
             d.mkdir(parents=True, exist_ok=True)
@@ -298,6 +318,10 @@ class RunPaths:
             "vecnorm_best": str(self.vecnorm_best),
             "vecnorm_last": str(self.vecnorm_last),
             "kb_file": str(self.kb_file),
+            "charts_dir": _p(self.reports, "charts"),
+            "performance_dir": _p(self.reports, "performance"),
+            "summary_csv": _p(self.reports, "summary.csv"),
+            "summary_json": _p(self.reports, "summary.json"),
         }
         return paths
 
