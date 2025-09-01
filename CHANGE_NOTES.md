@@ -169,3 +169,9 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Rationale**: Phase 1: introduce SAC alongside PPO with algorithm switch and algorithm-scoped artefact directories.
 - **Risks**: new directory layout may break existing scripts; SAC requires continuous action spaces.
 - **Test Steps**: `python -m py_compile bot_trade/config/rl_builders.py bot_trade/train_rl.py bot_trade/config/rl_args.py bot_trade/config/rl_paths.py bot_trade/tools/paths.py`, `python -m bot_trade.train_rl --help`, `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --total-steps 1 --allow-synth --no-monitor --headless`, `python -m bot_trade.train_rl --algorithm SAC --symbol BTCUSDT --frame 1m --total-steps 1 --allow-synth --no-monitor --headless --buffer-size 1000 --learning-starts 1 --train-freq 1 --gradient-steps 1 --batch-size 2 --ent-coef auto`
+
+## 2025-09-01
+- **Files**: `bot_trade/config/rl_builders.py`, `bot_trade/config/rl_args.py`, `bot_trade/config/rl_paths.py`, `bot_trade/tools/kb_writer.py`, `bot_trade/train_rl.py`, `DEV_NOTES.md`, `CHANGE_NOTES.md`
+- **Rationale**: registry-based algorithm selection with SAC warm-start option, legacy path fallbacks, and algorithm metadata in KB and post-run lines.
+- **Risks**: fallback detection may miss atypical layouts; warm-start assumes PPO checkpoints are compatible; TD3/TQC not yet implemented.
+- **Test Steps**: `python -m py_compile bot_trade/config/rl_builders.py bot_trade/config/rl_args.py bot_trade/config/rl_paths.py bot_trade/tools/kb_writer.py bot_trade/train_rl.py`, `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --total-steps 1 --n-envs 1 --n-steps 1 --batch-size 1 --headless --allow-synth`, `python -m bot_trade.train_rl --algorithm SAC --symbol BTCUSDT --frame 1m --total-steps 1 --n-envs 1 --n-steps 1 --batch-size 1 --headless --allow-synth; test $? -eq 1`, run a small script calling `build_algorithm('SAC', Pendulum-v1)` to verify warm-start skip message.

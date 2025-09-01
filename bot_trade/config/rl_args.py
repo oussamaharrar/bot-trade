@@ -228,8 +228,13 @@ def parse_args():
     ap.add_argument("--export-min-images", type=int, default=5)
     ap.add_argument("--debug-export", action="store_true")
     ap.add_argument("--allow-synth", action="store_true")
-    ap.add_argument("--algorithm", type=str, choices=["PPO", "SAC"], default=None,
-                    help="Choose RL algorithm (default from config.yaml: rl.algorithm)")
+    ap.add_argument(
+        "--algorithm",
+        type=str,
+        choices=["PPO", "SAC", "TD3", "TQC"],
+        default=None,
+        help="Choose RL algorithm (default from config.yaml or PPO)",
+    )
     ap.add_argument("--buffer-size", type=int)
     ap.add_argument("--learning-starts", type=int)
     ap.add_argument("--train-freq", type=int)
@@ -238,6 +243,11 @@ def parse_args():
     ap.add_argument("--sac-gamma", type=float, help="Override gamma for SAC only")
     ap.add_argument("--warmstart-from-ppo", type=str,
                     help="(Optional) path to PPO .zip to warm-start SAC feature extractor")
+    ap.add_argument(
+        "--sac-warmstart-from-ppo",
+        action="store_true",
+        help="Warm-start SAC feature extractor from best PPO checkpoint if available",
+    )
     args = ap.parse_args()
     level_name = str(getattr(args, "log_level", "INFO")).upper()
     import logging
