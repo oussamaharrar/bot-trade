@@ -1,5 +1,7 @@
 import os
 import json
+import zipfile
+import logging
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -26,9 +28,15 @@ vecnorm_path = os.path.join(AGENT_DIR, f"{AGENT_NAME}_vecnorm.pkl")
 model_path = os.path.join(AGENT_DIR, f"{AGENT_NAME}.zip")
 
 if os.path.exists(vecnorm_path) and os.path.exists(model_path):
-    env = VecNormalize.load(vecnorm_path, env)
-    model = PPO.load(model_path, env=env)
-    print(f"[INFO] Loaded existing agent {AGENT_NAME}")
+    try:
+        env = VecNormalize.load(vecnorm_path, env)
+        model = PPO.load(model_path, env=env)
+        print(f"[INFO] Loaded existing agent {AGENT_NAME}")
+    except (zipfile.BadZipFile, ValueError) as e:
+        logging.error("[RESUME] bad checkpoint at %s: %s — rebuilding", model_path, e)
+        env = VecNormalize(env, norm_obs=True, norm_reward=False)
+        model = PPO(POLICY, env, verbose=1)
+        print(f"[INFO] Started new agent {AGENT_NAME}")
 else:
     env = VecNormalize(env, norm_obs=True, norm_reward=False)
     model = PPO(POLICY, env, verbose=1)

@@ -222,7 +222,7 @@ class BestCheckpointCallback(BaseCallback):
             archived_prev: Path | None = None
             if best_model.exists():
                 archived_prev = archive_best / stamp_name(best_model.stem, run_id, ts, best_model.suffix)
-                shutil.copy2(best_model, archived_prev)
+                best_model.replace(archived_prev)
                 vec_best = Path(self.paths.get("vecnorm_best"))
                 vec_arch: Path | None = None
                 if vec_best.exists():
@@ -251,12 +251,7 @@ class BestCheckpointCallback(BaseCallback):
             }
             with open(self.paths["best_meta"], "w", encoding="utf-8") as f:
                 json.dump(meta, f, indent=2, ensure_ascii=False)
-            logging.info(
-                "[BEST] promoted run_id=%s metric=%.6f archived_prev_best=%s",
-                run_id,
-                avg,
-                archived_prev,
-            )
+            logging.info("[BEST] promoted -> %s; archived_prev_best -> %s", best_model, archived_prev)
         except Exception as e:
             logging.error("[BEST] save failed: %s", e)
         return True
