@@ -18,9 +18,12 @@ import pandas as pd
 import matplotlib
 
 matplotlib.use("Agg")
+print(f"[HEADLESS] backend={matplotlib.get_backend()}")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from bot_trade.config.rl_paths import RunPaths
+from bot_trade.tools.atomic_io import write_png
+from bot_trade.tools.latest import latest_run
 
 
 # ---------------------------------------------------------------------------
@@ -63,16 +66,12 @@ def _read_csv_safe(
 
 
 def _placeholder(path: Path, title: str) -> None:
-    """Create a labelled placeholder image >=1KB."""
+    """Create a labelled placeholder image."""
 
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.text(0.5, 0.5, title, ha="center", va="center")
     ax.set_axis_off()
-    fig.savefig(path, dpi=100)
-    plt.close(fig)
-    if path.stat().st_size < 1024:
-        with path.open("ab") as fh:
-            fh.write(b"0" * (1024 - path.stat().st_size))
+    write_png(path, fig)
 
 
 # ---------------------------------------------------------------------------
@@ -133,12 +132,7 @@ def export_run_charts(paths: RunPaths, run_id: str, debug: bool = False) -> Tupl
     def save_fig(fig: plt.Figure, name: str) -> None:
         nonlocal images
         path = charts_dir / name
-        fig.tight_layout()
-        fig.savefig(path, dpi=100)
-        plt.close(fig)
-        if path.stat().st_size < 1024:
-            with path.open("ab") as fh:
-                fh.write(b"0" * (1024 - path.stat().st_size))
+        write_png(path, fig)
         images += 1
 
     # reward chart
@@ -213,15 +207,6 @@ def export_run_charts(paths: RunPaths, run_id: str, debug: bool = False) -> Tupl
         "callbacks": callbacks_lines,
     }
 
-    if debug:
-        print(
-            f"[DEBUG] rows_reward={rows_reward} rows_step={rows_step} rows_train={rows_train} rows_risk={rows_risk} rows_signals={rows_signals}"
-        )
-        for name, df in (("reward", reward), ("train", train)):
-            if not df.empty:
-                print(df.head())
-        print(f"[CHARTS] dir={charts_dir} images={images}")
-
     return charts_dir, images, rows
 
 
@@ -256,9 +241,26 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI helper
     ns = ap.parse_args(argv)
 
     root = Path(ns.base) if ns.base else get_root()
-    rp = RunPaths(ns.symbol, ns.frame, ns.run_id, root=root)
-    charts_dir, images, _rows = export_run_charts(rp, ns.run_id, debug=ns.debug_export)
-    print(f"[CHARTS] dir={charts_dir} images={images}")
+    rid = ns.run_id
+    if str(rid).lower() in {"latest", "last"}:
+        rid = latest_run(ns.symbol, ns.frame, root / "reports")
+        if not rid:
+            print("[LATEST] none")
+            return 2
+    rp = RunPaths(ns.symbol, ns.frame, str(rid), root=root)
+    charts_dir, images, rows = export_run_charts(rp, str(rid), debug=ns.debug_export)
+    print(
+        "[DEBUG_EXPORT] reward_rows=%d step_rows=%d train_rows=%d risk_rows=%d callbacks_rows=%d signals_rows=%d"
+        % (
+            rows.get("reward", 0),
+            rows.get("step", 0),
+            rows.get("train", 0),
+            rows.get("risk", 0),
+            rows.get("callbacks", 0),
+            rows.get("signals", 0),
+        )
+    )
+    print(f"[CHARTS] dir={charts_dir.resolve()} images={images}")
     return 0 if images > 0 else 2
 
 

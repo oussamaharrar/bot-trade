@@ -32,7 +32,7 @@ from bot_trade.config.rl_paths import (
 )
 from bot_trade.config.device import normalize_device
 from bot_trade.config.rl_callbacks import _save_vecnorm
-from bot_trade.tools import export_run_charts
+from bot_trade.tools import export_charts
 from bot_trade.tools.evaluate_model import evaluate_for_run
 from bot_trade.tools.eval_run import evaluate_run
 from bot_trade.tools.kb_writer import kb_append
@@ -277,11 +277,7 @@ def _logging_monitor_loop(queue, listener):
             pass
 
 
-def _atomic_json(path: Path, data: dict) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8", newline="\n") as fh:
-        json.dump(data, fh, ensure_ascii=False)
-    os.replace(tmp, path)
+from bot_trade.tools.atomic_io import write_json
 
 
 def _update_portfolio_state(path: Path, steps: int) -> None:
@@ -293,14 +289,14 @@ def _update_portfolio_state(path: Path, steps: int) -> None:
             pass
     state["steps"] = int(state.get("steps", 0)) + int(steps)
     state["last_ts"] = dt.datetime.utcnow().isoformat()
-    _atomic_json(path, state)
+    write_json(path, state)
 
 
 def _write_run_states(perf_dir: Path, run_id: str, create_lock: bool = False) -> None:
     perf_dir.mkdir(parents=True, exist_ok=True)
     now = dt.datetime.utcnow().isoformat()
-    _atomic_json(perf_dir / "run_state.json", {"status": "idle", "updated_at": now})
-    _atomic_json(perf_dir / "state_latest.json", {"last_run_id": run_id, "updated_at": now})
+    write_json(perf_dir / "run_state.json", {"status": "idle", "updated_at": now})
+    write_json(perf_dir / "state_latest.json", {"last_run_id": run_id, "updated_at": now})
     if create_lock:
         (perf_dir / "events.lock").touch()
 
@@ -313,10 +309,10 @@ def _ensure_aux_files(run_id: str, create_lock: bool = False) -> None:
     now = dt.datetime.utcnow().isoformat()
     run_state = mem / "run_state.json"
     if not run_state.exists() or run_state.stat().st_size == 0:
-        _atomic_json(run_state, {"status": "idle", "updated_at": now})
+        write_json(run_state, {"status": "idle", "updated_at": now})
     latest = mem / "state_latest.json"
     if not latest.exists() or latest.stat().st_size == 0:
-        _atomic_json(latest, {"last_run_id": run_id, "updated_at": now})
+        write_json(latest, {"last_run_id": run_id, "updated_at": now})
 
 
 def _postrun_summary(paths, meta):
@@ -344,10 +340,10 @@ def _postrun_summary(paths, meta):
 
     rp.charts_dir.mkdir(parents=True, exist_ok=True)
     try:
-        charts_dir, img_count, row_counts = export_run_charts.export_for_run(rp)
+        charts_dir, img_count, row_counts = export_charts.export_run_charts(rp, rp.run_id)
     except Exception:
         try:
-            charts_dir, img_count, row_counts = export_run_charts.export_for_run(rp)
+            charts_dir, img_count, row_counts = export_charts.export_run_charts(rp, rp.run_id)
         except Exception as e:
             charts_dir = rp.charts_dir
             img_count = 0
@@ -359,7 +355,18 @@ def _postrun_summary(paths, meta):
     rows_risk = row_counts.get("risk", 0)
     rows_callbacks = row_counts.get("callbacks", 0)
     rows_signals = row_counts.get("signals", 0)
-    logger.info("[POSTRUN_EXPORT] charts=%s images=%d", charts_dir, img_count)
+    print(
+        "[DEBUG_EXPORT] reward_rows=%d step_rows=%d train_rows=%d risk_rows=%d callbacks_rows=%d signals_rows=%d"
+        % (
+            rows_reward,
+            rows_step,
+            rows_train,
+            rows_risk,
+            rows_callbacks,
+            rows_signals,
+        )
+    )
+    print(f"[CHARTS] dir={charts_dir.resolve()} images={img_count}")
 
     agents_base = Path(rp.agents)
     best = agents_base / "deep_rl_best.zip"

@@ -106,3 +106,9 @@ PY`
 - **Rationale**: finalize Delta Pack with standardized debug/charts lines, headless notices, atomic PNG params, and non-silent eval.
 - **Risks**: scripts parsing old outputs may need updates; additional prints could affect log consumers.
 - **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py`; `python -m bot_trade.tools.monitor_manager --help`; `python -m bot_trade.tools.export_run_charts --help`; `python -m bot_trade.tools.eval_run --help`; run synthetic training and verify [DEBUG_EXPORT]/[CHARTS]/[EVAL] lines.
+
+## 2025-09-24
+- **Files**: `bot_trade/tools/atomic_io.py`, `bot_trade/tools/latest.py`, `bot_trade/tools/export_charts.py`, `bot_trade/tools/eval_run.py`, `bot_trade/tools/monitor_manager.py`, `bot_trade/tools/export_run_charts.py`, `bot_trade/tools/evaluate_model.py`, `bot_trade/tools/kb_writer.py`, `bot_trade/config/update_manager.py`, `bot_trade/train_rl.py`, `DEV_NOTES.md`, `CHANGE_NOTES.md`
+- **Rationale**: foundation cleanup—single KB appender with atomic helpers, canonical exporter/evaluator with shims, standardized prints and latest guards.
+- **Risks**: consumers parsing old outputs must handle new lines and deprecation warnings; KB writes now strictly JSONL.
+- **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py`; CLI `--help` for monitor/export/eval; synthetic run verifying [DEBUG_EXPORT] → [CHARTS] → [POSTRUN] and `[EVAL]` lines; `--run-id latest` diagnostics.
