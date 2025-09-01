@@ -9,6 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Tuple
 
+import os
+import sys
 import pandas as pd
 
 # use non-interactive backend at import time
@@ -76,7 +78,9 @@ def _placeholder(path: Path, title: str) -> None:
 def _save(fig: plt.Figure, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
-    fig.savefig(path, dpi=120)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    fig.savefig(tmp, dpi=120)
+    os.replace(tmp, path)
     plt.close(fig)
     if path.stat().st_size < 1024:
         with path.open("ab") as fh:
@@ -253,4 +257,51 @@ def export_for_run(run_paths: RunPaths, debug: bool = False) -> Tuple[Path, int,
     }
 
     return charts_dir, images, rows
+
+
+def _latest_run(symbol: str, frame: str, reports_root: Path) -> str | None:
+    base = reports_root / symbol / frame
+    if not base.exists():
+        return None
+    run_dirs = [d for d in base.iterdir() if d.is_dir() and not d.is_symlink()]
+    if not run_dirs:
+        return None
+    run_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return run_dirs[0].name
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    from bot_trade.config.rl_paths import get_root
+
+    ap = argparse.ArgumentParser(
+        description="Export charts for a training run",
+        epilog=(
+            "Example: python -m bot_trade.tools.export_run_charts "
+            "--symbol BTCUSDT --frame 1m --run-id latest"
+        ),
+    )
+    ap.add_argument("--symbol", default="BTCUSDT")
+    ap.add_argument("--frame", default="1m")
+    ap.add_argument("--run-id", default="latest")
+    ap.add_argument("--base", default=None, help="Project root override")
+    ap.add_argument("--debug-export", action="store_true")
+    ns = ap.parse_args(argv)
+
+    root = Path(ns.base) if ns.base else get_root()
+    run_id = ns.run_id
+    if run_id in {None, "latest", ""}:
+        rid = _latest_run(ns.symbol, ns.frame, root / "reports")
+        run_id = rid or run_id
+    if not run_id:
+        print("[ERROR] run not found", file=sys.stderr)
+        return 2
+    rp = RunPaths(ns.symbol, ns.frame, run_id, root=root)
+    charts_dir, images, _rows = export_for_run(rp, debug=ns.debug_export)
+    print(f"[CHARTS] dir={charts_dir.resolve()} images={images}")
+    return 0 if images > 0 else 2
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())
 

@@ -28,7 +28,10 @@ def _latest_run(symbol: str, frame: str, reports_root: Path) -> str | None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Generate charts for a finished training run",
-        epilog="Example: python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --run-id latest",
+        epilog=(
+            "Example: python -m bot_trade.tools.monitor_manager "
+            "--symbol BTCUSDT --frame 1m --run-id latest --debug-export"
+        ),
     )
     ap.add_argument("--symbol", default="BTCUSDT", help="Trading symbol")
     ap.add_argument("--frame", default="1m", help="Time frame")

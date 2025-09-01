@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import numpy as np
@@ -27,7 +28,9 @@ def generate(symbol: str, frame: str, out_dir: Path) -> Path:
     sub = out_dir / frame
     sub.mkdir(parents=True, exist_ok=True)
     dest = sub / f"{symbol}-{frame}-synth.feather"
-    df.to_feather(dest)
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    df.to_feather(tmp)
+    os.replace(tmp, dest)
     return dest
 
 
