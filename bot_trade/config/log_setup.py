@@ -257,6 +257,23 @@ def stop_logging(log_objs: Optional[LogObjects]) -> None:
 
 # Convenience helpers ---------------------------------------------------------
 
+def drain_log_queue(queue, listener) -> None:
+    """Forward records from ``queue`` to ``listener`` until sentinel."""
+    try:
+        while True:
+            try:
+                record = queue.get(True)
+            except (EOFError, BrokenPipeError):
+                break
+            if record is None:
+                break
+            listener.handle(record)
+    finally:
+        try:
+            listener.stop()
+        except Exception:
+            pass
+
 def log_device_report(device_str: str = "cpu") -> None:
     """Small utility to log a one-shot device report to the root logger."""
     logger = logging.getLogger("device")

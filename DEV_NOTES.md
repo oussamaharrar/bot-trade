@@ -74,3 +74,11 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Added atomic I/O helpers and unified `[DEBUG_EXPORT]`/`[CHARTS]` prints with `latest` guards.
 - Risks/Migration: downstream parsers should tolerate new lines and deprecated shim notices.
 - Next: monitor KB growth and expand eval metrics.
+
+## Developer Notes — 2025-09-01 (train_rl split)
+- Extracted arg validation and auto resource shaping to `config.rl_args`.
+- Device report printer lives in `config.device`.
+- Logging queue drain and monitor spawning moved to `config.log_setup` and `tools.monitor_launch`.
+- Run-state and portfolio writers consolidated in `tools.run_state`; train orchestrator now slimmer.
+- Risks: callers using removed internals must import from new modules. Legacy global run_state files deprecated.
+- Next: finish lifecycle callback consolidation and monitor remaining shims.

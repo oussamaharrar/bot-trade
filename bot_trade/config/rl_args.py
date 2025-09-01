@@ -42,6 +42,100 @@ def build_policy_kwargs(net_arch_str: str, activation: str, ortho_init: bool) ->
     kw["ortho_init"] = bool(ortho_init)
     return kw
 
+
+# ---------------------------------------------------------------------------
+# Validation helpers (thin shims for train_rl orchestrator)
+# ---------------------------------------------------------------------------
+
+def validate_args(args):
+    """Light validation of numeric arguments."""
+    for k in ("n_envs", "n_steps", "batch_size", "total_steps"):
+        if getattr(args, k, 0) <= 0:
+            raise ValueError(f"[ARGS] {k} يجب أن يكون > 0.")
+    return args
+
+
+def clamp_batch(args):
+    """Ensure batch_size respects rollout and divides it cleanly."""
+    rollout = int(args.n_envs) * int(args.n_steps)
+    if int(args.batch_size) > rollout:
+        import logging
+
+        logging.warning(
+            "[PPO] batch_size (%d) > n_envs*n_steps (%d) — سيتم تقليمه",
+            args.batch_size,
+            rollout,
+        )
+    batch = min(int(args.batch_size), rollout)
+    batch = (batch // int(args.n_envs)) * int(args.n_envs)
+    if rollout % batch != 0:
+        import math as _math
+
+        new_bs = _math.gcd(rollout, batch)
+        logging.info(
+            "[PPO] batch_size=%d not divisor of rollout=%d → %d",
+            batch,
+            rollout,
+            new_bs,
+        )
+        batch = max(int(args.n_envs), new_bs)
+    args.batch_size = max(int(args.n_envs), int(batch))
+    return args
+
+
+def auto_shape_resources(args):
+    """Auto-derive n_envs/n_steps/batch_size based on hardware when unset."""
+    import os
+    import logging
+    import psutil  # type: ignore
+    import torch  # type: ignore
+
+    cpu_cores = os.cpu_count() or 2
+    gpu = torch.cuda.is_available()
+    user_set = getattr(args, "n_envs", None)
+    if user_set is None or int(user_set) <= 0:
+        if gpu:
+            args.n_envs = 4
+        else:
+            args.n_envs = min(max(2, cpu_cores // 2), 16)
+        if gpu and args.n_envs < 4:
+            args.n_envs = 4
+        auto = True
+    else:
+        logging.info("[AUTO] disabled (user provided n_envs=%s)", args.n_envs)
+        auto = False
+    if getattr(args, "batch_size", 0) > args.n_envs * args.n_steps:
+        logging.warning(
+            "[PPO] batch_size (%d) > n_envs*n_steps (%d) — clipping",
+            args.batch_size,
+            args.n_envs * args.n_steps,
+        )
+        args.batch_size = args.n_envs * args.n_steps
+    clamp_batch(args)
+    try:
+        ram_gb = psutil.virtual_memory().total / (1024**3)
+    except Exception:
+        ram_gb = float("nan")
+    if auto:
+        logging.info(
+            "[AUTO] cpu_cores=%s ram_gb=%.1f n_envs=%s n_steps=%s batch_size=%s",
+            cpu_cores,
+            ram_gb,
+            args.n_envs,
+            args.n_steps,
+            args.batch_size,
+        )
+    else:
+        logging.info(
+            "cpu_cores=%s ram_gb=%.1f n_envs=%s n_steps=%s batch_size=%s",
+            cpu_cores,
+            ram_gb,
+            args.n_envs,
+            args.n_steps,
+            args.batch_size,
+        )
+    return args
+
 def parse_args():
     ap = argparse.ArgumentParser(
         description="Train reinforcement learning agent",

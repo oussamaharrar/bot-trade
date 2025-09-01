@@ -78,6 +78,30 @@ PY`
 
 ## Developer Notes — 2025-09-23
 - A) KB: canonical JSONL appender; atomic writes; schema stabilized; integrated after charts+eval+state.
+
+## 2025-09-01
+- **Files**: `bot_trade/config/rl_args.py`, `bot_trade/config/device.py`, `bot_trade/config/log_setup.py`, `bot_trade/tools/monitor_launch.py`, `bot_trade/tools/run_state.py`, `bot_trade/train_rl.py`, `DEV_NOTES.md`, `CHANGE_NOTES.md`
+- **Rationale**: split train orchestrator utilities into dedicated modules and merge duplicate run-state helpers.
+- **Risks**: consumers importing old helper paths may break; global run_state files deprecated.
+- **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py`, `python -m bot_trade.train_rl --help`, `python -m bot_trade.tools.export_charts --help`, `python -m bot_trade.tools.eval_run --help`, smoke training run with `--allow-synth`.
+
+## Developer Notes — 2025-09-01 (Structural Split & De-dup)
+
+| source                                   | canonical module                 | merged funcs                         | removed |
+|------------------------------------------|----------------------------------|--------------------------------------|---------|
+| `train_rl.validate_args`                 | `config.rl_args.validate_args`   | yes                                   | -       |
+| `train_rl.clamp_batch`                   | `config.rl_args.clamp_batch`     | yes                                   | -       |
+| `train_rl.auto_shape_resources`          | `config.rl_args.auto_shape_resources` | yes                             | -       |
+| `train_rl._maybe_print_device_report`    | `config.device.maybe_print_device_report` | yes                       | -       |
+| `train_rl._logging_monitor_loop`         | `config.log_setup.drain_log_queue` | yes                               | -       |
+| `train_rl._spawn_monitor`                | `tools.monitor_launch.spawn_monitor_manager` | yes                   | -       |
+| `train_rl._update_portfolio_state`       | `tools.run_state.update_portfolio_state` | yes                      | -       |
+| `train_rl._write_run_states`             | `tools.run_state.write_run_state_files` | yes                      | -       |
+| `train_rl._ensure_aux_files`             | removed (perf-dir state only)    | -                                    | yes     |
+
+Shims/Deprecations: internal helpers moved; existing public CLI flags unaffected.
+
+Risks/Migration: callers importing from old locations must switch to canonical modules; global run_state files are no longer updated.
 - B) Charts: Agg backend; ≥5 PNG with placeholders; row counts printed; atomic PNGs.
 - C) Eval: synthetic-first metrics; summary.json + portfolio_state.json; equity/drawdown charts (Agg).
 - D) State: run_state.json + state_latest.json (atomic) after portfolio; events.lock optional.

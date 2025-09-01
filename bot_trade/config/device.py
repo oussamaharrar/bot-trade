@@ -33,3 +33,30 @@ def normalize_device(arg: str | None, env: Dict[str, str]) -> str | None:
         return 'cpu' if idx < 0 else f'cuda:{idx}'
     except ValueError:
         return s
+
+
+def maybe_print_device_report(args) -> None:
+    """Print a simple device report unless ``--quiet-device-report`` is set."""
+    if getattr(args, "quiet_device_report", False):
+        return
+    import torch  # type: ignore
+
+    print("========== DEVICE REPORT ==========")
+    print(f"torch.cuda.is_available(): {torch.cuda.is_available()}")
+    print(f"CUDA device_count: {torch.cuda.device_count()}")
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            print(f"  [{i}] {torch.cuda.get_device_name(i)}")
+        try:
+            dev = getattr(args, "device_str", None)
+            if dev and dev.startswith("cuda:"):
+                idx = int(dev.split(":", 1)[1])
+                torch.cuda.set_device(idx)
+                print(f"Selected device index: {idx} -> {torch.cuda.get_device_name(idx)}")
+        except Exception:
+            pass
+    try:
+        print(f"torch.get_num_threads(): {torch.get_num_threads()}")
+    except Exception:
+        pass
+    print("===================================")

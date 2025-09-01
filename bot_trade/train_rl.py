@@ -27,15 +27,21 @@ from bot_trade.config.rl_paths import (
     dataset_path,
     RunPaths,
     ensure_contract,
-    memory_dir,
     DEFAULT_KB_FILE,
 )
-from bot_trade.config.device import normalize_device
+from bot_trade.config.device import normalize_device, maybe_print_device_report
 from bot_trade.config.rl_callbacks import _save_vecnorm
+from bot_trade.config.rl_args import validate_args, clamp_batch, auto_shape_resources
+from bot_trade.config.log_setup import drain_log_queue
 from bot_trade.tools import export_charts
 from bot_trade.tools.evaluate_model import evaluate_for_run
 from bot_trade.tools.eval_run import evaluate_run
 from bot_trade.tools.kb_writer import kb_append
+from bot_trade.tools.monitor_launch import spawn_monitor_manager
+from bot_trade.tools.run_state import (
+    update_portfolio_state,
+    write_run_state_files,
+)
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
 # imported inside `main` to keep import-time side effects minimal and to
@@ -43,276 +49,14 @@ from bot_trade.tools.kb_writer import kb_append
 
 
 
-# =============================
-# Validation / helpers
-# =============================
-
-def validate_args(args):
-    """Light validation of numeric arguments."""
-    for k in ("n_envs", "n_steps", "batch_size", "total_steps"):
-        if getattr(args, k, 0) <= 0:
-            raise ValueError(f"[ARGS] {k} يجب أن يكون > 0.")
-    return args
 
 
-def clamp_batch(args):
-    """Ensure batch_size respects rollout and divides it cleanly."""
-    rollout = int(args.n_envs) * int(args.n_steps)
-    if int(args.batch_size) > rollout:
-        logging.warning(
-            "[PPO] batch_size (%d) > n_envs*n_steps (%d) — سيتم تقليمه",
-            args.batch_size,
-            rollout,
-        )
-    batch = min(int(args.batch_size), rollout)
-    batch = (batch // int(args.n_envs)) * int(args.n_envs)
-    if rollout % batch != 0:
-        import math as _math
-
-        new_bs = _math.gcd(rollout, batch)
-        logging.info(
-            "[PPO] batch_size=%d not divisor of rollout=%d → %d",
-            batch,
-            rollout,
-            new_bs,
-        )
-        batch = max(int(args.n_envs), new_bs)
-    args.batch_size = max(int(args.n_envs), int(batch))
-    return args
 
 
-def auto_shape_resources(args):
-    """Auto-derive n_envs/n_steps/batch_size based on hardware when unset."""
-    cpu_cores = os.cpu_count() or 2
-    gpu = torch.cuda.is_available()
-    user_set = getattr(args, "n_envs", None)
-    if user_set is None or int(user_set) <= 0:
-        if gpu:
-            args.n_envs = 4
-        else:
-            args.n_envs = min(max(2, cpu_cores // 2), 16)
-        if gpu and args.n_envs < 4:
-            args.n_envs = 4
-        auto = True
-    else:
-        logging.info("[AUTO] disabled (user provided n_envs=%s)", args.n_envs)
-        auto = False
-    if getattr(args, "batch_size", 0) > args.n_envs * args.n_steps:
-        logging.warning(
-            "[PPO] batch_size (%d) > n_envs*n_steps (%d) — clipping",
-            args.batch_size,
-            args.n_envs * args.n_steps,
-        )
-        args.batch_size = args.n_envs * args.n_steps
-    clamp_batch(args)
-    try:
-        ram_gb = psutil.virtual_memory().total / (1024**3)
-    except Exception:
-        ram_gb = float("nan")
-    if auto:
-        logging.info(
-            "[AUTO] cpu_cores=%s ram_gb=%.1f n_envs=%s n_steps=%s batch_size=%s",
-            cpu_cores,
-            ram_gb,
-            args.n_envs,
-            args.n_steps,
-            args.batch_size,
-        )
-    else:
-        logging.info(
-            "cpu_cores=%s ram_gb=%.1f n_envs=%s n_steps=%s batch_size=%s",
-            cpu_cores,
-            ram_gb,
-            args.n_envs,
-            args.n_steps,
-            args.batch_size,
-        )
-    return args
 
 
-def _maybe_print_device_report(args):
-    if getattr(args, "quiet_device_report", False):
-        return
-    print("========== DEVICE REPORT ==========")
-    print(f"torch.cuda.is_available(): {torch.cuda.is_available()}")
-    print(f"CUDA device_count: {torch.cuda.device_count()}")
-    if torch.cuda.is_available():
-        for i in range(torch.cuda.device_count()):
-            print(f"  [{i}] {torch.cuda.get_device_name(i)}")
-        try:
-            dev = getattr(args, "device_str", None)
-            if dev and dev.startswith("cuda:"):
-                idx = int(dev.split(":", 1)[1])
-                torch.cuda.set_device(idx)
-                print(f"Selected device index: {idx} -> {torch.cuda.get_device_name(idx)}")
-        except Exception:
-            pass
-    try:
-        print(f"torch.get_num_threads(): {torch.get_num_threads()}")
-    except Exception:
-        pass
-    print("===================================")
 
 
-def _spawn_monitor(root_dir: str, args, run_id: str, headless: bool = True):
-    """Launch monitor manager.
-
-    Headless mode detaches and returns ``None``. Interactive mode returns the
-    ``Popen`` handle so callers may manage the process.
-    """
-    import subprocess
-
-    cmd = [
-        sys.executable,
-        "-m",
-        "bot_trade.tools.monitor_manager",
-        "--symbol",
-        args.symbol,
-        "--frame",
-        args.frame,
-        "--run-id",
-        run_id,
-        "--base",
-        root_dir,
-    ]
-    if headless:
-        cmd.append("--no-wait")
-
-    child_env = os.environ.copy()
-    child_env.setdefault("BOT_TRADE_ROOT", root_dir)
-
-    if not headless:
-        try:
-            proc = subprocess.Popen(cmd, env=child_env, shell=False)
-            logger.info("[monitor] spawned (interactive)")
-            return proc
-        except Exception as exc:  # pragma: no cover
-            logger.warning("monitor launch failed: %s", exc)
-            return None
-
-    success = False
-    if os.name == "nt":
-        CREATE_NEW_CONSOLE = 0x00000010
-        DETACHED_PROCESS = 0x00000008
-        CREATE_NEW_PROCESS_GROUP = 0x00000200
-        CREATE_NO_WINDOW = 0x08000000
-
-        def _try_spawn_win(flags, close_fds, note):
-            return subprocess.Popen(
-                cmd,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=flags,
-                close_fds=close_fds,
-                env=child_env,
-                shell=False,
-            )
-
-        try:
-            _try_spawn_win(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP, True, "NO_WINDOW+NPG")
-            success = True
-        except Exception as e1:
-            try:
-                _try_spawn_win(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP, False, "DETACHED+NPG")
-                success = True
-            except Exception as e2:
-                try:
-                    pyw = sys.executable.replace("python.exe", "pythonw.exe")
-                    if os.path.exists(pyw):
-                        cmd2 = [pyw] + cmd[1:]
-                        subprocess.Popen(
-                            cmd2,
-                            stdin=subprocess.DEVNULL,
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                            creationflags=CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP,
-                            close_fds=True,
-                            env=child_env,
-                            shell=False,
-                        )
-                        success = True
-                    else:
-                        raise FileNotFoundError("pythonw.exe not found")
-                except Exception as e3:
-                    try:
-                        _try_spawn_win(CREATE_NEW_CONSOLE | CREATE_NEW_PROCESS_GROUP, True, "NEW_CONSOLE")
-                        success = True
-                    except Exception as e4:
-                        logger.warning(f"monitor launch failed after fallbacks: {e4!r}")
-                        return None
-    else:
-        try:
-            subprocess.Popen(
-                cmd,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env=child_env,
-                shell=False,
-                start_new_session=True,
-            )
-            success = True
-        except Exception as exc:  # pragma: no cover
-            logger.warning("monitor launch failed: %s", exc)
-    if success:
-        logger.info("[monitor] spawned (headless)")
-    return None
-
-
-def _logging_monitor_loop(queue, listener):
-    try:
-        while True:
-            try:
-                record = queue.get(True)
-            except (EOFError, BrokenPipeError):
-                break
-            if record is None:
-                break
-            listener.handle(record)
-    finally:
-        try:
-            listener.stop()
-        except Exception:
-            pass
-
-
-from bot_trade.tools.atomic_io import write_json
-
-
-def _update_portfolio_state(path: Path, steps: int) -> None:
-    state = {"equity": 0.0, "steps": 0, "last_ts": "", "version": 1}
-    if path.exists():
-        try:
-            state.update(json.loads(path.read_text(encoding="utf-8")))
-        except Exception:
-            pass
-    state["steps"] = int(state.get("steps", 0)) + int(steps)
-    state["last_ts"] = dt.datetime.utcnow().isoformat()
-    write_json(path, state)
-
-
-def _write_run_states(perf_dir: Path, run_id: str, create_lock: bool = False) -> None:
-    perf_dir.mkdir(parents=True, exist_ok=True)
-    now = dt.datetime.utcnow().isoformat()
-    write_json(perf_dir / "run_state.json", {"status": "idle", "updated_at": now})
-    write_json(perf_dir / "state_latest.json", {"last_run_id": run_id, "updated_at": now})
-    if create_lock:
-        (perf_dir / "events.lock").touch()
-
-
-def _ensure_aux_files(run_id: str, create_lock: bool = False) -> None:
-    mem = memory_dir()
-    mem.mkdir(parents=True, exist_ok=True)
-    if create_lock:
-        (mem / "events.lock").touch(exist_ok=True)
-    now = dt.datetime.utcnow().isoformat()
-    run_state = mem / "run_state.json"
-    if not run_state.exists() or run_state.stat().st_size == 0:
-        write_json(run_state, {"status": "idle", "updated_at": now})
-    latest = mem / "state_latest.json"
-    if not latest.exists() or latest.stat().st_size == 0:
-        write_json(latest, {"last_run_id": run_id, "updated_at": now})
 
 
 def _postrun_summary(paths, meta):
@@ -381,11 +125,11 @@ def _postrun_summary(paths, meta):
 
     steps_this_run = int(meta.get("total_steps", 0))
     try:
-        _update_portfolio_state(rp.performance_dir / "portfolio_state.json", steps_this_run)
+        update_portfolio_state(rp.performance_dir / "portfolio_state.json", steps_this_run)
     except Exception as e:
         logger.warning("[PORTFOLIO] update_failed err=%s", e)
     try:
-        _write_run_states(rp.performance_dir, str(run_id))
+        write_run_state_files(rp.performance_dir, str(run_id))
     except Exception:
         pass
 
@@ -436,10 +180,7 @@ def _postrun_summary(paths, meta):
     except Exception as e:
         logger.warning("[KB] append_failed err=%s", e)
 
-    try:
-        _ensure_aux_files(str(run_id))
-    except Exception:
-        pass
+    # legacy global run_state writes removed; perf_dir now authoritative
 
     win_rate = eval_summary.get("win_rate")
     sharpe = eval_summary.get("sharpe")
@@ -640,7 +381,7 @@ def train_one_file(args, data_file: str) -> bool:
     except Exception:
         pass
     log_thread = threading.Thread(
-        target=_logging_monitor_loop, args=(log_queue, listener), daemon=True
+        target=drain_log_queue, args=(log_queue, listener), daemon=True
     )
     log_thread.start()
     ensure_state_files(args.memory_file, args.kb_file)
@@ -695,7 +436,7 @@ def train_one_file(args, data_file: str) -> bool:
         port_state = reset_with_balance(args.symbol, args.frame, portfolio_cfg.get("balance_start", 0.0))
 
     # 2) Device report (optional)
-    _maybe_print_device_report(args)
+    maybe_print_device_report(args)
 
     # 3) Load data once (for single-job training)
     if _HAS_READ_ONE:
@@ -1040,7 +781,7 @@ def train_one_file(args, data_file: str) -> bool:
 
     if getattr(args, "monitor", True):
         root_dir = str(paths_obj.root)
-        _spawn_monitor(root_dir, args, run_id, headless=getattr(args, "headless", False))
+        spawn_monitor_manager(root_dir, args, run_id, headless=getattr(args, "headless", False))
 
     # 11) Learn
     status = "finished"
