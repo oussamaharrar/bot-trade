@@ -277,12 +277,20 @@ def _postrun_summary(paths, meta):
     frm = getattr(paths, "frame", meta.get("frame", "?"))
 
     try:
-        rp = paths if isinstance(paths, RunPaths) else RunPaths(sym, frm, str(run_id))
-        charts_dir, img_count = export_charts_for_run(rp)
+        rp = (
+            paths
+            if isinstance(paths, RunPaths)
+            else RunPaths(sym, frm, str(run_id), kb_file=(paths.get("kb_file") if isinstance(paths, dict) else None))
+        )
+        charts_dir, img_count, rows_reward, rows_step = export_charts_for_run(
+            rp, wait_sec=10, min_images=5
+        )
         logger.info("[POSTRUN_EXPORT] charts=%s images=%d", charts_dir, img_count)
     except Exception as e:
         charts_dir = (pathlib.Path(paths["reports"]) / "charts").resolve() if isinstance(paths, dict) else (paths.reports / "charts").resolve()
         img_count = 0
+        rows_reward = 0
+        rows_step = 0
         logger.warning("[POSTRUN_EXPORT] export_failed err=%s", e)
 
     reward_path_base = pathlib.Path(paths["results"]) if isinstance(paths, dict) else paths.results
@@ -292,10 +300,7 @@ def _postrun_summary(paths, meta):
     last = agents_base / "deep_rl_last.zip"
     vecnorm = (paths.get("vecnorm") if isinstance(paths, dict) else getattr(paths, "vecnorm", None))
 
-    reward_lines = 0
-    if reward_path.exists():
-        with reward_path.open("r", encoding="utf-8", errors="ignore") as fh:
-            reward_lines = sum(1 for _ in fh if _.strip())
+    reward_lines = rows_reward
     vec_applied = bool(meta.get("vecnorm_applied", False))
     vec_snapshot = bool(vecnorm and pathlib.Path(vecnorm).exists())
     best_ok = best.exists()
@@ -308,6 +313,14 @@ def _postrun_summary(paths, meta):
     )
     logger.info(line)
     print(line, flush=True)
+    return {
+        "images": img_count,
+        "rows_reward": reward_lines,
+        "rows_step": rows_step,
+        "best": best_ok,
+        "last": last_ok,
+        "vecnorm_applied": vec_applied,
+    }
 
 
 def _try_apply_vecnorm(venv, cfg, paths, logger):
@@ -456,7 +469,7 @@ def train_one_file(args, data_file: str) -> bool:
         sys.exit(3)
 
     # 1) Paths + logging + state
-    paths_obj = RunPaths(args.symbol, args.frame, run_id)
+    paths_obj = RunPaths(args.symbol, args.frame, run_id, kb_file=args.kb_file)
     paths_obj.ensure()
     paths = paths_obj.as_dict()
     ensure_contract(paths)
@@ -1027,7 +1040,12 @@ def train_one_file(args, data_file: str) -> bool:
     except Exception:
         pass
 
-    _postrun_summary(paths, run_meta)
+    summary_meta = _postrun_summary(paths, run_meta)
+    kb_meta = {**run_meta, **summary_meta, "ts": dt.datetime.utcnow().isoformat()}
+    try:
+        update_manager.append_kb(kb_meta)
+    except Exception as exc:
+        logging.warning("[KB] update failed: %s", exc)
 
     if mon_proc is not None:
         try:

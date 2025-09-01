@@ -5,7 +5,9 @@ from __future__ import annotations
 # headless operation we must switch the backend *before* that happens.
 import matplotlib
 
-matplotlib.use("Agg")
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: F401  # backend already set
 
 from bot_trade.tools import bootstrap  # noqa: F401  # Import path fixup when run directly
 
@@ -42,9 +44,17 @@ import pandas as pd
 # Column normalisation
 # ---------------------------------------------------------------------------
 
-# ``reward.log`` may expose either ``reward_total`` or ``reward``.  Normalising
-# to a canonical ``reward`` column keeps downstream code simple.
-COL_ALIASES = {"reward_total": "reward", "reward": "reward"}
+# ``reward.log`` and step logs may expose a variety of column names. Normalising
+# to canonical ``reward``/``step`` keeps downstream code simple.
+COL_ALIASES = {
+    "reward_total": "reward",
+    "reward": "reward",
+    "r": "reward",
+    "global_step": "step",
+    "step": "step",
+    "steps": "step",
+    "t": "step",
+}
 
 CHARTS = [
     "reward",
@@ -65,8 +75,8 @@ def export(base: str, symbol: str, frame: str, out_dir: str, charts, limit, roll
     os.makedirs(out_dir, exist_ok=True)
 
     reward = load_reward_df(base, symbol, frame, limit).rename(columns=COL_ALIASES)
+    steps = load_steps_df(base, symbol, frame, limit).rename(columns=COL_ALIASES)
     trades = load_trades_df(base, symbol, frame, limit)
-    steps = load_steps_df(base, symbol, frame, limit)
     decisions = load_decisions_df(base, symbol, frame, limit)
     eq = compute_equity(trades)
     dd = compute_drawdown(eq)
@@ -80,7 +90,20 @@ def export(base: str, symbol: str, frame: str, out_dir: str, charts, limit, roll
         base, _ = os.path.splitext(path_png)
         return base + '.svg'
 
-    reward_series = reward["reward"] if "reward" in reward.columns else reward.iloc[:, 0] if not reward.empty else reward
+    # ensure numeric inputs; drop non-numeric columns/rows
+    for df in (reward, steps):
+        for col in list(df.columns):
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+        df.dropna(axis=1, how="all", inplace=True)
+        df.dropna(inplace=True)
+
+    reward_series = (
+        reward["reward"]
+        if "reward" in reward.columns
+        else reward.iloc[:, 0]
+        if not reward.empty
+        else reward
+    )
 
     if "reward" in charts and not reward_series.empty:
         png = os.path.join(out_dir, "reward.png")
@@ -127,9 +150,13 @@ def export(base: str, symbol: str, frame: str, out_dir: str, charts, limit, roll
     with open(os.path.join(out_dir, "index.json"), "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=2)
 
-    pngs = [p for p in Path(out_dir).glob("*.png") if p.is_file() and not p.is_symlink()]
+    pngs = [
+        p
+        for p in Path(out_dir).glob("*.png")
+        if p.is_file() and not p.is_symlink() and p.stat().st_size > 1024
+    ]
     count = len(pngs)
-    logging.info("charts dir=%s images=%d", Path(out_dir).resolve(), count)
+    logging.info("[CHARTS] dir=%s images=%d", Path(out_dir).resolve(), count)
     return count
 
 
