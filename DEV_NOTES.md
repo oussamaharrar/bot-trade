@@ -90,3 +90,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Standardized outputs and latest guards unchanged.
 - Risks/Migration: modules relying on `runctx.atomic_write_json` should migrate; PNGs slightly larger due to higher DPI.
 - Next: remove old text writer and audit remaining shims.
+
+## Developer Notes — 2025-09-26 (SAC phase 1)
+- What: Added SAC algorithm option with CLI flag/config, algorithm-scoped paths, warm-start utility, and TD3/TQC stubs.
+- Why: prepare off-policy methods alongside PPO.
+- Risks: new path layout may break scripts expecting previous structure; SAC requires continuous action spaces.
+- Migration: specify `--algorithm` or set `rl.algorithm`; update path lookups for new layout.
+- Next: implement TD3/TQC builders and evaluation upgrades.

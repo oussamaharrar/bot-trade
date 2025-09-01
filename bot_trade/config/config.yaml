@@ -56,6 +56,16 @@ rl:
   checkpoint_every_steps: 500_000
   keep_last_n: 5
   resume_if_found: true
+  sac:
+    buffer_size: 2000000
+    learning_starts: 20000
+    train_freq: 1
+    gradient_steps: 1
+    batch_size: 512
+    tau: 0.005
+    ent_coef: "auto"
+    gamma: 0.99
+    policy_kwargs: {}
 
 # ————— بيئة التداول —————
 env:

@@ -106,22 +106,32 @@ def memory_dir() -> Path:
     return d
 
 
-def agents_dir(symbol: str, frame: str) -> Path:
-    d = get_root() / "agents" / symbol.upper() / str(frame)
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+def algo_scoped(root: Path, algo: str, symbol: str, frame: str, run_id: str) -> Path:
+    """Return a path scoped by algorithm/symbol/frame/run_id."""
+    return Path(root) / algo.upper() / symbol.upper() / str(frame) / str(run_id)
 
 
-def latest_agent(symbol: str, frame: str) -> Path:
+def agents_dir(symbol: str, frame: str, algo: str | None = None, run_id: str | None = None) -> Path:
+    base = get_root() / "agents"
+    if algo:
+        base = base / algo.upper()
+    base = base / symbol.upper() / str(frame)
+    if run_id:
+        base = base / run_id
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def latest_agent(symbol: str, frame: str, algo: str | None = None, run_id: str | None = None) -> Path:
     """Return path to the latest agent checkpoint."""
 
-    return agents_dir(symbol, frame) / "deep_rl.zip"
+    return agents_dir(symbol, frame, algo, run_id) / "deep_rl.zip"
 
 
-def best_agent(symbol: str, frame: str) -> Path:
+def best_agent(symbol: str, frame: str, algo: str | None = None, run_id: str | None = None) -> Path:
     """Return path to the best agent checkpoint."""
 
-    return agents_dir(symbol, frame) / "deep_rl_best.zip"
+    return agents_dir(symbol, frame, algo, run_id) / "deep_rl_best.zip"
 
 
 def vecnorm_path(symbol: str, frame: str) -> Path:
@@ -130,20 +140,29 @@ def vecnorm_path(symbol: str, frame: str) -> Path:
     return agents_dir(symbol, frame) / "vecnorm.pkl"
 
 
-def results_dir(symbol: str, frame: str) -> Path:
-    d = get_root() / "results" / symbol.upper() / str(frame)
+def results_dir(symbol: str, frame: str, algo: str | None = None) -> Path:
+    base = get_root() / "results"
+    if algo:
+        base = base / algo.upper()
+    d = base / symbol.upper() / str(frame)
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def reports_dir(symbol: str, frame: str) -> Path:
-    d = get_root() / "reports" / symbol.upper() / str(frame)
+def reports_dir(symbol: str, frame: str, algo: str | None = None) -> Path:
+    base = get_root() / "reports"
+    if algo:
+        base = base / algo.upper()
+    d = base / symbol.upper() / str(frame)
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def logs_dir(symbol: str, frame: str, run_base: str | None = None) -> Path:
-    root = Path(DEFAULT_LOGS_DIR) / symbol.upper() / str(frame)
+def logs_dir(symbol: str, frame: str, run_base: str | None = None, algo: str | None = None) -> Path:
+    root = Path(DEFAULT_LOGS_DIR)
+    if algo:
+        root = root / algo.upper()
+    root = root / symbol.upper() / str(frame)
     if run_base:
         root = root / run_base
     root.mkdir(parents=True, exist_ok=True)
@@ -165,9 +184,9 @@ class RunPaths:
 
     Directories are structured as::
 
-        logs/<SYMBOL>/<FRAME>/<RUN_ID>/
-        results/<SYMBOL>/<FRAME>/<RUN_ID>/
-        reports/<SYMBOL>/<FRAME>/<RUN_ID>/
+        logs/<ALGO>/<SYMBOL>/<FRAME>/<RUN_ID>/
+        results/<ALGO>/<SYMBOL>/<FRAME>/<RUN_ID>/
+        reports/<ALGO>/<SYMBOL>/<FRAME>/<RUN_ID>/
 
     ``RUN_ID`` is expected to be a short identifier (no timestamps).
     """
@@ -177,20 +196,22 @@ class RunPaths:
         symbol: str,
         frame: str,
         run_id: str,
+        algo: str = "PPO",
         root: Path | None = None,
         kb_file: str | Path | None = None,
     ) -> None:
         self.symbol = symbol.upper()
         self.frame = str(frame)
         self.run_id = run_id
+        self.algo = algo.upper()
         self.root = root or get_root()
         self.kb_file = Path(kb_file) if kb_file else Path(DEFAULT_KB_FILE)
         self.kb_file.parent.mkdir(parents=True, exist_ok=True)
 
-        self.logs = Path(DEFAULT_LOGS_DIR) / self.symbol / self.frame / self.run_id
-        self.results = Path(DEFAULT_RESULTS_DIR) / self.symbol / self.frame / self.run_id
-        self.reports = Path(DEFAULT_REPORTS_DIR) / self.symbol / self.frame / self.run_id
-        self.agents = agents_dir(self.symbol, self.frame)
+        self.logs = Path(DEFAULT_LOGS_DIR) / self.algo / self.symbol / self.frame / self.run_id
+        self.results = algo_scoped(Path(DEFAULT_RESULTS_DIR), self.algo, self.symbol, self.frame, self.run_id)
+        self.reports = algo_scoped(Path(DEFAULT_REPORTS_DIR), self.algo, self.symbol, self.frame, self.run_id)
+        self.agents = algo_scoped(Path(DEFAULT_AGENTS_DIR), self.algo, self.symbol, self.frame, self.run_id)
 
         for d in (self.logs, self.results, self.reports):
             d.mkdir(parents=True, exist_ok=True)
@@ -617,6 +638,7 @@ def get_paths(symbol: str, frame: str) -> dict:
 __all__ = [
     "get_root",
     "memory_dir",
+    "algo_scoped",
     "agents_dir",
     "latest_agent",
     "best_agent",
