@@ -292,19 +292,31 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--frame", default="1m")
     ap.add_argument("--run-id", default="latest")
     ap.add_argument("--base", default=None, help="Project root override")
-    ap.add_argument("--debug-export", action="store_true")
+    ap.add_argument("--debug-export", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--no-wait", action="store_true", help=argparse.SUPPRESS)
     ns = ap.parse_args(argv)
 
     root = Path(ns.base) if ns.base else get_root()
     run_id = ns.run_id
     if run_id in {None, "latest", ""}:
         rid = _latest_run(ns.symbol, ns.frame, root / "reports")
-        run_id = rid or run_id
-    if not run_id:
-        print("[ERROR] run not found", file=sys.stderr)
-        return 2
+        if not rid:
+            print("[LATEST] none")
+            return 2
+        run_id = rid
     rp = RunPaths(ns.symbol, ns.frame, run_id, root=root)
-    charts_dir, images, _rows = export_for_run(rp, debug=ns.debug_export)
+    charts_dir, images, rows = export_for_run(rp)
+    print(
+        "[DEBUG_EXPORT] reward_rows=%d step_rows=%d train_rows=%d risk_rows=%d callbacks_rows=%d signals_rows=%d"
+        % (
+            rows.get("reward", 0),
+            rows.get("step", 0),
+            rows.get("train", 0),
+            rows.get("risk", 0),
+            rows.get("callbacks", 0),
+            rows.get("signals", 0),
+        )
+    )
     print(f"[CHARTS] dir={charts_dir.resolve()} images={images}")
     return 0 if images > 0 else 2
 

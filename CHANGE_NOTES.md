@@ -85,3 +85,18 @@ PY`
 - F) CLI: allow-synth examples; help for tools; heavy deps moved inside main; standardized POSTRUN fields.
 - Risks/Migration: do not json.load KB (JSONL). Do not follow symlinks for latest. Atomic I/O everywhere.
 - Next: optional archive index CSV; WFA eval pack; CI smoke; SAC/TD3/TQC builders.
+
+## 2025-09-24
+- **Files**: `bot_trade/tools/monitor_manager.py`, `bot_trade/tools/export_run_charts.py`, `bot_trade/tools/eval_run.py`, `bot_trade/tools/kb_writer.py`, `bot_trade/train_rl.py`, `CHANGE_NOTES.md`
+- **Rationale**: standardize debug/charts prints, strict KB schema with de-dup append, non-silent eval output, retrying post-run exports and latest guards.
+- **Risks**: downstream parsers must handle new debug lines and KB fields; eval/output formats may require script updates.
+- **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py`; `python -m bot_trade.tools.monitor_manager --help`; `python -m bot_trade.tools.export_run_charts --help`; `python -m bot_trade.tools.eval_run --help`; generate synth data then run `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --policy MlpPolicy --device cpu --n-envs 2 --n-steps 512 --batch-size 1024 --total-steps 2048 --net-arch "1024,512,256" --activation silu --vecnorm --headless --allow-synth --kb-file Knowlogy/kb.jsonl --data-dir data_ready`; `python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --run-id latest`; `python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest`.
+
+## Developer Notes — 2025-09-24 (Delta Pack)
+- Standardized [DEBUG_EXPORT] and [CHARTS] prints and added concise [EVAL] line.
+- KB appends now enforce full schema, defaulting missing fields and skipping duplicates.
+- Post-run chart export retries once; risk flags saved as `risk_flags.png`.
+- `latest` resolution prints `[LATEST] none` with exit code 2 when no runs exist.
+- Legacy flags like `--no-wait` and `--debug-export` remain accepted but are no-ops.
+- Risks/Migration: tools now emit extra lines; parsers expecting silence must adapt. KB records include `rows_callbacks` and may change ordering.
+- Next: track KB size growth, richer eval metrics, and automation around smoke tests.

@@ -342,22 +342,36 @@ def _postrun_summary(paths, meta):
             logger.warning("[EVAL] failed err=%s", e)
             eval_summary = {}
 
+    rp.charts_dir.mkdir(parents=True, exist_ok=True)
     try:
-        charts_dir, img_count, row_counts = export_run_charts.export_for_run(
-            rp, debug=bool(meta.get("debug_export", False))
+        charts_dir, img_count, row_counts = export_run_charts.export_for_run(rp)
+    except Exception:
+        try:
+            charts_dir, img_count, row_counts = export_run_charts.export_for_run(rp)
+        except Exception as e:
+            charts_dir = rp.charts_dir
+            img_count = 0
+            row_counts = {}
+            logger.warning("[POSTRUN_EXPORT] export_failed err=%s", e)
+    rows_reward = row_counts.get("reward", 0)
+    rows_step = row_counts.get("step", 0)
+    rows_train = row_counts.get("train", 0)
+    rows_risk = row_counts.get("risk", 0)
+    rows_callbacks = row_counts.get("callbacks", 0)
+    rows_signals = row_counts.get("signals", 0)
+    print(
+        "[DEBUG_EXPORT] reward_rows=%d step_rows=%d train_rows=%d risk_rows=%d callbacks_rows=%d signals_rows=%d"
+        % (
+            rows_reward,
+            rows_step,
+            rows_train,
+            rows_risk,
+            rows_callbacks,
+            rows_signals,
         )
-        rows_reward = row_counts.get("reward", 0)
-        rows_step = row_counts.get("step", 0)
-        rows_train = row_counts.get("train", 0)
-        rows_risk = row_counts.get("risk", 0)
-        rows_callbacks = row_counts.get("callbacks", 0)
-        rows_signals = row_counts.get("signals", 0)
-        logger.info("[POSTRUN_EXPORT] charts=%s images=%d", charts_dir, img_count)
-    except Exception as e:
-        charts_dir = rp.charts_dir
-        img_count = 0
-        rows_reward = rows_step = rows_train = rows_risk = rows_signals = rows_callbacks = 0
-        logger.warning("[POSTRUN_EXPORT] export_failed err=%s", e)
+    )
+    print(f"[CHARTS] dir={charts_dir.resolve()} images={img_count}")
+    logger.info("[POSTRUN_EXPORT] charts=%s images=%d", charts_dir, img_count)
 
     agents_base = Path(rp.agents)
     best = agents_base / "deep_rl_best.zip"
@@ -412,6 +426,7 @@ def _postrun_summary(paths, meta):
             "rows_step": rows_step,
             "rows_train": rows_train,
             "rows_risk": rows_risk,
+            "rows_callbacks": rows_callbacks,
             "rows_signals": rows_signals,
             "vecnorm_applied": vec_applied,
             "vecnorm_snapshot_saved": vec_snapshot,

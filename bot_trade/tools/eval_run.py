@@ -52,7 +52,9 @@ def _latest_run(symbol: str, frame: str) -> str | None:
     return run_dirs[0].name
 
 
-def evaluate_run(symbol: str, frame: str, run_id: str | None = None, episodes: int = 10) -> Dict[str, float]:
+def evaluate_run(
+    symbol: str, frame: str, run_id: str | None = None, episodes: int = 10
+) -> Dict[str, float]:
     """Evaluate a training run using logged rewards or signals."""
 
     import numpy as np
@@ -124,7 +126,7 @@ def evaluate_run(symbol: str, frame: str, run_id: str | None = None, episodes: i
     return summary
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         description="Synthetic run evaluation",
         epilog=(
@@ -136,9 +138,36 @@ def main() -> None:
     p.add_argument("--frame", required=True)
     p.add_argument("--run-id")
     p.add_argument("--episodes", type=int, default=10)
-    args = p.parse_args()
-    evaluate_run(args.symbol, args.frame, run_id=args.run_id, episodes=args.episodes)
+    args = p.parse_args(argv)
+    run_id = args.run_id
+    if not run_id or str(run_id).lower() in {"latest", "last"}:
+        rid = _latest_run(args.symbol, args.frame)
+        if not rid:
+            print("[LATEST] none")
+            return 2
+        run_id = rid
+    rp = RunPaths(args.symbol, args.frame, str(run_id))
+    try:
+        summary = evaluate_run(
+            args.symbol, args.frame, run_id=run_id, episodes=args.episodes
+        )
+    except Exception as exc:  # pragma: no cover
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 1
+    out_dir = rp.performance_dir
+    print(
+        "[EVAL] run_id=%s metrics={win_rate:%.3f, sharpe:%.3f, max_drawdown:%.3f, avg_trade_pnl:%.3f} out=%s"
+        % (
+            run_id,
+            summary.get("win_rate", 0.0),
+            summary.get("sharpe", 0.0),
+            summary.get("max_drawdown", 0.0),
+            summary.get("avg_trade_pnl", 0.0),
+            out_dir.resolve(),
+        )
+    )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
