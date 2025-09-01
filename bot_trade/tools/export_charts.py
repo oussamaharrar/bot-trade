@@ -1,12 +1,12 @@
 """Batch export of analytics charts and tables."""
 from __future__ import annotations
 
-# ``analytics_common`` pulls in ``matplotlib.pyplot`` during import.  To ensure
-# headless operation we must switch the backend *before* that happens.
+# ``analytics_common`` pulls in ``matplotlib.pyplot`` during import. To ensure
+# headless operation we must switch the backend *before* that happens. Always
+# force the ``Agg`` backend so plots can be generated without a display.
 import matplotlib
 
-if matplotlib.get_backend().lower() != "agg":
-    matplotlib.use("Agg")
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: F401  # backend already set
 
 from bot_trade.tools import bootstrap  # noqa: F401  # Import path fixup when run directly
@@ -43,6 +43,9 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 # Column normalisation
 # ---------------------------------------------------------------------------
+
+REWARD_ALIASES = ["reward", "reward_total"]
+STEP_ALIASES = {"step": ["global_step", "step"], "value": ["reward", "reward_total", "value"]}
 
 # ``reward.log`` and step logs may expose a variety of column names. Normalising
 # to canonical ``reward``/``step`` keeps downstream code simple.
@@ -160,29 +163,111 @@ def export(base: str, symbol: str, frame: str, out_dir: str, charts, limit, roll
     return count
 
 
-def main():
+# ---------------------------------------------------------------------------
+# Minimal exporter for RunPaths (reward/step charts only)
+# ---------------------------------------------------------------------------
+
+from bot_trade.config.rl_paths import RunPaths
+
+
+def export_run(paths: RunPaths, debug: bool = False) -> tuple[Path, int, int, int]:
+    """Export reward/step charts for a completed run.
+
+    Returns ``(charts_dir, image_count, rows_reward, rows_step)``.
+    """
+
+    reward_file = paths.results / "reward" / "reward.log"
+    step_file = paths.logs / "step_log.csv"
+    charts_dir = paths.reports / "charts"
+    charts_dir.mkdir(parents=True, exist_ok=True)
+
+    # --------------------
+    # Load reward log
+    # --------------------
+    if reward_file.is_file():
+        df_reward = pd.read_csv(reward_file, encoding="utf-8", low_memory=False)
+        for col in REWARD_ALIASES:
+            if col in df_reward.columns:
+                df_reward.rename(columns={col: "reward"}, inplace=True)
+                break
+        df_reward["reward"] = pd.to_numeric(df_reward.get("reward"), errors="coerce")
+    else:
+        df_reward = pd.DataFrame()
+    rows_reward = int(df_reward.get("reward").notna().sum()) if "reward" in df_reward else 0
+
+    # --------------------
+    # Load step log
+    # --------------------
+    if step_file.is_file():
+        df_step = pd.read_csv(step_file, encoding="utf-8", low_memory=False)
+        for canon, aliases in STEP_ALIASES.items():
+            for a in aliases:
+                if a in df_step.columns:
+                    df_step.rename(columns={a: canon}, inplace=True)
+                    break
+        for col in list(df_step.columns):
+            df_step[col] = pd.to_numeric(df_step[col], errors="coerce")
+    else:
+        df_step = pd.DataFrame()
+    rows_step = int(df_step.notna().any(axis=1).sum()) if not df_step.empty else 0
+
+    if debug:
+        print(f"[DEBUG_EXPORT] reward_file={reward_file} step_file={step_file}")
+        print(f"[DEBUG_EXPORT] reward_rows={rows_reward} step_rows={rows_step}")
+
+    # --------------------
+    # Plotting
+    # --------------------
+    def _save(fig, path: Path) -> None:
+        fig.tight_layout()
+        fig.savefig(path)
+        plt.close(fig)
+
+    if rows_reward >= 1:
+        fig, ax = plt.subplots()
+        x = df_reward["global_step"].values if "global_step" in df_reward.columns else df_reward.index
+        ax.plot(x, df_reward["reward"].fillna(0).values)
+        ax.set_title(f"Reward (rows={rows_reward})")
+        _save(fig, charts_dir / "reward.png")
+    elif rows_step >= 1:
+        fig, ax = plt.subplots()
+        if "step" in df_step.columns:
+            ax.plot(df_step["step"].values)
+        else:
+            ax.plot(range(rows_step))
+        ax.set_title(f"Steps (rows={rows_step})")
+        _save(fig, charts_dir / "steps.png")
+    else:
+        fig, ax = plt.subplots()
+        ax.text(0.5, 0.5, "NO DATA", ha="center", va="center")
+        ax.set_axis_off()
+        _save(fig, charts_dir / "empty.png")
+
+    pngs = [
+        p
+        for p in charts_dir.glob("*.png")
+        if p.is_file() and not p.is_symlink() and p.stat().st_size > 1024
+    ]
+    count = len(pngs)
+    return charts_dir.resolve(), count, rows_reward, rows_step
+
+
+def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument('--symbol', default='BTCUSDT')
-    ap.add_argument('--frame', default='1m')
-    ap.add_argument('--base')
-    ap.add_argument('--run-id', required=True)  # NOTE: interface changed here - run_id is required
-    ap.add_argument('--out')
-    ap.add_argument('--charts', default=','.join(CHARTS))
-    ap.add_argument('--svg', action='store_true')
-    ap.add_argument('--limit', type=int, default=None)
-    ap.add_argument('--rollwin', type=int, default=200)
-    ap.add_argument('--no-wait', action='store_true')
+    ap.add_argument("--symbol", default="BTCUSDT")
+    ap.add_argument("--frame", default="1m")
+    ap.add_argument("--run-id", required=True)
+    ap.add_argument("--base", default=None)
+    ap.add_argument("--debug-export", action="store_true")
     args = ap.parse_args()
 
-    base_dir = args.base or str(results_dir(args.symbol, args.frame))
-    out_dir = args.out or str(report_dir(args.symbol, args.frame, args.run_id))
+    from bot_trade.config.rl_paths import get_root
 
-    if not args.no_wait:
-        wait_for_first_write(base_dir, args.symbol, args.frame)
-
-    charts = [c.strip() for c in args.charts.split(',') if c.strip()]
-    export(base_dir, args.symbol, args.frame, out_dir, charts, args.limit, args.rollwin, svg=args.svg)
+    root = Path(args.base) if args.base else get_root()
+    rp = RunPaths(args.symbol, args.frame, args.run_id, root=root)
+    _, count, _, _ = export_run(rp, debug=args.debug_export)
+    return 0 if count > 0 else 2
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    raise SystemExit(main())
