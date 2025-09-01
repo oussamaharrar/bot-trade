@@ -122,37 +122,79 @@ def agents_dir(symbol: str, frame: str, algo: str | None = None, run_id: str | N
     return base
 
 
-def latest_agent(symbol: str, frame: str, algo: str | None = None, run_id: str | None = None) -> Path:
-    """Return path to the latest agent checkpoint."""
+def _legacy_agents_dir(symbol: str, frame: str, run_id: str | None = None) -> Path:
+    base = get_root() / "agents" / symbol.upper() / str(frame)
+    if run_id:
+        base = base / run_id
+    return base
 
-    return agents_dir(symbol, frame, algo, run_id) / "deep_rl.zip"
+
+def latest_agent(symbol: str, frame: str, algo: str | None = None, run_id: str | None = None) -> Path:
+    """Return path to the latest agent checkpoint with legacy fallback."""
+
+    path = agents_dir(symbol, frame, algo, run_id) / "deep_rl.zip"
+    if not path.exists():
+        legacy = _legacy_agents_dir(symbol, frame, run_id) / "deep_rl.zip"
+        if legacy.exists():
+            return legacy
+    return path
 
 
 def best_agent(symbol: str, frame: str, algo: str | None = None, run_id: str | None = None) -> Path:
-    """Return path to the best agent checkpoint."""
+    """Return path to the best agent checkpoint with legacy fallback."""
 
-    return agents_dir(symbol, frame, algo, run_id) / "deep_rl_best.zip"
+    path = agents_dir(symbol, frame, algo, run_id) / "deep_rl_best.zip"
+    if not path.exists():
+        legacy = _legacy_agents_dir(symbol, frame, run_id) / "deep_rl_best.zip"
+        if legacy.exists():
+            return legacy
+    return path
 
 
 def vecnorm_path(symbol: str, frame: str) -> Path:
-    """Return path to VecNormalize statistics."""
+    """Return path to VecNormalize statistics with legacy fallback."""
 
-    return agents_dir(symbol, frame) / "vecnorm.pkl"
+    path = agents_dir(symbol, frame) / "vecnorm.pkl"
+    if not path.exists():
+        legacy = _legacy_agents_dir(symbol, frame) / "vecnorm.pkl"
+        if legacy.exists():
+            return legacy
+    return path
+
+
+def _legacy_results_dir(symbol: str, frame: str) -> Path:
+    return get_root() / "results" / symbol.upper() / str(frame)
 
 
 def results_dir(symbol: str, frame: str, algo: str | None = None) -> Path:
     base = get_root() / "results"
     if algo:
-        base = base / algo.upper()
+        candidate = base / algo.upper() / symbol.upper() / str(frame)
+        if not candidate.exists():
+            legacy = _legacy_results_dir(symbol, frame)
+            if legacy.exists():
+                return legacy
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
     d = base / symbol.upper() / str(frame)
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
+def _legacy_reports_dir(symbol: str, frame: str) -> Path:
+    return get_root() / "reports" / symbol.upper() / str(frame)
+
+
 def reports_dir(symbol: str, frame: str, algo: str | None = None) -> Path:
     base = get_root() / "reports"
     if algo:
-        base = base / algo.upper()
+        candidate = base / algo.upper() / symbol.upper() / str(frame)
+        if not candidate.exists():
+            legacy = _legacy_reports_dir(symbol, frame)
+            if legacy.exists():
+                return legacy
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
     d = base / symbol.upper() / str(frame)
     d.mkdir(parents=True, exist_ok=True)
     return d

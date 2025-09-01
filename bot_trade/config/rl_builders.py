@@ -173,19 +173,18 @@ def detect_action_space(vec_env):
         return None, False
 
 
-def build_ppo(args, vec_env, is_discrete: bool):
+def build_ppo(env, args, policy_kwargs):
+    action_space, is_discrete = detect_action_space(env)
     use_sde = bool(args.sde and (not is_discrete))
     if args.sde and is_discrete:
         logging.warning("[PPO] gSDE disabled automatically for Discrete action space.")
 
-    # ضمان توافق batch_size مع عدد البيئات
-    bs = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", 64)), vec_env)
-
+    bs = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", 64)), env)
     ent_coef = float(args.ent_coef) if isinstance(args.ent_coef, str) else args.ent_coef
 
     model = PPO(
         "MlpPolicy",
-        vec_env,
+        env,
         learning_rate=args.learning_rate,
         n_steps=args.n_steps,
         batch_size=bs,
@@ -196,21 +195,28 @@ def build_ppo(args, vec_env, is_discrete: bool):
         ent_coef=ent_coef,
         vf_coef=args.vf_coef,
         max_grad_norm=args.max_grad_norm,
-        policy_kwargs=args.policy_kwargs,
+        policy_kwargs=policy_kwargs,
         use_sde=use_sde,
         sde_sample_freq=4 if use_sde else -1,
         seed=args.seed,
         device=args.device_str,
-        verbose=getattr(args, "sb3_verbose", 1),  # 0/1/2
+        verbose=getattr(args, "sb3_verbose", 1),
         tensorboard_log=getattr(args, "tensorboard_log", None),
     )
     return model
 
 
-def build_sac(args, vec_env, is_discrete: bool):
+def build_sac(env, args, policy_kwargs):
     """Return a configured SAC model (from stable_baselines3)."""
-    if is_discrete:
-        raise ValueError("SAC requires a continuous (Box) action space, but got Discrete")
+    action_space, _ = detect_action_space(env)
+    from gymnasium import spaces as gym_spaces
+
+    if not isinstance(action_space, gym_spaces.Box):
+        print(
+            f"[ALGO] SAC requires a continuous (Box) action space; got <{type(action_space).__name__}>. Use PPO or change env.",
+            flush=True,
+        )
+        raise SystemExit(1)
 
     from .env_config import get_config
 
@@ -240,7 +246,7 @@ def build_sac(args, vec_env, is_discrete: bool):
     learning_rate = _get("learning_rate", 3e-4)
 
     bs_default = int(_get("batch_size", 512))
-    bs = _adjust_batch_size_for_envs(bs_default, vec_env)
+    bs = _adjust_batch_size_for_envs(bs_default, env)
 
     logging.info(
         "[SAC] buffer_size=%s learning_starts=%s train_freq=%s gradient_steps=%s batch_size=%s tau=%s ent_coef=%s gamma=%s",
@@ -256,7 +262,7 @@ def build_sac(args, vec_env, is_discrete: bool):
 
     model = SAC(
         "MlpPolicy",
-        vec_env,
+        env,
         learning_rate=learning_rate,
         buffer_size=buffer_size,
         learning_starts=learning_starts,
@@ -266,7 +272,7 @@ def build_sac(args, vec_env, is_discrete: bool):
         tau=tau,
         ent_coef=ent_coef,
         gamma=gamma,
-        policy_kwargs=args.policy_kwargs,
+        policy_kwargs=policy_kwargs,
         seed=args.seed,
         device=args.device_str,
         verbose=getattr(args, "sb3_verbose", 1),
@@ -275,12 +281,26 @@ def build_sac(args, vec_env, is_discrete: bool):
     return model
 
 
-def build_td3(args, vec_env, is_discrete: bool):  # noqa: ARG001
-    raise NotImplementedError("Phase 2")
+def build_td3_stub(env, args, policy_kwargs):  # noqa: ARG001
+    print("[ALGO] TD3 not implemented yet", flush=True)
+    raise SystemExit(2)
 
 
-def build_tqc(args, vec_env, is_discrete: bool):  # noqa: ARG001
-    raise NotImplementedError("Phase 2")
+def build_tqc_stub(env, args, policy_kwargs):  # noqa: ARG001
+    print("[ALGO] TQC not implemented yet", flush=True)
+    raise SystemExit(2)
+
+
+REGISTRY = {
+    "PPO": build_ppo,
+    "SAC": build_sac,
+    "TD3": build_td3_stub,
+    "TQC": build_tqc_stub,
+}
+
+
+def build_algorithm(name: str, env, args, policy_kwargs):
+    return REGISTRY[name.upper()](env, args, policy_kwargs)
 
 
 def build_callbacks(

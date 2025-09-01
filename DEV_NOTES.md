@@ -97,3 +97,11 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: new path layout may break scripts expecting previous structure; SAC requires continuous action spaces.
 - Migration: specify `--algorithm` or set `rl.algorithm`; update path lookups for new layout.
 - Next: implement TD3/TQC builders and evaluation upgrades.
+
+## Developer Notes — 2025-09-01T23:27:54Z (SAC registry & warm-start)
+- Added algorithm registry with TD3/TQC stubs raising friendly not-implemented exits.
+- SAC builder enforces Box action space and logs CLI overrides; warm-start from PPO best with optional flag.
+- Paths now fall back to legacy locations for reads; KB and [POSTRUN] lines include `algorithm`.
+- Risks: legacy detection may miss exotic layouts; warm-start assumes compatible extractor.
+- Migration: update consumers to read `algorithm` field; ensure PPO checkpoints exist before warm-start.
+- Next: implement real TD3/TQC builders and expand SAC tests.

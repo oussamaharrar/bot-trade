@@ -28,6 +28,8 @@ from bot_trade.config.rl_paths import (
     RunPaths,
     ensure_contract,
     DEFAULT_KB_FILE,
+    best_agent,
+    latest_agent,
 )
 from bot_trade.config.device import normalize_device, maybe_print_device_report
 from bot_trade.config.rl_callbacks import _save_vecnorm
@@ -171,6 +173,7 @@ def _postrun_summary(paths, meta):
             "run_id": run_id,
             "symbol": sym,
             "frame": frm,
+            "algorithm": algo,
             "ts": dt.datetime.utcnow().isoformat(),
             "images": img_count,
             "rows_reward": rows_reward,
@@ -197,7 +200,7 @@ def _postrun_summary(paths, meta):
     win_rate = eval_summary.get("win_rate")
     sharpe = eval_summary.get("sharpe")
     line = (
-        f"[POSTRUN] run_id={run_id} symbol={sym} frame={frm} "
+        f"[POSTRUN] run_id={run_id} symbol={sym} frame={frm} algorithm={algo} "
         f"charts={charts_dir.resolve()} images={img_count} reward_lines={reward_lines} "
         f"step_lines={rows_step} train_lines={rows_train} risk_lines={rows_risk} signals_lines={rows_signals} "
         f"vecnorm_applied={str(vec_applied).lower()} vecnorm_snapshot={str(vec_snapshot).lower()} "
@@ -358,11 +361,21 @@ def train_one_file(args, data_file: str) -> bool:
     else:
         run_id = getattr(args, "run_id", None) or new_run_id(args.symbol, args.frame)
     args.run_id = run_id
+    cfg = get_config()
+    algo_cli = getattr(args, "algorithm", None)
+    algo_cfg = cfg.get("rl", {}).get("algorithm", "PPO")
+    algo = (algo_cli or algo_cfg or "PPO").upper()
+    source = "cli" if algo_cli else "config"
+    args.algorithm = algo
+    ts = dt.datetime.utcnow().isoformat()
+    msg = f"[ALGO] selected={algo} source={source} ts={ts}"
+    print(msg)
+    logging.info(msg)
     run_meta = {
         "run_id": run_id,
         "symbol": args.symbol,
         "frame": args.frame,
-        "algorithm": getattr(args, "algorithm", "PPO"),
+        "algorithm": algo,
         "total_steps": int(getattr(args, "total_steps", 0)),
         "eval_episodes": int(getattr(args, "eval_episodes", 3)),
         "export_min_images": int(getattr(args, "export_min_images", 5)),
@@ -376,14 +389,6 @@ def train_one_file(args, data_file: str) -> bool:
     if not pathlib.Path(data_file).exists():
         print(f"[DATA] missing dataset: {data_file}", file=sys.stderr)
         sys.exit(3)
-
-    cfg = get_config()
-    algo = (
-        getattr(args, "algorithm", None)
-        or cfg.get("rl", {}).get("algorithm", "PPO")
-    ).upper()
-    args.algorithm = algo
-    logging.info("[ALG] Using %s", algo)
 
     # 1) Paths + logging + state
     paths_obj = RunPaths(args.symbol, args.frame, run_id, algo, kb_file=args.kb_file)
@@ -424,22 +429,36 @@ def train_one_file(args, data_file: str) -> bool:
     # merge CLI overrides into cfg surface
     if algo == "SAC":
         sac_cfg = cfg.setdefault("sac", {})
+        overrides = {}
         if args.buffer_size is not None:
             sac_cfg["buffer_size"] = int(args.buffer_size)
+            overrides["buffer_size"] = int(args.buffer_size)
         if args.learning_starts is not None:
             sac_cfg["learning_starts"] = int(args.learning_starts)
+            overrides["learning_starts"] = int(args.learning_starts)
         if args.train_freq is not None:
             sac_cfg["train_freq"] = int(args.train_freq)
+            overrides["train_freq"] = int(args.train_freq)
         if args.gradient_steps is not None:
             sac_cfg["gradient_steps"] = int(args.gradient_steps)
+            overrides["gradient_steps"] = int(args.gradient_steps)
         if args.batch_size is not None:
             sac_cfg["batch_size"] = int(args.batch_size)
+            overrides["batch_size"] = int(args.batch_size)
         if args.tau is not None:
             sac_cfg["tau"] = float(args.tau)
+            overrides["tau"] = float(args.tau)
         if args.ent_coef is not None:
             sac_cfg["ent_coef"] = args.ent_coef
+            overrides["ent_coef"] = args.ent_coef
         if getattr(args, "sac_gamma", None) is not None:
             sac_cfg["gamma"] = float(args.sac_gamma)
+            overrides["gamma"] = float(args.sac_gamma)
+        if overrides:
+            line = ", ".join(f"{k}={v}" for k, v in overrides.items())
+            msg = f"[ALGO] SAC overrides: {line}"
+            print(msg)
+            logging.info(msg)
     else:
         ppo_cfg = cfg.setdefault("ppo", {})
         ppo_cfg.update({
@@ -726,26 +745,7 @@ def train_one_file(args, data_file: str) -> bool:
             model = None
 
     if model is None:
-        if algo == "SAC":
-            model = build_sac(args, vec_env, is_discrete)
-            logging.info("[SAC] Built new model (device=%s)", args.device_str)
-            if getattr(args, "warmstart_from_ppo", None):
-                try:
-                    from stable_baselines3 import PPO as _PPO
-
-                    if os.path.exists(args.warmstart_from_ppo):
-                        _ppo = _PPO.load(args.warmstart_from_ppo, device=args.device_str)
-                        model.policy.features_extractor.load_state_dict(
-                            _ppo.policy.features_extractor.state_dict(), strict=False
-                        )
-                        logger = logging.getLogger(__name__)
-                        logger.info(
-                            "Warm-started SAC feature extractor from PPO checkpoint."
-                        )
-                except Exception as e:
-                    logger = logging.getLogger(__name__)
-                    logger.warning(f"Warm-start skipped: {e}")
-        else:
+        if algo == "PPO":
             sched = cfg.get("ppo", {}).get("lr_schedule", "constant")
             if sched != "constant" and not callable(args.learning_rate):
                 warm = int(cfg["ppo"].get("warmup_steps", 0))
@@ -760,12 +760,42 @@ def train_one_file(args, data_file: str) -> bool:
                     return 0.5 * base_lr * (1 + math.cos(math.pi * pct))
 
                 args.learning_rate = lr_schedule
-            model = build_ppo(args, vec_env, is_discrete)
+        model = build_algorithm(algo, vec_env, args, args.policy_kwargs)
+        if algo == "SAC" and getattr(args, "sac_warmstart_from_ppo", False):
+            ppo_path = getattr(args, "warmstart_from_ppo", None)
+            if not ppo_path:
+                ppo_path = str(best_agent(args.symbol, args.frame, "PPO"))
+                if not os.path.exists(ppo_path):
+                    ppo_path = str(latest_agent(args.symbol, args.frame, "PPO"))
+            if ppo_path and os.path.exists(ppo_path):
+                try:
+                    from stable_baselines3 import PPO as _PPO
+
+                    _ppo = _PPO.load(ppo_path, device=args.device_str)
+                    model.policy.features_extractor.load_state_dict(
+                        _ppo.policy.features_extractor.state_dict(), strict=False
+                    )
+                    logging.getLogger(__name__).info(
+                        "[ALGO] warm-started SAC feature extractor from %s", ppo_path
+                    )
+                except Exception as e:
+                    logging.getLogger(__name__).warning(
+                        "[ALGO] warm-start skipped: %s", e
+                    )
+            else:
+                msg = "[ALGO] warm-start skipped: compatible PPO checkpoint not found"
+                print(msg)
+                logging.info(msg)
+        if algo == "PPO":
             logging.info(
                 "[PPO] Built new model (device=%s, use_sde=%s)",
                 args.device_str,
                 bool(args.sde and not is_discrete),
             )
+        elif algo == "SAC":
+            logging.info("[SAC] Built new model (device=%s)", args.device_str)
+        elif algo in {"TD3", "TQC"}:
+            pass
 
     if resume_data:
         try:
@@ -1066,7 +1096,7 @@ def main():
     args.device_str = device_str
     logging.info("Using device=%s", device_str)
     args.policy_kwargs = build_policy_kwargs(args.net_arch, args.activation, args.ortho_init)
-    global build_env_fns, make_vec_env, detect_action_space, build_ppo, build_sac, build_td3, build_tqc, build_callbacks
+    global build_env_fns, make_vec_env, detect_action_space, build_algorithm, build_callbacks
     global build_paths, ensure_state_files
     global Writers, create_loggers, setup_worker_logging, UpdateManager, CompositeCallback, get_config
     global EvalCallback, EvalSaveCallback, load_run_state, save_run_state, MemoryManager
@@ -1081,10 +1111,7 @@ def main():
         build_env_fns,
         make_vec_env,
         detect_action_space,
-        build_ppo,
-        build_sac,
-        build_td3,
-        build_tqc,
+        build_algorithm,
         build_callbacks,
     )
     from bot_trade.config.rl_paths import build_paths, ensure_state_files
