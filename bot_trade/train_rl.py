@@ -42,6 +42,7 @@ from bot_trade.tools.run_state import (
     update_portfolio_state,
     write_run_state_files,
 )
+from bot_trade.tools._headless import ensure_headless_once
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
 # imported inside `main` to keep import-time side effects minimal and to
@@ -963,6 +964,7 @@ def train_one_file(args, data_file: str) -> bool:
 # =============================
 
 def main():
+    ensure_headless_once("train_rl")
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     from bot_trade.config.rl_args import parse_args, finalize_args, build_policy_kwargs
     global torch, np, pd, psutil, subprocess, shutil

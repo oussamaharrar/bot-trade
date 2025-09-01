@@ -14,16 +14,10 @@ from typing import Dict, Any, Tuple
 
 import pandas as pd
 
-# Configure matplotlib before importing pyplot
-import matplotlib
-
-matplotlib.use("Agg")
-print(f"[HEADLESS] backend={matplotlib.get_backend()}")
-import matplotlib.pyplot as plt  # noqa: E402
-
 from bot_trade.config.rl_paths import RunPaths
 from bot_trade.tools.atomic_io import write_png
 from bot_trade.tools.latest import latest_run
+from bot_trade.tools._headless import ensure_headless_once
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +62,7 @@ def _read_csv_safe(
 def _placeholder(path: Path, title: str) -> None:
     """Create a labelled placeholder image."""
 
+    import matplotlib.pyplot as plt
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.text(0.5, 0.5, title, ha="center", va="center")
     ax.set_axis_off()
@@ -84,6 +79,8 @@ def export_run_charts(paths: RunPaths, run_id: str, debug: bool = False) -> Tupl
 
     Returns ``(charts_dir, image_count, rows_dict)``.
     """
+
+    import matplotlib.pyplot as plt
 
     rp = paths if isinstance(paths, RunPaths) else RunPaths(paths.symbol, paths.frame, run_id)
 
@@ -228,6 +225,8 @@ def export_run(paths: RunPaths, debug: bool = False):  # pragma: no cover
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI helper
     import argparse
     from bot_trade.config.rl_paths import get_root
+
+    ensure_headless_once("export_charts")
 
     ap = argparse.ArgumentParser(
         description="Export charts for a training run",
