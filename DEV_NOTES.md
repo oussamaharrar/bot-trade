@@ -148,3 +148,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: policy may over-trigger and limit trading.
 - Migration: import from `config.strategy_failure`; configure `strategy_failure` block and CLI overrides.
 - Next Actions: integrate strategy selector and regime-based comparisons.
+
+## Developer Notes — 2025-10-01 (Failure policy folded into features)
+- What: merged `stratigy_failure.py` and `strategy_failure.py` into `strategy_features.py` and updated callbacks to consume the unified module.
+- Why: remove duplicate files and centralize strategy utilities.
+- Risks: code still importing `config.strategy_failure` must switch to `config.strategy_features`.
+- Migration: replace imports with `from bot_trade.config import strategy_features`.
+- Next Actions: watch for edge cases in merged failure logic.

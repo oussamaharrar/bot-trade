@@ -255,3 +255,9 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Risks**: mis-specified bounds may be silently clipped; registry currently unused.
 - **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/strat/*.py bot_trade/train_rl.py`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 128 --batch-size 128 --total-steps 256 --headless --allow-synth --data-dir data_ready --regime-aware --regime-log --regime-window 5`; `python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --run-id latest --tearsheet`; `python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest --tearsheet`; `python -m bot_trade.tools.monitor_manager --symbol FAKE --frame 1m --run-id latest`.
 
+## 2025-10-01
+- **Files**: `bot_trade/config/strategy_features.py`, `bot_trade/config/rl_callbacks.py`, `bot_trade/config/strategy_failure.py`, `bot_trade/config/stratigy_failure.py`, `DEV_NOTES.md`, `CHANGE_NOTES.md`
+- **Rationale**: merge legacy strategy failure modules into `strategy_features.py` and update callbacks to use the unified implementation.
+- **Risks**: external imports from removed modules may fail until switched to `strategy_features`.
+- **Test Steps**: `python -m py_compile bot_trade/config/strategy_features.py bot_trade/config/rl_callbacks.py bot_trade/train_rl.py`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 32 --batch-size 32 --total-steps 64 --headless --allow-synth --data-dir data_ready`
+
