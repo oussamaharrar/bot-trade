@@ -133,3 +133,11 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: misconfigured thresholds may mute controller; extra plotting adds overhead.
 - Migration: supply regime mappings in config, enable with --regime-aware; consumers should parse new adaptive_log.jsonl and KB.regime.
 - Next Actions: refine regime classifier and expose more metrics.
+
+## Developer Notes — 2025-09-02T04:51:04Z (Regime clamps & features registry)
+- What: clamped adaptive controller with baseline restoration and env-exposed regime; added pluggable strategy feature registry stub.
+- Why: prevent runaway risk settings and prep strategy plug-ins.
+- Risks: mis-specified bounds may silently clamp; registry unused until plugins land.
+- Migration: none; import from bot_trade.strat.strategy_features for future extensions.
+- Next Actions: add concrete feature providers and expand regime metrics.
+

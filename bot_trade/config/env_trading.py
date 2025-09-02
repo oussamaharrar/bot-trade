@@ -115,6 +115,7 @@ class TradingEnv(Env):
         rw_cfg = (self.config or {}).get("reward_shaping", {})
         self.reward_tracker = RewardSignalTracker(rw_cfg)
         self.current_signals: Dict[str, int] = {}
+        self.current_regime = "unknown"
 
         # spaces
         self.obs_cols = self.df.select_dtypes(include=[np.number]).columns.tolist()
@@ -202,7 +203,7 @@ class TradingEnv(Env):
         self.prev_value = self.initial_balance
         self.equity_curve.clear(); self.max_drawdown = 0.0
         obs = self._make_obs()
-        info = {"symbol": self.current_symbol, "frame": self.frame}
+        info = {"symbol": self.current_symbol, "frame": self.frame, "regime": getattr(self, "current_regime", "unknown")}
         return obs, info
 
     def step(self, action: int):
@@ -372,6 +373,7 @@ class TradingEnv(Env):
             "signals_active": [k for k,v in entry_sigs.items() if int(v)==1],
             "entry_blocked": (decision_reason == "ai_guard"), "decision_reason": decision_reason,
             "term_reason": term_reason,
+            "regime": getattr(self, "current_regime", "unknown"),
         }
         if exec_res:
             info.update(

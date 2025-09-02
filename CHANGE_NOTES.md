@@ -242,3 +242,10 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Rationale**: add regime detection and adaptive reward/risk controller, integrate execution hardening logs and charts.
 - **Risks**: misconfigured thresholds may return unknown regimes; extra logging and plotting add minor overhead.
 - **Test Steps**: `python -m py_compile bot_trade/strat/regime.py bot_trade/strat/adaptive_controller.py bot_trade/config/rl_args.py bot_trade/config/rl_callbacks.py bot_trade/train_rl.py`; `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 128 --batch-size 128 --total-steps 256 --headless --allow-synth --data-dir data_ready --regime-aware --regime-log`; `python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --run-id latest --tearsheet`; `python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest --tearsheet`; `python -m bot_trade.tools.monitor_manager --symbol FAKE --frame 1m --run-id latest`.
+
+## 2025-09-02
+- **Files**: bot_trade/strat/adaptive_controller.py, bot_trade/config/env_trading.py, bot_trade/strat/strategy_features.py, bot_trade/strat/__init__.py, DEV_NOTES.md, CHANGE_NOTES.md
+- **Rationale**: clamp adaptive controller parameters with baseline restoration, expose regime in env info, and introduce strategy feature registry stub.
+- **Risks**: mis-specified bounds may be silently clipped; registry currently unused.
+- **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/strat/*.py bot_trade/train_rl.py`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 128 --batch-size 128 --total-steps 256 --headless --allow-synth --data-dir data_ready --regime-aware --regime-log --regime-window 5`; `python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --run-id latest --tearsheet`; `python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest --tearsheet`; `python -m bot_trade.tools.monitor_manager --symbol FAKE --frame 1m --run-id latest`.
+
