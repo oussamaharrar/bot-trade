@@ -417,7 +417,8 @@ def train_one_file(args, data_file: str) -> bool:
     args.safety_every = int(getattr(args, "safety_every", 1))
     algo_cli = getattr(args, "algorithm", "PPO")
     defaults = getattr(args, "_defaults", {})
-    user_set = algo_cli != defaults.get("algorithm")
+    specified = getattr(args, "_specified", set())
+    user_set = "algorithm" in specified
     algo_cfg = cfg.get("rl", {}).get("algorithm")
     if user_set:
         algo = algo_cli.upper()
@@ -426,8 +427,8 @@ def train_one_file(args, data_file: str) -> bool:
         algo = str(algo_cfg).upper()
         source = "config"
     else:
-        algo = str(algo_cli or "PPO").upper()
-        source = "cli"
+        algo = str(defaults.get("algorithm", "PPO")).upper()
+        source = "default"
     args.algorithm = algo
     ts = dt.datetime.utcnow().isoformat()
     msg = f"[ALGO] selected={algo} source={source} ts={ts}"

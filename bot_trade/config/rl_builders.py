@@ -250,11 +250,14 @@ def build_sac(env, args, policy_kwargs):
 
     overrides: dict[str, object] = {}
     defaults = getattr(args, "_defaults", {})
+    specified = getattr(args, "_specified", set())
 
     def _get(name, default):
         val = getattr(args, name, None)
-        if val is not None and val != defaults.get(name):
+        if name in specified and val is not None:
             overrides[name] = val
+            return val
+        if val is not None and val != defaults.get(name):
             return val
         return sac_cfg.get(name, rl_cfg.get(name, default))
 

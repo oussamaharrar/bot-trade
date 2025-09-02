@@ -169,3 +169,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: WFA needs sufficient data; PDF generation depends on optional libraries; placeholders may hide data gaps.
 - Migration: handle None ratios and new `splits` field in `wfa.json`; install PDF tools if needed.
 - Next Actions: enrich visualisation and add algorithm metadata to reports.
+
+## Developer Notes — 2025-10-03T00:00:00Z (Phase 3 — Multi-Algo Builders)
+- What: introduced registry-based algorithm builders (PPO, SAC, TD3/TQC stubs), enforced SAC Box-space guard, searched warm-start path order (user path → algo-scoped PPO best/last → legacy), added algo-scoped paths with legacy read-only fallbacks, logged algorithm source, and extended POSTRUN/KB with algorithm & eval_max_drawdown.
+- Why: enable multi-algorithm training with safe defaults and consistent artefact layout.
+- Risks: SAC fails on discrete actions; TD3/TQC currently unimplemented (exit 2).
+- Migration: specify `--algorithm` and ensure environments expose Box spaces for SAC; legacy PPO checkpoints remain readable.
+- Next Actions: implement full TD3/TQC builders and expand warm-start compatibility checks.

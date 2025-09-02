@@ -1,4 +1,4 @@
-import argparse, os
+import argparse, os, sys
 from typing import Optional, Dict, Any
 from .rl_paths import (
     DEFAULT_AGENTS_DIR, DEFAULT_RESULTS_DIR, DEFAULT_REPORTS_DIR,
@@ -265,6 +265,13 @@ def parse_args():
     defaults = vars(ap.parse_args([]))
     args = ap.parse_args()
     args._defaults = defaults
+    specified = set()
+    for item in sys.argv[1:]:
+        if not item.startswith("--"):
+            continue
+        name = item[2:].split("=", 1)[0].replace("-", "_")
+        specified.add(name)
+    args._specified = specified
     if args.regime_log is None:
         args.regime_log = bool(args.regime_aware)
     level_name = str(getattr(args, "log_level", "INFO")).upper()
