@@ -14,12 +14,14 @@ class ExecutionSim:
         latency_ms: int,
         allow_partial: bool,
         fee_bp: float = 0.0,
+        max_spread_bp: float = float("inf"),
     ) -> None:
         self.model = (model or "fixed_bp").lower()
         self.params = params or {}
         self.latency_ms = int(latency_ms)
         self.allow_partial = bool(allow_partial)
         self.fee_bp = float(fee_bp)
+        self.max_spread_bp = float(max_spread_bp)
 
     # ------------------------------------------------------------------
     def _slippage_bp(self, vol: Optional[float], depth: Optional[float]) -> float:

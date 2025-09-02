@@ -103,13 +103,14 @@ class TradingEnv(Env):
         latency_ms = int(exec_cfg.get("latency_ms", 0))
         allow_partial = bool(exec_cfg.get("allow_partial", False))
         fee_bp = float(exec_cfg.get("fee_bp", 0.0))
-        self.max_spread_bp = float(exec_cfg.get("max_spread_bp", float("inf")))
+        max_spread_bp = float(exec_cfg.get("max_spread_bp", float("inf")))
         self.exec_sim = ExecutionSim(
             model=model,
             params=params,
             latency_ms=latency_ms,
             allow_partial=allow_partial,
             fee_bp=fee_bp,
+            max_spread_bp=max_spread_bp,
         )
         rw_cfg = (self.config or {}).get("reward_shaping", {})
         self.reward_tracker = RewardSignalTracker(rw_cfg)
@@ -273,8 +274,13 @@ class TradingEnv(Env):
         depth = row.get("depth")
         spread_bp = (spread / price * 10_000.0) if price > 0 else 0.0
         risk_flag_info = None
-        if spread_bp > self.max_spread_bp:
-            risk_flag_info = ("spread_jump", "execution spread limit", spread_bp, self.max_spread_bp)
+        if spread_bp > self.exec_sim.max_spread_bp:
+            risk_flag_info = (
+                "spread_jump",
+                "execution spread limit",
+                spread_bp,
+                self.exec_sim.max_spread_bp,
+            )
             action = 0
         else:
             cb = self.risk_engine.check_circuit_breakers(

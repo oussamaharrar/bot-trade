@@ -48,7 +48,8 @@ class RiskManager:
             os.makedirs(os.path.dirname(self.risk_log_path), exist_ok=True)
             with open(self.risk_log_path, "w", encoding="utf-8", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["ts", "risk_flag", "flag_reason", "value", "threshold"])
+                writer.writerow(["risk_flag", "flag_reason", "value", "threshold", "ts"])
+        self.flags_fired = False
         self._last_multi_log = 0.0
         self._last_neg_log = 0.0
 
@@ -92,7 +93,8 @@ class RiskManager:
         ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         with open(self.risk_log_path, "a", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([ts, flag, reason, value, threshold])
+            writer.writerow([flag, reason, value, threshold, ts])
+        self.flags_fired = True
 
     # ------------------------------------------------------------------
     def check_circuit_breakers(
