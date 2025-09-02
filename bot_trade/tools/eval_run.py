@@ -41,7 +41,7 @@ def evaluate_run(
     reward_df = load_reward_log(rp.logs)
     returns = reward_df["reward"] if not reward_df.empty else pd.Series(dtype=float)
     steps = reward_df["step"].tolist() if not reward_df.empty else []
-    equity = metrics.to_equity_from_returns(returns, start=0.0)
+    equity = metrics.equity_from_rewards(reward_df)
     drawdown = equity.cummax() - equity
     trades = load_trades(rp.logs)
 
@@ -112,6 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--wfa-splits", type=int, default=0)
     p.add_argument("--wfa-embargo", type=float, default=0.01)
     p.add_argument("--tearsheet", action="store_true")
+    p.add_argument("--pdf", action="store_true")
     args = p.parse_args(argv)
     run_id = args.run_id
     if not run_id or str(run_id).lower() in {"latest", "last"}:
@@ -152,17 +153,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.wfa_splits:
         from bot_trade.eval.walk_forward import walk_forward_eval
 
-        wfa_res = walk_forward_eval(rp.logs, n_splits=args.wfa_splits, embargo=args.wfa_embargo)
+        embargo = max(0.0, min(args.wfa_embargo, 0.5))
+        wfa_res = walk_forward_eval(rp.logs, n_splits=args.wfa_splits, embargo=embargo)
         wfa_path = out_dir / "wfa.json"
         write_json(wfa_path, wfa_res)
         print(
-            f"[WFA] run_id={run_id} splits={args.wfa_splits} embargo={args.wfa_embargo} out={wfa_path.resolve()}"
+            f"[WFA] run_id={run_id} splits={args.wfa_splits} embargo={embargo} out={wfa_path.resolve()}"
         )
 
     if args.tearsheet:
         from bot_trade.eval.tearsheet import generate_tearsheet
 
-        ts_path = generate_tearsheet(rp)
+        ts_path = generate_tearsheet(rp, pdf=args.pdf)
         print(f"[TEARSHEET] out={ts_path.resolve()}")
 
     return 0

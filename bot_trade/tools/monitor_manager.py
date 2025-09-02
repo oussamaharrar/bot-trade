@@ -28,6 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--debug-export", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--no-wait", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--tearsheet", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--pdf", action="store_true", help=argparse.SUPPRESS)
     ns = ap.parse_args(argv)
 
     try:
@@ -58,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
         if ns.tearsheet:
             from bot_trade.eval.tearsheet import generate_tearsheet
 
-            ts_path = generate_tearsheet(rp)
+            ts_path = generate_tearsheet(rp, pdf=ns.pdf)
             print(f"[TEARSHEET] out={ts_path.resolve()}")
         return 0 if images > 0 else 2
     except Exception as exc:  # pragma: no cover

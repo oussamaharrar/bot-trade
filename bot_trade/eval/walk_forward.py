@@ -44,6 +44,7 @@ def walk_forward_eval(
 
     returns = load_returns(Path(log_dir))
     trades = load_trades(Path(log_dir))
+    rewards_df = returns.to_frame(name="reward")
     pe = PurgedEmbargoSplit(n_splits, embargo)
     folds = []
     if len(returns) >= 2:
@@ -51,7 +52,7 @@ def walk_forward_eval(
             if len(test_idx) == 0:
                 continue
             test_returns = returns.iloc[test_idx]
-            eq = metrics.to_equity_from_returns(test_returns, start=0.0)
+            eq = metrics.equity_from_rewards(rewards_df.iloc[test_idx])
             td = trades.iloc[test_idx] if not trades.empty else trades
             folds.append(
                 {
@@ -80,7 +81,7 @@ def walk_forward_eval(
         vals = [f[k] for f in folds if f.get(k) is not None]
         aggregate[k] = float(np.mean(vals)) if vals else None
     return {
-        "n_splits": n_splits,
+        "splits": n_splits,
         "embargo": embargo,
         "folds": folds,
         "aggregate": aggregate,
