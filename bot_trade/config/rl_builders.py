@@ -12,6 +12,9 @@ Key points:
 from __future__ import annotations
 from typing import Callable, List, Optional
 import os, logging
+from pathlib import Path
+
+from .rl_paths import best_agent, last_agent, get_root
 
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
@@ -173,6 +176,28 @@ def detect_action_space(vec_env):
         return None, False
 
 
+def _resolve_ppo_warmstart(args) -> Path | None:
+    """Return first readable PPO checkpoint for warm-start."""
+    candidates = []
+    explicit = getattr(args, "warmstart_from_ppo", None)
+    if explicit:
+        p = Path(explicit)
+        if p.exists():
+            candidates.append(p)
+    candidates.append(best_agent(args.symbol, args.frame, "PPO"))
+    candidates.append(last_agent(args.symbol, args.frame, "PPO"))
+    legacy = get_root() / "agents" / args.symbol.upper() / str(args.frame)
+    candidates.extend([
+        legacy / "deep_rl_best.zip",
+        legacy / "deep_rl_last.zip",
+        legacy / "deep_rl.zip",
+    ])
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+    return None
+
+
 def build_ppo(env, args, policy_kwargs):
     action_space, is_discrete = detect_action_space(env)
     use_sde = bool(args.sde and (not is_discrete))
@@ -212,10 +237,9 @@ def build_sac(env, args, policy_kwargs):
     from gymnasium import spaces as gym_spaces
 
     if not isinstance(action_space, gym_spaces.Box):
-        print(
-            f"[ALGO] SAC requires a continuous (Box) action space; got <{type(action_space).__name__}>. Use PPO or change env.",
-            flush=True,
-        )
+        msg = f"[ALGO] SAC requires a continuous (Box) action space, got {type(action_space).__name__}"
+        logging.getLogger(__name__).error(msg)
+        print(msg, flush=True)
         raise SystemExit(1)
 
     from .env_config import get_config
@@ -274,6 +298,27 @@ def build_sac(env, args, policy_kwargs):
         verbose=getattr(args, "sb3_verbose", 1),
         tensorboard_log=getattr(args, "tensorboard_log", None),
     )
+
+    if getattr(args, "sac_warmstart_from_ppo", False) or getattr(args, "warmstart_from_ppo", None):
+        ppo_path = _resolve_ppo_warmstart(args)
+        if ppo_path:
+            try:
+                from stable_baselines3 import PPO as _PPO
+
+                _ppo = _PPO.load(str(ppo_path), device=args.device_str)
+                model.policy.features_extractor.load_state_dict(
+                    _ppo.policy.features_extractor.state_dict(), strict=False
+                )
+                logging.getLogger(__name__).info(
+                    "[ALGO] warm-started SAC feature extractor from %s", ppo_path
+                )
+            except Exception as e:
+                logging.getLogger(__name__).warning("[ALGO] warm-start skipped: %s", e)
+        else:
+            msg = "[ALGO] warm-start skipped: compatible PPO checkpoint not found"
+            print(msg)
+            logging.getLogger(__name__).info(msg)
+
     return model
 
 
