@@ -182,3 +182,9 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Risks: path resolution may miss atypical layouts; warm-start assumes PPO checkpoints compatible.
 - Migration: prefer new algo-scoped helpers (`last_agent`, `best_agent`); legacy paths remain read-only.
 - Next: implement TD3/TQC algorithms.
+## Developer Notes — 2025-09-02T00:28:13Z (Phase 3)
+- What: finalized algorithm registry with PPO/SAC and TD3/TQC stubs; SAC now guards Box action spaces, prints true overrides, and can warm-start from PPO checkpoints.
+- Why: enable multi-algorithm flexibility with clear user feedback and safe defaults.
+- Risks: warm-start assumes compatible PPO feature extractors; path scoping may miss custom layouts.
+- Migration: use new --algorithm flag and algo-scoped helpers; legacy paths remain read-only fallbacks.
+- Next: implement full TD3/TQC support and expand SAC validation.

@@ -225,15 +225,12 @@ def build_sac(env, args, policy_kwargs):
     sac_cfg = rl_cfg.get("sac", {}) if isinstance(rl_cfg, dict) else {}
 
     overrides: dict[str, object] = {}
+    defaults = getattr(args, "_defaults", {})
 
     def _get(name, default):
-        sentinel = object()
-        val = getattr(args, name, sentinel)
-        if val is not sentinel and val is not None:
-            if name == "ent_coef" and str(val) == "0.0":
-                pass
-            else:
-                overrides[name] = val
+        val = getattr(args, name, None)
+        if val is not None and val != defaults.get(name):
+            overrides[name] = val
             return val
         return sac_cfg.get(name, rl_cfg.get(name, default))
 

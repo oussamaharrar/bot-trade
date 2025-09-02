@@ -232,8 +232,8 @@ def parse_args():
         "--algorithm",
         type=str,
         choices=["PPO", "SAC", "TD3", "TQC"],
-        default=None,
-        help="Choose RL algorithm (TD3/TQC stubs; default from config or PPO)",
+        default="PPO",
+        help="Choose RL algorithm (TD3/TQC stubs; default PPO unless config overrides)",
     )
     ap.add_argument("--buffer-size", type=int)
     ap.add_argument("--learning-starts", type=int)
@@ -248,7 +248,9 @@ def parse_args():
         action="store_true",
         help="Warm-start SAC feature extractor from best PPO checkpoint if available",
     )
+    defaults = vars(ap.parse_args([]))
     args = ap.parse_args()
+    args._defaults = defaults
     level_name = str(getattr(args, "log_level", "INFO")).upper()
     import logging
     args.log_level = getattr(logging, level_name, logging.INFO)
