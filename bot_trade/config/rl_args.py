@@ -233,7 +233,7 @@ def parse_args():
         type=str,
         choices=["PPO", "SAC", "TD3", "TQC"],
         default=None,
-        help="Choose RL algorithm (default from config.yaml or PPO)",
+        help="Choose RL algorithm (TD3/TQC stubs; default from config or PPO)",
     )
     ap.add_argument("--buffer-size", type=int)
     ap.add_argument("--learning-starts", type=int)

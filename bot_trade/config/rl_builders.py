@@ -224,11 +224,18 @@ def build_sac(env, args, policy_kwargs):
     rl_cfg = cfg.get("rl", {}) if isinstance(cfg, dict) else {}
     sac_cfg = rl_cfg.get("sac", {}) if isinstance(rl_cfg, dict) else {}
 
+    overrides: dict[str, object] = {}
+
     def _get(name, default):
-        val = getattr(args, name, None)
-        if val is None:
-            val = sac_cfg.get(name, rl_cfg.get(name, default))
-        return val
+        sentinel = object()
+        val = getattr(args, name, sentinel)
+        if val is not sentinel and val is not None:
+            if name == "ent_coef" and str(val) == "0.0":
+                pass
+            else:
+                overrides[name] = val
+            return val
+        return sac_cfg.get(name, rl_cfg.get(name, default))
 
     buffer_size = int(_get("buffer_size", 2_000_000))
     learning_starts = int(_get("learning_starts", 20_000))
@@ -248,17 +255,9 @@ def build_sac(env, args, policy_kwargs):
     bs_default = int(_get("batch_size", 512))
     bs = _adjust_batch_size_for_envs(bs_default, env)
 
-    logging.info(
-        "[SAC] buffer_size=%s learning_starts=%s train_freq=%s gradient_steps=%s batch_size=%s tau=%s ent_coef=%s gamma=%s",
-        buffer_size,
-        learning_starts,
-        train_freq,
-        gradient_steps,
-        bs,
-        tau,
-        ent_coef,
-        gamma,
-    )
+    if overrides:
+        msg = ", ".join(f"{k}={v}" for k, v in overrides.items())
+        print(f"[ALGO] SAC overrides: {msg}")
 
     model = SAC(
         "MlpPolicy",
