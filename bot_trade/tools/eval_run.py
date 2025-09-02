@@ -134,10 +134,9 @@ def main(argv: list[str] | None = None) -> int:
     def _fmt(v: Any) -> str:
         return f"{v:.3f}" if isinstance(v, (int, float)) and v is not None else "null"
 
-    print(
-        "[EVAL] run_id=%s metrics={win_rate:%s, sharpe:%s, sortino:%s, calmar:%s, max_drawdown:%s, turnover:%s, avg_trade_pnl:%s, slippage_proxy:%s} out=%s"
+    metrics_part = (
+        "{win_rate:%s, sharpe:%s, sortino:%s, calmar:%s, max_drawdown:%s, turnover:%s, avg_trade_pnl:%s, slippage_proxy:%s}"
         % (
-            run_id,
             _fmt(summary.get("win_rate")),
             _fmt(summary.get("sharpe")),
             _fmt(summary.get("sortino")),
@@ -146,8 +145,10 @@ def main(argv: list[str] | None = None) -> int:
             _fmt(summary.get("turnover")),
             _fmt(summary.get("avg_trade_pnl")),
             _fmt(summary.get("slippage_proxy")),
-            out_dir.resolve(),
         )
+    )
+    print(
+        f"[EVAL] symbol={args.symbol} frame={args.frame} run_id={run_id} metrics={metrics_part}"
     )
 
     if args.wfa_splits:
@@ -168,9 +169,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[TEARSHEET] out={ts_path.resolve()}")
 
     print(
-        "[POSTRUN] run_id=%s eval_win_rate=%s eval_sharpe=%s eval_max_drawdown=%s"
+        "[POSTRUN] run_id=%s algorithm=%s eval_win_rate=%s eval_sharpe=%s eval_max_drawdown=%s"
         % (
             run_id,
+            rp.algo,
             _fmt(summary.get("win_rate")),
             _fmt(summary.get("sharpe")),
             _fmt(summary.get("max_drawdown")),
