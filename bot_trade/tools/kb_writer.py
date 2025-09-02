@@ -38,6 +38,8 @@ KB_DEFAULTS = {
         "sharpe": None,
         "max_drawdown": None,
         "avg_trade_pnl": None,
+        "turnover": None,
+        "slippage_proxy": None,
     },
     "portfolio": {
         "equity": None,

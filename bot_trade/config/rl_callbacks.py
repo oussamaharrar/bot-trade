@@ -489,6 +489,14 @@ class CompositeCallback(BaseCallback):
             comps = first.get("reward_components", {})
             if isinstance(comps, dict):
                 metrics.update(comps)
+            for k in ("slippage_bp", "fees", "spread_bp", "latency_ms", "partial"):
+                if k in first:
+                    metrics[k] = first[k]
+            if "risk_flag" in first:
+                metrics["risk_flag"] = first.get("risk_flag")
+                metrics["flag_reason"] = first.get("flag_reason")
+                metrics["risk_value"] = first.get("risk_value")
+                metrics["risk_threshold"] = first.get("risk_threshold")
         except Exception:
             pass
         reward_val = None

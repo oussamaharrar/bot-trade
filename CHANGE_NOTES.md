@@ -222,3 +222,9 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Risks: sweeps may generate large artifacts; CI runtime may grow; padded HTML/PDF could hide empty content.
 - Migration: use `python -m bot_trade.tools.sweep` for experiments and run `python -m bot_trade.tools.dev_checks`; existing paths and flags unchanged.
 - Next: broaden algorithm coverage in sweeps and expand smoke tests.
+
+## 2025-09-29
+- **Files**: `bot_trade/env/execution_sim.py`, `bot_trade/config/env_trading.py`, `bot_trade/config/risk_manager.py`, `bot_trade/config/rl_callbacks.py`, `bot_trade/config/rl_args.py`, `bot_trade/tools/gen_synth_data.py`, `bot_trade/tools/kb_writer.py`, `bot_trade/train_rl.py`, `bot_trade/config/config.yaml`
+- **Rationale**: introduce pluggable execution simulator with slippage/latency models, add circuit-breaker risk guards and exposure caps, surface execution metrics via logs and CLI overrides, and extend knowledge base schema.
+- **Risks**: simplified models may not capture real market behavior; new risk flags require downstream parsers to handle additional columns.
+- **Test Steps**: `python -m py_compile bot_trade/env/execution_sim.py bot_trade/config/env_trading.py bot_trade/config/risk_manager.py bot_trade/config/rl_callbacks.py bot_trade/config/rl_args.py bot_trade/tools/gen_synth_data.py bot_trade/tools/kb_writer.py bot_trade/train_rl.py`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 256 --batch-size 256 --total-steps 512 --headless --allow-synth --data-dir data_ready --slippage-model vol_aware --slippage-params '{"k":0.5,"vol_window":50}' --latency-ms 40 --max-spread-bp 20 --allow-partial-exec`; `python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --run-id latest --tearsheet`
