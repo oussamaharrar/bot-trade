@@ -141,3 +141,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Migration: none; import from bot_trade.strat.strategy_features for future extensions.
 - Next Actions: add concrete feature providers and expand regime metrics.
 
+
+## Developer Notes — 2025-09-30T00:00:00Z
+- What: consolidated strategy_failure modules, added safety policy with clamps, logs, and safety chart.
+- Why: unify failure handling and escalate actions for risky regimes.
+- Risks: policy may over-trigger and limit trading.
+- Migration: import from `config.strategy_failure`; configure `strategy_failure` block and CLI overrides.
+- Next Actions: integrate strategy selector and regime-based comparisons.

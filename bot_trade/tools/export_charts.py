@@ -59,6 +59,25 @@ def _read_csv_safe(
     return df
 
 
+def _read_jsonl(path: Path) -> pd.DataFrame:
+    if not path.exists() or path.is_dir():
+        return pd.DataFrame()
+    records = []
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    records.append(json.loads(line))
+                except Exception:
+                    pass
+    except Exception:
+        return pd.DataFrame()
+    return pd.DataFrame(records)
+
+
 def _placeholder(path: Path, title: str) -> None:
     """Create a labelled placeholder image."""
 
@@ -91,6 +110,7 @@ def export_run_charts(paths: RunPaths, run_id: str, debug: bool = False) -> Tupl
     step_file = rp.logs / "step_log.csv"
     train_file = rp.logs / "train_log.csv"
     risk_file = rp.logs / "risk_log.csv"
+    safety_file = rp.performance_dir / "safety_log.jsonl"
     callbacks_file = rp.logs / "callbacks.jsonl"
     signals_file = rp.logs / "signals.csv"
 
@@ -98,6 +118,7 @@ def export_run_charts(paths: RunPaths, run_id: str, debug: bool = False) -> Tupl
     step = _read_csv_safe(step_file)
     train = _read_csv_safe(train_file)
     risk = _read_csv_safe(risk_file)
+    safety = _read_jsonl(safety_file)
     signals = _read_csv_safe(signals_file)
 
     callbacks_lines = 0
@@ -113,6 +134,7 @@ def export_run_charts(paths: RunPaths, run_id: str, debug: bool = False) -> Tupl
         for col in df.columns:
             if col != "ts":
                 df[col] = pd.to_numeric(df[col], errors="coerce")
+    rows_safety = len(safety)
 
     for df in (reward, step, train):
         if "step" in df.columns:
@@ -193,6 +215,16 @@ def export_run_charts(paths: RunPaths, run_id: str, debug: bool = False) -> Tupl
         _placeholder(charts_dir / "risk_flags.png", "NO DATA")
         images += 1
 
+    # safety flags chart
+    if rows_safety > 0:
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.scatter(range(rows_safety), [1] * rows_safety)
+        ax.set_title("safety flags")
+        save_fig(fig, "safety.png")
+    else:
+        _placeholder(charts_dir / "safety.png", "NO DATA")
+        images += 1
+
     images = len([p for p in charts_dir.glob("*.png") if p.is_file() and not p.is_symlink()])
 
     rows = {
@@ -202,6 +234,7 @@ def export_run_charts(paths: RunPaths, run_id: str, debug: bool = False) -> Tupl
         "risk": rows_risk,
         "signals": rows_signals,
         "callbacks": callbacks_lines,
+        "safety": rows_safety,
     }
 
     return charts_dir, images, rows

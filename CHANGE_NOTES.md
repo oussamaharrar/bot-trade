@@ -230,6 +230,12 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Risks**: simplified models may not capture real market behavior; new risk flags require downstream parsers to handle additional columns.
 - **Test Steps**: `python -m py_compile bot_trade/env/execution_sim.py bot_trade/config/env_trading.py bot_trade/config/risk_manager.py bot_trade/config/rl_callbacks.py bot_trade/config/rl_args.py bot_trade/tools/gen_synth_data.py bot_trade/tools/kb_writer.py bot_trade/train_rl.py`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 256 --batch-size 256 --total-steps 512 --headless --allow-synth --data-dir data_ready --slippage-model vol_aware --slippage-params '{"k":0.5,"vol_window":50}' --latency-ms 40 --max-spread-bp 20 --allow-partial-exec`; `python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --run-id latest --tearsheet`
 
+## 2025-09-30
+- **Files**: `bot_trade/config/strategy_failure.py`, `bot_trade/config/stratigy_failure.py`, `bot_trade/config/env_trading.py`, `bot_trade/config/rl_callbacks.py`, `bot_trade/config/rl_args.py`, `bot_trade/config/config.yaml`, `bot_trade/train_rl.py`, `bot_trade/tools/export_charts.py`, `CHANGE_NOTES.md`, `DEV_NOTES.md`
+- **Rationale**: consolidate strategy failure modules and add safety policy with clamps, logs, chart export, and CLI flags.
+- **Risks**: aggressive clamps may reduce trading activity; additional callbacks add slight overhead.
+- **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/strat/*.py bot_trade/env/*.py bot_trade/train_rl.py`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 64 --batch-size 64 --total-steps 128 --headless --allow-synth --data-dir data_ready`
+
 ## Developer Notes — 2025-09-02 03:41:34Z
 - **What**: execution simulator models with unified params; structured risk circuit breakers and logs; CLI overrides for slippage/latency/partial/max-spread; evaluation turnover & slippage proxies; headless prints and latest guards unified; POSTRUN/KB enriched with algorithm and eval_max_drawdown.
 - **Why**: prepare pluggable execution and risk safety foundation with consistent reporting.
