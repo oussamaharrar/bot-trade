@@ -201,3 +201,11 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Added WFA CLI & Tearsheet CLI with headless Agg and atomic writes; placeholders on missing data.
 - Latest guards: [LATEST] none + exit=2 for walk_forward/tearsheet when no runs.
 - No breaking changes to existing flags/prints; heavy deps imported inside main().
+
+## Developer Notes — 2025-09-27T12:34:56Z (Phase 2 merge)
+- Numeric-stability guards return None on invalid ratios.
+- BOT_REPORTS_DIR can override reports root; paths resolved to absolutes.
+- Latest guards for walk_forward/tearsheet print `[LATEST] none` with exit code 2.
+- Tearsheet emits NO DATA placeholders and writes HTML/PDF atomically.
+- Risks: consumers must handle None metrics and env overrides.
+- Test Steps: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/eval/*.py bot_trade/train_rl.py`; synthetic run then `python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest --wfa-splits 4 --wfa-embargo 0.02 --tearsheet`.

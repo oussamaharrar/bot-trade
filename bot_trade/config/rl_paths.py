@@ -482,7 +482,7 @@ def stamp_name(stem: str, run_id: str, ts: str, ext: str) -> str:
 ROOT = get_root()
 DEFAULT_AGENTS_DIR = os.environ.get("BOT_AGENTS_DIR", str(ROOT / "agents"))
 DEFAULT_RESULTS_DIR = os.environ.get("BOT_RESULTS_DIR", str(ROOT / "results"))
-DEFAULT_REPORTS_DIR = os.environ.get("BOT_REPORTS_DIR", str(ROOT / "reports"))
+DEFAULT_REPORTS_DIR = str(Path(os.environ.get("BOT_REPORTS_DIR", ROOT / "reports")).resolve())
 DEFAULT_LOGS_DIR = os.environ.get("BOT_LOGS_DIR", str(ROOT / "logs"))
 DEFAULT_MEMORY_FILE = os.environ.get(
     "BOT_MEMORY_FILE", str(memory_dir() / "memory.json")

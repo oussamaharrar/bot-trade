@@ -105,3 +105,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: legacy detection may miss exotic layouts; warm-start assumes compatible extractor.
 - Migration: update consumers to read `algorithm` field; ensure PPO checkpoints exist before warm-start.
 - Next: implement real TD3/TQC builders and expand SAC tests.
+
+## Developer Notes — 2025-09-27T12:34:56Z (Phase 2 merge)
+- What: added numeric-stability guards returning None for invalid Sharpe/Sortino/Calmar, honored BOT_REPORTS_DIR for absolute report paths, extended latest-run guards to walk-forward and tearsheet CLIs, and enforced NO DATA placeholders with atomic HTML/PDF writes.
+- Why: ensure evaluation outputs remain sane, allow optional report relocation, and keep CLI behaviour predictable even without data.
+- Risks: consumers must handle None metrics and misconfigured report paths; PDF generation still depends on optional dependencies.
+- Migration: set BOT_REPORTS_DIR to redirect reports, handle None in metrics, and install `weasyprint` for PDF output.
+- Next: broaden stability checks to additional metrics and integrate more comprehensive tests.

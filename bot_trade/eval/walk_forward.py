@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import matplotlib
-matplotlib.use("Agg")
-
 import argparse
+import sys
 from pathlib import Path
 from typing import Iterator, Tuple, Dict, Any, TYPE_CHECKING
 
-from bot_trade.eval import metrics
-from bot_trade.eval.utils import load_returns, load_trades
 from bot_trade.tools.atomic_io import write_json
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -39,7 +35,13 @@ class PurgedEmbargoSplit:
             yield train_indices, test_indices
 
 
-def walk_forward_eval(log_dir: Path, n_splits: int = 5, embargo: float = 0.01, period: str = "daily") -> Dict[str, Any]:
+def walk_forward_eval(
+    log_dir: Path, n_splits: int = 5, embargo: float = 0.01, period: str = "daily"
+) -> Dict[str, Any]:
+    from bot_trade.eval import metrics
+    from bot_trade.eval.utils import load_returns, load_trades
+    import numpy as np
+
     returns = load_returns(Path(log_dir))
     trades = load_trades(Path(log_dir))
     pe = PurgedEmbargoSplit(n_splits, embargo)
@@ -64,15 +66,19 @@ def walk_forward_eval(log_dir: Path, n_splits: int = 5, embargo: float = 0.01, p
                     "avg_trade_pnl": metrics.avg_trade_pnl(td),
                 }
             )
-    aggregate = {
-        "sharpe": metrics.sharpe(returns, period=period),
-        "sortino": metrics.sortino(returns, period=period),
-        "calmar": metrics.calmar(metrics.to_equity_from_returns(returns, start=0.0)),
-        "max_dd": metrics.max_drawdown(metrics.to_equity_from_returns(returns, start=0.0)),
-        "turnover": metrics.turnover(trades),
-        "win_rate": metrics.win_rate(trades),
-        "avg_trade_pnl": metrics.avg_trade_pnl(trades),
-    }
+    keys = [
+        "sharpe",
+        "sortino",
+        "calmar",
+        "max_dd",
+        "turnover",
+        "win_rate",
+        "avg_trade_pnl",
+    ]
+    aggregate: Dict[str, float | None] = {}
+    for k in keys:
+        vals = [f[k] for f in folds if f.get(k) is not None]
+        aggregate[k] = float(np.mean(vals)) if vals else None
     return {
         "n_splits": n_splits,
         "embargo": embargo,

@@ -1,29 +1,29 @@
 from __future__ import annotations
 
-import matplotlib
-matplotlib.use("Agg")
-
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Dict, Any
 
 from bot_trade.tools.atomic_io import write_text, write_bytes, write_png
-from bot_trade.eval.utils import load_returns
-from bot_trade.eval import metrics
 
 
 def generate_tearsheet(rp) -> Path:
+    import matplotlib
+    matplotlib.use("Agg")
     import pandas as pd
     import matplotlib.pyplot as plt
+    from bot_trade.eval.utils import load_returns
+    from bot_trade.eval import metrics
     try:
         from weasyprint import HTML as _HTML  # type: ignore
     except Exception:  # pragma: no cover - optional dep
         _HTML = None
 
     perf = rp.performance_dir
-    summary = {}
-    wfa = {}
+    summary: Dict[str, Any] = {}
+    wfa: Dict[str, Any] = {}
     s_path = perf / "summary.json"
     if s_path.exists():
         try:
@@ -39,7 +39,7 @@ def generate_tearsheet(rp) -> Path:
     returns = load_returns(rp.logs)
     eq = metrics.to_equity_from_returns(returns, start=0.0)
     dd_series = eq / eq.cummax() - 1 if not eq.empty else pd.Series(dtype=float)
-    figs = {}
+    figs: Dict[str, str] = {}
     if not eq.empty:
         fig, ax = plt.subplots()
         ax.plot(eq)
@@ -78,7 +78,9 @@ def generate_tearsheet(rp) -> Path:
         rows.append("<tr><th colspan=2>WFA Aggregate</th></tr>")
         for k, v in wfa["aggregate"].items():
             rows.append(f"<tr><td>{k}</td><td>{'' if v is None else v}</td></tr>")
-    table = "<table>" + "".join(rows) + "</table>"
+    table = (
+        "<table>" + "".join(rows) + "</table>" if rows else "<div>NO DATA</div>"
+    )
     images_html = []
     for key in ["equity", "drawdown", "returns", "roll_sharpe"]:
         if key in figs:
@@ -88,13 +90,17 @@ def generate_tearsheet(rp) -> Path:
     html = "<html><body>" + table + "".join(images_html) + "</body></html>"
     html_path = perf / "tearsheet.html"
     write_text(html_path, html)
-    if _HTML:
-        try:
+    if html_path.stat().st_size < 20:
+        with html_path.open("a", encoding="utf-8") as fh:
+            fh.write("<!-- NO DATA -->")
+    try:
+        if _HTML:
             pdf_bytes = _HTML(string=html).write_pdf()
-            pdf_path = perf / "tearsheet.pdf"
-            write_bytes(pdf_path, pdf_bytes)
-        except Exception:
-            pass
+            if pdf_bytes and len(pdf_bytes) > 100:
+                pdf_path = perf / "tearsheet.pdf"
+                write_bytes(pdf_path, pdf_bytes)
+    except Exception:
+        pass
     return html_path
 
 

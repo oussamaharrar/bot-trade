@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from bot_trade.config.rl_paths import RunPaths, get_root
+from bot_trade.config.rl_paths import RunPaths, get_root, DEFAULT_REPORTS_DIR
 from bot_trade.tools.latest import latest_run
 from bot_trade.tools import export_charts
 from bot_trade.tools._headless import ensure_headless_once
@@ -31,8 +31,8 @@ def main(argv: list[str] | None = None) -> int:
     ns = ap.parse_args(argv)
 
     try:
-        root = Path(ns.base) if ns.base else get_root()
-        reports_root = root / "reports"
+        root = Path(ns.base).resolve() if ns.base else get_root()
+        reports_root = Path(DEFAULT_REPORTS_DIR) / "PPO"
         run_id = ns.run_id
         if run_id in {None, "latest", "", "last"}:
             run_id = latest_run(ns.symbol, ns.frame, reports_root)

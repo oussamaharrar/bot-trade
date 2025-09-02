@@ -46,10 +46,16 @@ def sharpe(returns: Iterable[float] | 'pd.Series', rf: float = 0.0, period: str 
         return None
     excess = r - rf
     std = excess.std()
-    if std <= 0 or np.isnan(std):
+    if std <= 1e-12 or np.isnan(std):
+        return None
+    mean = excess.mean()
+    if np.isnan(mean):
+        return None
+    ratio = mean / std
+    if not np.isfinite(ratio):
         return None
     scale = np.sqrt(_PERIODS_PER_YEAR.get(period, 252))
-    return float((excess.mean() / std) * scale)
+    return float(ratio * scale)
 
 
 def sortino(returns: Iterable[float] | 'pd.Series', rf: float = 0.0, period: str = "daily") -> Optional[float]:
@@ -61,10 +67,16 @@ def sortino(returns: Iterable[float] | 'pd.Series', rf: float = 0.0, period: str
     excess = r - rf
     downside = excess[excess < 0]
     std = downside.std()
-    if std <= 0 or np.isnan(std):
+    if std <= 1e-12 or np.isnan(std):
+        return None
+    mean = excess.mean()
+    if np.isnan(mean):
+        return None
+    ratio = mean / std
+    if not np.isfinite(ratio):
         return None
     scale = np.sqrt(_PERIODS_PER_YEAR.get(period, 252))
-    return float((excess.mean() / std) * scale)
+    return float(ratio * scale)
 
 
 def max_drawdown(equity_curve: Iterable[float] | 'pd.Series') -> float:
@@ -81,14 +93,20 @@ def max_drawdown(equity_curve: Iterable[float] | 'pd.Series') -> float:
 
 
 def calmar(equity_curve: Iterable[float] | 'pd.Series') -> Optional[float]:
+    import numpy as np
+
     e = _coerce_series(equity_curve)
     if e.empty:
         return None
     dd = max_drawdown(e)
-    if dd <= 0:
+    if dd <= 1e-12 or not np.isfinite(dd):
         return None
-    total_return = (e.iloc[-1] - e.iloc[0]) / abs(e.iloc[0]) if e.iloc[0] != 0 else 0.0
-    return float(total_return / dd) if dd > 0 else None
+    start = e.iloc[0]
+    total_return = (e.iloc[-1] - start) / abs(start) if start != 0 else 0.0
+    ratio = total_return / dd if dd > 0 else None
+    if ratio is None or not np.isfinite(ratio):
+        return None
+    return float(ratio)
 
 
 def turnover(trades_df: 'pd.DataFrame') -> float:

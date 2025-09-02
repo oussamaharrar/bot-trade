@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from bot_trade.config.rl_paths import (
+    DEFAULT_REPORTS_DIR,
     agents_dir as _agents_dir,
     get_root,
     logs_dir as _logs_dir,
@@ -17,7 +18,7 @@ DIR_RESULTS = ROOT / "results"
 DIR_AGENTS = ROOT / "agents"
 DIR_MEMORY = _memory_dir()
 DIR_KNOWLEDGE = DIR_MEMORY / "knowledge"
-DIR_REPORT = ROOT / "reports"
+DIR_REPORT = Path(DEFAULT_REPORTS_DIR).resolve()
 DIR_LOGS = ROOT / "logs"
 
 
