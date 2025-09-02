@@ -7,7 +7,7 @@ import matplotlib
 _DONE = False
 
 
-def ensure_headless_once(cli_name: str) -> None:
+def ensure_headless_once(cli_name: str | None = None) -> None:
     """Force matplotlib backend to Agg and print once."""
     global _DONE
     if matplotlib.get_backend().lower() != "agg":
@@ -15,5 +15,5 @@ def ensure_headless_once(cli_name: str) -> None:
     if not _DONE:
         backend = matplotlib.get_backend()
         backend = backend[0].upper() + backend[1:] if backend else backend
-        print(f"[HEADLESS] backend={backend} cli={cli_name}")
+        print(f"[HEADLESS] backend={backend}")
         _DONE = True

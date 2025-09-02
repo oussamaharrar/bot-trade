@@ -303,3 +303,9 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Sweeper and dev checks ensure chart sizes, KB fields, and provide CI coverage.
 - Knowledge base appends enforce full schema, skip duplicates, and record algorithm metadata.
 - Next: implement full TD3/TQC support and expand regime metrics.
+
+## 2025-10-06
+- **Files**: `bot_trade/tools/_headless.py`, `bot_trade/tools/export_charts.py`, `bot_trade/tools/eval_run.py`, `bot_trade/tools/monitor_manager.py`, `DEV_NOTES.md`, `CHANGE_NOTES.md`
+- **Rationale**: ensure single `[HEADLESS] backend=Agg` notice per CLI, expose `eval_max_drawdown` on `[POSTRUN]`, and harden `--run-id latest` guards across export/eval/monitor tools.
+- **Risks**: base path overrides may diverge from `BOT_REPORTS_DIR`.
+- **Test Steps**: `python -m py_compile $(git ls-files '*.py')`; synthetic run `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --algorithm PPO --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 32 --batch-size 32 --total-steps 64 --headless --allow-synth --data-dir data_ready`; missing-run guards `python -m bot_trade.tools.monitor_manager --symbol FAKE --frame 1m --run-id latest; test $? -eq 2 && echo EXIT_CODE_2`; same for `export_charts` and `eval_run`; evaluation `python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest`.
