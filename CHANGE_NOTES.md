@@ -285,3 +285,21 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Rationale**: add CPU sweeper with ranked summaries and runs log, extend dev checks for log order, chart sizes and KB metadata, and introduce new CI smoke workflow covering synth data generation, training, eval, sweep and checks.
 - **Risks**: sweeps may still take time; workflow assumes synthetic data availability.
 - **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/config/*.py' 'bot_trade/tools/*.py' 'bot_trade/eval/*.py' 'bot_trade/strat/*.py' 'bot_trade/env/*.py' 'bot_trade/train_rl.py')`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --algorithm PPO --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 64 --batch-size 64 --total-steps 128 --headless --allow-synth --data-dir data_ready`; `python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest`; `python -m bot_trade.tools.sweep --symbol BTCUSDT --frame 1m --out-dir sweeps/out_test --algo-grid "PPO,SAC" --param-grid "n_steps=[64];batch_size=[64]" --trials 1 --allow-synth --headless --data-dir data_ready`; `python -m bot_trade.tools.dev_checks`
+
+## 2025-10-05
+- **Files**: `CHANGE_NOTES.md`
+- **Rationale**: append consolidated developer notes outlining final contract and invariants.
+- **Risks**: none; documentation only.
+- **Test Steps**: read appended Developer Notes section.
+
+## Developer Notes — 2025-10-05T00:00:00Z
+- Ordered prints: `[DEBUG_EXPORT]` → `[CHARTS]` → `[POSTRUN]` with zero defaults for missing rows.
+- Single headless notice per CLI via `ensure_headless_once`.
+- Latest guard: `--run-id latest` prints `[LATEST] none` and exits 2 without traceback.
+- Risk artifacts: CSV schema `risk_flag,flag_reason,value,threshold,ts` and mandatory `risk_flags.png` (≥1 KB); smoke runs emit `[RISK_DIAG] no_flags_fired` when clean.
+- Eval numeric guards return `None` for empty/degenerate windows; BOT_REPORTS_DIR overrides output destinations.
+- Registry-based algorithm builders with CLI override tracking; SAC enforces Box spaces and optional PPO warm-start search order (best → last → legacy).
+- Regime controller logs `adaptive_log.jsonl`, exports `regimes.png`, and tracks active regime distribution in KB.
+- Sweeper and dev checks ensure chart sizes, KB fields, and provide CI coverage.
+- Knowledge base appends enforce full schema, skip duplicates, and record algorithm metadata.
+- Next: implement full TD3/TQC support and expand regime metrics.
