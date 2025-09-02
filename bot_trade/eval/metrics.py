@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional, TYPE_CHECKING
+from typing import Iterable, Optional, TYPE_CHECKING, Dict, Any
 
 if TYPE_CHECKING:  # pragma: no cover
     import pandas as pd
@@ -179,3 +179,39 @@ def avg_trade_pnl(trades_df: 'pd.DataFrame') -> Optional[float]:
     if pnl.empty:
         return None
     return float(pnl.mean())
+
+
+def compute_all(
+    reward_df: 'pd.DataFrame', trades_df: 'pd.DataFrame', cfg: Dict[str, Any] | None = None
+) -> Dict[str, float | None]:
+    """Compute standard evaluation metrics.
+
+    Returns a dictionary with stable numeric ratios or ``None`` when
+    insufficient data is available.
+    """
+
+    import pandas as pd
+
+    period = (cfg or {}).get("period", "daily")
+
+    returns = pd.Series(dtype=float)
+    if reward_df is not None and not reward_df.empty and "reward" in reward_df:
+        returns = pd.to_numeric(reward_df["reward"], errors="coerce").dropna()
+
+    eq = equity_from_rewards(reward_df, cfg)
+    metrics = {
+        "sharpe": sharpe(returns, period=period),
+        "sortino": sortino(returns, period=period),
+        "calmar": calmar(eq),
+        "max_drawdown": max_drawdown(eq),
+        "turnover": turnover(trades_df),
+        "win_rate": win_rate(trades_df),
+        "avg_trade_pnl": avg_trade_pnl(trades_df),
+    }
+
+    if metrics["win_rate"] is None and not returns.empty:
+        metrics["win_rate"] = float((returns > 0).mean())
+    if metrics["avg_trade_pnl"] is None and not returns.empty:
+        metrics["avg_trade_pnl"] = float(returns.mean())
+
+    return metrics

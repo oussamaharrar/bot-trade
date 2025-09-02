@@ -317,3 +317,16 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - evaluation suite refined: metrics, walk-forward, and tearsheet utilities integrated through `tools.eval_run`.
 - RL algorithm registry uses lazy imports; off-policy stubs validate Box spaces and emit clear skip notices.
 - migration: callers continue using `--algorithm` for `train_rl`; TD3/TQC remain stubs exiting early.
+
+## 2025-09-02
+- **Files**: `bot_trade/eval/metrics.py`, `bot_trade/eval/equity.py`, `bot_trade/eval/walk_forward.py`, `bot_trade/tools/eval_run.py`, `bot_trade/tools/kb_writer.py`, `bot_trade/train_rl.py`, `CHANGE_NOTES.md`, `DEV_NOTES.md`
+- **Rationale**: expand evaluation suite with equity helpers, aggregated metrics, walk-forward summaries, KB schema updates and canonical chart/eval prints.
+- **Risks**: walk-forward may yield empty placeholders on tiny datasets; downstream consumers must handle new KB fields.
+- **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; synthetic run + eval sequence as in verification snippet.
+
+## Developer Notes — 2025-09-02 22:47:38 UTC
+- headless single-notice upheld across all CLIs.
+- latest guards emit `[LATEST] none` with exit 2 when runs missing.
+- `[POSTRUN]` lines report algorithm, win rate, sharpe and max drawdown.
+- evaluation modules: `equity.build_equity_drawdown`, `metrics.compute_all`, walk-forward summaries.
+- migration: KB entries now include `sortino`, `calmar` and `images_list`; update parsers accordingly.

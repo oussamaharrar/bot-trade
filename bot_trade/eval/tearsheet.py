@@ -34,7 +34,7 @@ def generate_tearsheet(rp, pdf: bool = False) -> Path:
             summary = json.loads(s_path.read_text(encoding="utf-8"))
         except Exception:
             summary = {}
-    wfa_path = perf / "wfa.json"
+    wfa_path = perf / "wfa_summary.json"
     if wfa_path.exists():
         try:
             wfa = json.loads(wfa_path.read_text(encoding="utf-8"))

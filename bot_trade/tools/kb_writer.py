@@ -22,6 +22,7 @@ KB_DEFAULTS = {
     "algorithm": None,
     "ts": None,
     "images": 0,
+    "images_list": [],
     "rows_reward": 0,
     "rows_step": 0,
     "rows_train": 0,
@@ -36,6 +37,8 @@ KB_DEFAULTS = {
     "eval": {
         "win_rate": None,
         "sharpe": None,
+        "sortino": None,
+        "calmar": None,
         "max_drawdown": None,
         "avg_trade_pnl": None,
         "turnover": None,

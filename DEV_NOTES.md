@@ -190,3 +190,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: base-directory overrides may still misalign with `BOT_REPORTS_DIR`.
 - Migration Steps: none; CLIs remain unchanged but consumers should expect updated headless line and POSTRUN metrics.
 - Next Actions: unify path resolution for custom report roots.
+
+## Developer Notes — 2025-09-02 22:47:38 UTC (Eval suite refresh)
+- What: added equity/drawdown helpers, metric aggregator, walk-forward summary exports, KB schema (sortino/calmar/images_list), and canonical chart/eval print flow.
+- Why: consolidate evaluation logic and enrich knowledge base context.
+- Risks: walk-forward outputs may be empty on small logs; downstream parsers must handle new KB fields.
+- Migration Steps: regenerate eval artifacts; update KB consumers for added fields.
+- Next Actions: broaden regime metrics and refine WFA robustness.
