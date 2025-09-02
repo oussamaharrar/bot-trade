@@ -109,8 +109,8 @@ def _postrun_summary(paths, meta):
     eval_summary: dict[str, Any] = meta.get("synthetic_eval") or {}
     if not eval_summary:
         try:
-            eval_summary = evaluate_for_run(rp, episodes=int(meta.get("eval_episodes", 3)))
-            logger.info("[EVAL] done episodes=%s", meta.get("eval_episodes", 3))
+            eval_summary = evaluate_for_run(rp.symbol, rp.frame, run_id=rp.run_id)
+            logger.info("[EVAL] done")
         except Exception as e:
             logger.warning("[EVAL] failed err=%s", e)
             eval_summary = {}
@@ -134,6 +134,7 @@ def _postrun_summary(paths, meta):
             img_count += 1
         except Exception:
             pass
+    images_list = [p.name for p in charts_dir.glob("*.png") if p.is_file() and not p.is_symlink()]
     rows_reward = row_counts.get("reward", 0)
     rows_step = row_counts.get("step", 0)
     rows_train = row_counts.get("train", 0)
@@ -187,6 +188,8 @@ def _postrun_summary(paths, meta):
     eval_entry = {
         "win_rate": eval_summary.get("win_rate"),
         "sharpe": eval_summary.get("sharpe"),
+        "sortino": eval_summary.get("sortino"),
+        "calmar": eval_summary.get("calmar"),
         "max_drawdown": eval_summary.get("max_drawdown"),
         "avg_trade_pnl": eval_summary.get("avg_trade_pnl"),
         "turnover": eval_summary.get("turnover"),
@@ -208,6 +211,7 @@ def _postrun_summary(paths, meta):
             "algorithm": algo,
             "ts": dt.datetime.utcnow().isoformat(),
             "images": img_count,
+            "images_list": images_list,
             "rows_reward": rows_reward,
             "rows_step": rows_step,
             "rows_train": rows_train,

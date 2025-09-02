@@ -15,67 +15,48 @@ from pathlib import Path
 from typing import Dict, Any, List
 
 from bot_trade.config.rl_paths import RunPaths, DEFAULT_REPORTS_DIR
-from bot_trade.tools.atomic_io import write_json, write_png
+from bot_trade.tools.atomic_io import write_json, write_png, write_text
 from bot_trade.tools.latest import latest_run
 from bot_trade.tools._headless import ensure_headless_once
+from bot_trade.tools import export_charts
 
 
 
 
-def evaluate_run(
-    symbol: str, frame: str, run_id: str | None = None, episodes: int = 10
-) -> Dict[str, float | None]:
-    """Evaluate a training run using logged rewards or signals."""
+def evaluate_run(symbol: str, frame: str, run_id: str) -> Dict[str, Any]:
+    """Compute evaluation metrics and equity/drawdown series."""
 
     import pandas as pd
     import matplotlib.pyplot as plt
     from bot_trade.eval import metrics
     from bot_trade.eval.utils import load_reward_log, load_trades
-
-    if not run_id:
-        raise RuntimeError("run_id required")
+    from bot_trade.eval.equity import build_equity_drawdown
 
     rp = RunPaths(symbol, frame, str(run_id))
     perf_dir = rp.performance_dir
 
     reward_df = load_reward_log(rp.logs)
-    returns = reward_df["reward"] if not reward_df.empty else pd.Series(dtype=float)
-    steps = reward_df["step"].tolist() if not reward_df.empty else []
-    equity = metrics.equity_from_rewards(reward_df)
-    drawdown = equity.cummax() - equity
     trades = load_trades(rp.logs)
+    equity, drawdown = build_equity_drawdown(rp.logs)
+    metrics_dict = metrics.compute_all(reward_df, trades, {})
 
-    sharpe = metrics.sharpe(returns)
-    sortino = metrics.sortino(returns)
-    calmar_ratio = metrics.calmar(equity)
-    max_dd = metrics.max_drawdown(equity)
-    turnover_val = metrics.turnover(trades)
-    slippage = metrics.slippage_proxy(trades)
-    win_rate_val = metrics.win_rate(trades)
-    avg_trade = metrics.avg_trade_pnl(trades)
-
-    if win_rate_val is None and len(returns) > 0:
-        win_rate_val = float((returns > 0).mean())
-    if avg_trade is None and len(returns) > 0:
-        avg_trade = float(returns.mean())
-
-    summary = {
-        "win_rate": win_rate_val,
-        "sharpe": sharpe,
-        "sortino": sortino,
-        "calmar": calmar_ratio,
-        "max_drawdown": max_dd,
-        "turnover": turnover_val,
-        "avg_trade_pnl": avg_trade,
-        "slippage_proxy": slippage,
+    summary: Dict[str, Any] = {
+        "run_id": run_id,
+        "symbol": symbol,
+        "frame": frame,
+        "ts": dt.datetime.utcnow().isoformat(),
+        **metrics_dict,
     }
     write_json(perf_dir / "summary.json", summary)
 
+    step_val = int(reward_df["step"].iloc[-1]) if not reward_df.empty else 0
+    eq_val = float(equity.iloc[-1]) if not equity.empty else 0.0
     portfolio = {
-        "equity": float(equity.iloc[-1]) if not equity.empty else 0.0,
-        "cash": float(equity.iloc[-1]) if not equity.empty else 0.0,
+        "equity": eq_val,
+        "cash": eq_val,
         "positions": {},
-        "step": int(steps[-1]) if steps else 0,
+        "unrealized": 0.0,
+        "step": step_val,
         "ts": dt.datetime.utcnow().isoformat(),
     }
     write_json(perf_dir / "portfolio_state.json", portfolio)
@@ -108,7 +89,6 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--symbol", required=True)
     p.add_argument("--frame", required=True)
     p.add_argument("--run-id")
-    p.add_argument("--episodes", type=int, default=10)
     p.add_argument("--wfa-splits", type=int, default=0)
     p.add_argument("--wfa-embargo", type=float, default=0.01)
     p.add_argument("--tearsheet", action="store_true")
@@ -122,10 +102,23 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         run_id = rid
     rp = RunPaths(args.symbol, args.frame, str(run_id))
-    try:
-        summary = evaluate_run(
-            args.symbol, args.frame, run_id=run_id, episodes=args.episodes
+
+    charts_dir, img_count, rows = export_charts.export_run_charts(rp, run_id)
+    print(
+        "[DEBUG_EXPORT] reward_rows=%d step_rows=%d train_rows=%d risk_rows=%d callbacks_rows=%d signals_rows=%d"
+        % (
+            rows.get("reward", 0),
+            rows.get("step", 0),
+            rows.get("train", 0),
+            rows.get("risk", 0),
+            rows.get("callbacks", 0),
+            rows.get("signals", 0),
         )
+    )
+    print(f"[CHARTS] dir={charts_dir.resolve()} images={img_count}")
+
+    try:
+        summary = evaluate_run(args.symbol, args.frame, run_id=run_id)
     except Exception as exc:  # pragma: no cover
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
@@ -135,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
         return f"{v:.3f}" if isinstance(v, (int, float)) and v is not None else "null"
 
     metrics_part = (
-        "{win_rate:%s, sharpe:%s, sortino:%s, calmar:%s, max_drawdown:%s, turnover:%s, avg_trade_pnl:%s, slippage_proxy:%s}"
+        "{win_rate:%s, sharpe:%s, sortino:%s, calmar:%s, max_drawdown:%s, turnover:%s, avg_trade_pnl:%s}"
         % (
             _fmt(summary.get("win_rate")),
             _fmt(summary.get("sharpe")),
@@ -144,7 +137,6 @@ def main(argv: list[str] | None = None) -> int:
             _fmt(summary.get("max_drawdown")),
             _fmt(summary.get("turnover")),
             _fmt(summary.get("avg_trade_pnl")),
-            _fmt(summary.get("slippage_proxy")),
         )
     )
     print(
@@ -156,10 +148,18 @@ def main(argv: list[str] | None = None) -> int:
 
         embargo = max(0.0, min(args.wfa_embargo, 0.5))
         wfa_res = walk_forward_eval(rp.logs, n_splits=args.wfa_splits, embargo=embargo)
-        wfa_path = out_dir / "wfa.json"
-        write_json(wfa_path, wfa_res)
+        json_path = out_dir / "wfa_summary.json"
+        write_json(json_path, wfa_res)
+        csv_path = out_dir / "wfa_summary.csv"
+        try:
+            import pandas as pd
+
+            df = pd.DataFrame(wfa_res.get("folds", []))
+            write_text(csv_path, df.to_csv(index=False) if not df.empty else "")
+        except Exception:
+            write_text(csv_path, "")
         print(
-            f"[WFA] run_id={run_id} splits={args.wfa_splits} embargo={embargo} out={wfa_path.resolve()}"
+            f"[WFA] run_id={run_id} splits={args.wfa_splits} embargo={embargo} out={json_path.resolve()}"
         )
 
     if args.tearsheet:

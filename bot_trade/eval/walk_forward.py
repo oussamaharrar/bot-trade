@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Iterator, Tuple, Dict, Any, TYPE_CHECKING
 
-from bot_trade.tools.atomic_io import write_json
+from bot_trade.tools.atomic_io import write_json, write_text
 
 if TYPE_CHECKING:  # pragma: no cover
     import pandas as pd
@@ -115,10 +115,18 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # pragma: no cover
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
-    out_path = rp.performance_dir / "wfa.json"
-    write_json(out_path, result)
+    json_path = rp.performance_dir / "wfa_summary.json"
+    write_json(json_path, result)
+    csv_path = rp.performance_dir / "wfa_summary.csv"
+    try:
+        import pandas as pd
+
+        df = pd.DataFrame(result.get("folds", []))
+        write_text(csv_path, df.to_csv(index=False) if not df.empty else "")
+    except Exception:
+        write_text(csv_path, "")
     print(
-        f"[WFA] run_id={run_id} splits={ns.splits} embargo={ns.embargo} out={out_path.resolve()}"
+        f"[WFA] run_id={run_id} splits={ns.splits} embargo={ns.embargo} out={json_path.resolve()}"
     )
     return 0
 
