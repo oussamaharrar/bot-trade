@@ -383,6 +383,28 @@ risk:
   max_notional: null
   max_units: null
 
+strategy_failure:
+  enabled: true
+  actions:
+    - warn
+    - reduce_risk
+    - freeze_trading
+    - flat_all
+    - halt_training
+  thresholds:
+    loss_streak: 5
+    max_drawdown_bp: 500
+    spread_jump_bp: 50
+    slippage_spike_bp: 50
+    liquidity_drop_pct: 50
+    stuck_position_s: 300
+    partial_fill_timeout_s: 60
+  cool_down_steps: 100
+  clamps:
+    exposure_cap: {min: 0.0, max: 1.0}
+    max_spread_bp: {min: 0, max: 500}
+    risk_scale: {min: 0.1, max: 1.0}
+
 regime:
   thresholds:
     volatility:

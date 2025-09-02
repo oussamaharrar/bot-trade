@@ -30,7 +30,7 @@ from bot_trade.config.rl_paths import (
     DEFAULT_KB_FILE,
 )
 from bot_trade.config.device import normalize_device, maybe_print_device_report
-from bot_trade.config.rl_callbacks import _save_vecnorm, AdaptiveRegimeCallback
+from bot_trade.config.rl_callbacks import _save_vecnorm, AdaptiveRegimeCallback, StrategyFailureCallback
 from bot_trade.config.rl_args import validate_args, clamp_batch, auto_shape_resources
 from bot_trade.config.log_setup import drain_log_queue
 from bot_trade.tools import export_charts
@@ -138,6 +138,7 @@ def _postrun_summary(paths, meta):
     rows_step = row_counts.get("step", 0)
     rows_train = row_counts.get("train", 0)
     rows_risk = row_counts.get("risk", 0)
+    rows_safety = row_counts.get("safety", 0)
     rows_callbacks = row_counts.get("callbacks", 0)
     rows_signals = row_counts.get("signals", 0)
     print(
@@ -152,7 +153,7 @@ def _postrun_summary(paths, meta):
         )
     )
     print(f"[CHARTS] dir={charts_dir.resolve()} images={img_count}")
-    if rows_risk == 0:
+    if rows_risk == 0 and rows_safety == 0:
         print("[RISK_DIAG] no_flags_fired (smoke run)")
 
     agents_base = Path(rp.agents)
@@ -221,6 +222,7 @@ def _postrun_summary(paths, meta):
             "eval": eval_entry,
             "portfolio": portfolio_entry,
             "regime": meta.get("regime"),
+            "safety": meta.get("safety"),
             "notes": str(meta.get("notes", "")),
         }
         kb_append(rp, kb_entry)
@@ -240,7 +242,8 @@ def _postrun_summary(paths, meta):
         f"best={str(best_ok).lower()} last={str(last_ok).lower()} "
         f"eval_win_rate={(f'{win_rate:.3f}' if win_rate is not None else 'null')} "
         f"eval_sharpe={(f'{sharpe:.3f}' if sharpe is not None else 'null')} "
-        f"eval_max_drawdown={(f'{max_dd:.3f}' if max_dd is not None else 'null')}"
+        f"eval_max_drawdown={(f'{max_dd:.3f}' if max_dd is not None else 'null')} "
+        f"safety_flags={rows_safety}"
     )
     logger.info(line)
     print(line, flush=True)
@@ -250,6 +253,7 @@ def _postrun_summary(paths, meta):
         "rows_step": rows_step,
         "rows_train": rows_train,
         "rows_risk": rows_risk,
+        "rows_safety": rows_safety,
         "rows_callbacks": callbacks_lines,
         "rows_signals": rows_signals,
         "best": best_ok,
@@ -396,6 +400,21 @@ def train_one_file(args, data_file: str) -> bool:
         run_id = getattr(args, "run_id", None) or new_run_id(args.symbol, args.frame)
     args.run_id = run_id
     cfg = get_config()
+    sf_cfg = cfg.setdefault("strategy_failure", {})
+    thr_cfg = sf_cfg.setdefault("thresholds", {})
+    if getattr(args, "loss_streak", None) is not None:
+        thr_cfg["loss_streak"] = int(args.loss_streak)
+    if getattr(args, "max_drawdown_bp", None) is not None:
+        thr_cfg["max_drawdown_bp"] = float(args.max_drawdown_bp)
+    if getattr(args, "spread_jump_bp", None) is not None:
+        thr_cfg["spread_jump_bp"] = float(args.spread_jump_bp)
+    if getattr(args, "slippage_spike_bp", None) is not None:
+        thr_cfg["slippage_spike_bp"] = float(args.slippage_spike_bp)
+    if getattr(args, "strategy_failure", None) is None:
+        args.strategy_failure = bool(sf_cfg.get("enabled", False))
+    else:
+        sf_cfg["enabled"] = bool(args.strategy_failure)
+    args.safety_every = int(getattr(args, "safety_every", 1))
     algo_cli = getattr(args, "algorithm", "PPO")
     defaults = getattr(args, "_defaults", {})
     user_set = algo_cli != defaults.get("algorithm")
@@ -595,12 +614,12 @@ def train_one_file(args, data_file: str) -> bool:
 
     # expose risk manager for snapshots/resume
     controller = None
+    base_env = None
+    try:
+        base_env = vec_env.envs[0]
+    except Exception:
+        pass
     if getattr(args, "regime_aware", False):
-        base_env = None
-        try:
-            base_env = vec_env.envs[0]
-        except Exception:
-            pass
         log_path = paths_obj.performance_dir / "adaptive_log.jsonl" if getattr(args, "regime_log", False) else None
         controller = AdaptiveController(cfg.get("regime", {}), env=base_env, log_path=log_path)
 
@@ -847,6 +866,19 @@ def train_one_file(args, data_file: str) -> bool:
     if controller is not None:
         extras.append(AdaptiveRegimeCallback(controller, window=max(1, int(getattr(args, "regime_window", 0) or 100))))
 
+    safety_cb = None
+    if getattr(args, "strategy_failure", False):
+        safety_log = paths_obj.performance_dir / "safety_log.jsonl"
+        safety_cb = StrategyFailureCallback(
+            sf_cfg,
+            every=max(1, int(getattr(args, "safety_every", 1))),
+            risk_manager=risk_manager,
+            controller=controller,
+            env=base_env,
+            log_path=safety_log,
+        )
+        extras.append(safety_cb)
+
     eval_cb: Optional[EvalCallback] = None
     if cfg.get("eval", {}).get("enable", True):
         eval_cb = EvalSaveCallback(
@@ -1064,6 +1096,9 @@ def train_one_file(args, data_file: str) -> bool:
         )
     except Exception as e:
         logging.warning("[EVAL_RUN] failed: %s", e)
+
+    if safety_cb is not None:
+        run_meta["safety"] = safety_cb.summary()
 
     summary_meta = _postrun_summary(paths, run_meta)
 
@@ -1296,6 +1331,7 @@ def main():
         exec_cfg["allow_partial"] = True
     if getattr(args, "max_spread_bp", None) is not None:
         exec_cfg["max_spread_bp"] = float(args.max_spread_bp)
+
     cfg_paths = cfg.get("project", {}).get("paths", {}) if isinstance(cfg, dict) else {}
     cfg_root = cfg_paths.get("ready_dir") or cfg_paths.get("data_dir")
     cli_root = getattr(args, "data_root", None)

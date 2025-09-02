@@ -193,6 +193,16 @@ class TradingEnv(Env):
         except Exception:
             pass
 
+    def flat_all(self) -> None:
+        """Close all open positions at current price."""
+        try:
+            price = self._price()
+            self.usdt += self.coin * price
+            self.coin = 0.0
+            self.entry_price = None
+        except Exception:
+            pass
+
     # -------- Gym API --------
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None):
         super().reset(seed=seed)
@@ -202,11 +212,20 @@ class TradingEnv(Env):
         self.win_streak = 0; self.loss_streak = 0
         self.prev_value = self.initial_balance
         self.equity_curve.clear(); self.max_drawdown = 0.0
+        self.failure_flags = []
+        self.trading_frozen = False
         obs = self._make_obs()
-        info = {"symbol": self.current_symbol, "frame": self.frame, "regime": getattr(self, "current_regime", "unknown")}
+        info = {
+            "symbol": self.current_symbol,
+            "frame": self.frame,
+            "regime": getattr(self, "current_regime", "unknown"),
+            "failure_flags": list(self.failure_flags),
+        }
         return obs, info
 
     def step(self, action: int):
+        if getattr(self, "trading_frozen", False):
+            action = 0
         price = self._price(); row = self._row()
 
         vol = float(row.get("atr", row.get("volatility", 0.0)))
@@ -374,6 +393,7 @@ class TradingEnv(Env):
             "entry_blocked": (decision_reason == "ai_guard"), "decision_reason": decision_reason,
             "term_reason": term_reason,
             "regime": getattr(self, "current_regime", "unknown"),
+            "failure_flags": list(self.failure_flags),
         }
         if exec_res:
             info.update(

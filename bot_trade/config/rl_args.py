@@ -236,6 +236,12 @@ def parse_args():
     ap.add_argument("--regime-aware", action="store_true", help="Enable regime-aware adjustments")
     ap.add_argument("--regime-window", type=int, default=0, help="Steps between regime checks")
     ap.add_argument("--regime-log", action=argparse.BooleanOptionalAction, default=None, help="Log adaptive regime adjustments")
+    ap.add_argument("--strategy-failure", action=argparse.BooleanOptionalAction, default=None, help="Enable strategy failure policy")
+    ap.add_argument("--safety-every", type=int, default=1, help="Check safety every N steps")
+    ap.add_argument("--loss-streak", type=int)
+    ap.add_argument("--max-drawdown-bp", type=float)
+    ap.add_argument("--spread-jump-bp", type=float)
+    ap.add_argument("--slippage-spike-bp", type=float)
     ap.add_argument(
         "--algorithm",
         type=str,

@@ -29,6 +29,9 @@ import csv
 import shutil
 
 from bot_trade.config.rl_paths import stamp_name, _atomic_replace
+from . import strategy_failure
+from collections import Counter
+from pathlib import Path
 
 # Optional dependencies — كلّها اختيارية
 try:  # TensorBoard
@@ -576,3 +579,71 @@ class AdaptiveRegimeCallback(BaseCallback):
             self.controller.update(df)
         except Exception:
             pass
+
+
+class StrategyFailureCallback(BaseCallback):
+    """Evaluate strategy failure policy at a fixed interval."""
+
+    def __init__(
+        self,
+        cfg: Dict[str, Any],
+        every: int = 1,
+        risk_manager: Any = None,
+        controller: Any = None,
+        env: Any = None,
+        log_path: Path | None = None,
+        verbose: int = 0,
+    ) -> None:
+        super().__init__(verbose)
+        strategy_failure.configure(cfg or {})
+        self.every = max(1, int(every))
+        self.risk_manager = risk_manager
+        self.controller = controller
+        self.env = env
+        self.log_path = Path(log_path) if log_path else None
+        self.counts: Counter[str] = Counter()
+        self.flags_total = 0
+        self.last_ts: str | None = None
+
+    def _on_step(self) -> bool:
+        step = int(self.num_timesteps)
+        if step % self.every != 0:
+            return True
+        infos = self.locals.get("infos") or []
+        first = infos[0] if infos else {}
+        ctx = dict(first)
+        ctx["ts"] = dt.datetime.utcnow().isoformat()
+        ctx["regime"] = getattr(self.controller, "last_regime", None)
+        events = strategy_failure.evaluate_step(ctx)
+        if events:
+            summary = strategy_failure.apply_actions(
+                events,
+                risk_manager=self.risk_manager,
+                controller=self.controller,
+                env=self.env,
+                log_path=self.log_path,
+            )
+            flags = [e.get("flag") for e in events]
+            try:
+                self.training_env.set_attr("failure_flags", flags)
+            except Exception:
+                pass
+            for e in events:
+                self.counts[e["flag"]] += 1
+                self.flags_total += 1
+                self.last_ts = e.get("ts")
+            if summary.get("halt"):
+                return False
+        else:
+            try:
+                self.training_env.set_attr("failure_flags", [])
+            except Exception:
+                pass
+        return True
+
+    def summary(self) -> Dict[str, Any]:
+        return {
+            "flags_total": int(self.flags_total),
+            "by_type": dict(self.counts),
+            "last_trigger_ts": self.last_ts,
+        }
