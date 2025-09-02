@@ -287,7 +287,9 @@ def apply_actions(
     for ev in events:
         try:
             if risk_manager is not None:
-                risk_manager.record_flag(ev["flag"], ev["reason"], ev["value"], ev["threshold"])
+                risk_manager.record_flag(
+                    "strategy_failure", ev["flag"], ev["value"], ev["threshold"]
+                )
         except Exception:
             pass
 

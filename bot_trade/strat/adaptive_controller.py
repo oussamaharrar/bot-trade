@@ -89,19 +89,41 @@ class AdaptiveController:
         }
         if weights:
             if "dd_penalty" in weights:
-                w[2] = float(weights["dd_penalty"])
-                applied["dd_penalty"] = w[2]
+                try:
+                    val = self._clamp("dd_penalty", float(weights["dd_penalty"]), kind="weights")
+                    w[2] = val
+                    applied["dd_penalty"] = val
+                except Exception:
+                    if not self.warned:
+                        logging.warning("[REGIME] invalid dd_penalty")
+                        self.warned = True
             if "trend_bonus" in weights:
-                w[3] = float(weights["trend_bonus"])
-                applied["trend_bonus"] = w[3]
+                try:
+                    val = self._clamp("trend_bonus", float(weights["trend_bonus"]), kind="weights")
+                    w[3] = val
+                    applied["trend_bonus"] = val
+                except Exception:
+                    if not self.warned:
+                        logging.warning("[REGIME] invalid trend_bonus")
+                        self.warned = True
             if "holding_penalty" in weights:
-                w[6] = float(weights["holding_penalty"])
-                applied["holding_penalty"] = w[6]
+                try:
+                    val = self._clamp("holding_penalty", float(weights["holding_penalty"]), kind="weights")
+                    w[6] = val
+                    applied["holding_penalty"] = val
+                except Exception:
+                    if not self.warned:
+                        logging.warning("[REGIME] invalid holding_penalty")
+                        self.warned = True
         tracker.w = tuple(w)
         return applied
 
-    def _clamp(self, key: str, value: float) -> Optional[float]:
-        lim = (self.cfg.get("bounds", {}) or {}).get(key, {})
+    def _clamp(self, key: str, value: float, kind: str = "bounds") -> Optional[float]:
+        if kind == "bounds":
+            cfg = self.cfg.get("bounds", {}) or {}
+        else:
+            cfg = self.cfg.get("weight_limits", {}) or {}
+        lim = cfg.get(key, {})
         lo = float(lim.get("min", float("-inf")))
         hi = float(lim.get("max", float("inf")))
         clamped = max(lo, min(value, hi))

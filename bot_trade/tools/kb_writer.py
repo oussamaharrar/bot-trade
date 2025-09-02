@@ -47,6 +47,7 @@ KB_DEFAULTS = {
         "positions": None,
         "step": None,
     },
+    "regime": {"active": "", "distribution": {}},
     "notes": "",
 }
 
