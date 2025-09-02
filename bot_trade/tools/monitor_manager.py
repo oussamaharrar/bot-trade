@@ -27,6 +27,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--base", default=None, help="Project root override")
     ap.add_argument("--debug-export", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--no-wait", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--tearsheet", action="store_true", help=argparse.SUPPRESS)
     ns = ap.parse_args(argv)
 
     try:
@@ -39,7 +40,9 @@ def main(argv: list[str] | None = None) -> int:
                 print("[LATEST] none")
                 return 2
         rp = RunPaths(ns.symbol, ns.frame, run_id, root=root)
-        charts_dir, images, rows = export_charts.export_run_charts(rp, run_id, debug=ns.debug_export)
+        charts_dir, images, rows = export_charts.export_run_charts(
+            rp, run_id, debug=ns.debug_export
+        )
         print(
             "[DEBUG_EXPORT] reward_rows=%d step_rows=%d train_rows=%d risk_rows=%d callbacks_rows=%d signals_rows=%d"
             % (
@@ -52,6 +55,11 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         print(f"[CHARTS] dir={charts_dir.resolve()} images={images}")
+        if ns.tearsheet:
+            from bot_trade.eval.tearsheet import generate_tearsheet
+
+            ts_path = generate_tearsheet(rp)
+            print(f"[TEARSHEET] out={ts_path.resolve()}")
         return 0 if images > 0 else 2
     except Exception as exc:  # pragma: no cover
         print(f"[ERROR] {exc}", file=sys.stderr)

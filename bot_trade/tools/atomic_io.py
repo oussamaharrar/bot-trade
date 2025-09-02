@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Atomic file utilities for JSON, JSONL and PNG writes."""
+"""Atomic file utilities for JSON, JSONL and binary/text writes."""
 
 import json
 import os
@@ -53,3 +53,23 @@ def write_png(path: str | Path, fig, dpi: int = 120) -> None:
     if size < 1024:
         with p.open("ab") as fh:
             fh.write(b"0" * (1024 - size))
+
+
+def write_text(path: str | Path, text: str, encoding: str = "utf-8") -> None:
+    """Atomically write ``text`` to ``path`` using ``encoding``."""
+    p = Path(path)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with tmp.open("w", encoding=encoding) as fh:
+        fh.write(text)
+    os.replace(tmp, p)
+
+
+def write_bytes(path: str | Path, data: bytes) -> None:
+    """Atomically write binary ``data`` to ``path``."""
+    p = Path(path)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with tmp.open("wb") as fh:
+        fh.write(data)
+    os.replace(tmp, p)
