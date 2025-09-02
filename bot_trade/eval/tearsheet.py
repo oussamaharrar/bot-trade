@@ -6,7 +6,11 @@ import sys
 from pathlib import Path
 from typing import Dict, Any
 
-from bot_trade.tools.atomic_io import write_text, write_bytes, write_png
+from bot_trade.tools.atomic_io import (
+    write_png,
+    write_html_atomic,
+    write_pdf_atomic,
+)
 
 
 def generate_tearsheet(rp) -> Path:
@@ -89,16 +93,13 @@ def generate_tearsheet(rp) -> Path:
             images_html.append(f"<div>NO DATA: {key}</div>")
     html = "<html><body>" + table + "".join(images_html) + "</body></html>"
     html_path = perf / "tearsheet.html"
-    write_text(html_path, html)
-    if html_path.stat().st_size < 20:
-        with html_path.open("a", encoding="utf-8") as fh:
-            fh.write("<!-- NO DATA -->")
+    write_html_atomic(html_path, html)
     try:
         if _HTML:
             pdf_bytes = _HTML(string=html).write_pdf()
             if pdf_bytes and len(pdf_bytes) > 100:
                 pdf_path = perf / "tearsheet.pdf"
-                write_bytes(pdf_path, pdf_bytes)
+                write_pdf_atomic(pdf_path, pdf_bytes)
     except Exception:
         pass
     return html_path

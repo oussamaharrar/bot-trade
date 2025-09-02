@@ -215,3 +215,10 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Rationale**: move SAC warm-start into builder with prioritized PPO checkpoint search and clearer Box-space guard logging.
 - **Risks**: warm-start resolver may miss unconventional layouts; assumes compatible feature extractors.
 - **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py`; `python -m bot_trade.train_rl --help`; PPO and SAC smoke runs verifying warm-start skip message.
+
+## Developer Notes — 2025-09-02T02:17:32Z (Phase 4)
+- What: added sweep CLI (grid parsing, summary outputs, failure handling), CI smoke workflow (standardized log and artifact checks, single headless notice, latest guards, dev checks), and atomic HTML/PDF writers used in tearsheet with no path/flag regressions.
+- Why: enable quick CPU experiments and catch regressions early while ensuring robust artifact writes.
+- Risks: sweeps may generate large artifacts; CI runtime may grow; padded HTML/PDF could hide empty content.
+- Migration: use `python -m bot_trade.tools.sweep` for experiments and run `python -m bot_trade.tools.dev_checks`; existing paths and flags unchanged.
+- Next: broaden algorithm coverage in sweeps and expand smoke tests.

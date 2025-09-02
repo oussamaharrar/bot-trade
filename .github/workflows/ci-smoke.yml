@@ -1,0 +1,42 @@
+name: CI Smoke
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux-cpu-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py
+      - run: python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready
+      - run: python -m bot_trade.train_rl --algorithm PPO --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 32 --batch-size 32 --total-steps 64 --headless --allow-synth --data-dir data_ready
+      - name: Verify logs and artifacts
+        run: |
+          log=$(ls logs/PPO/BTCUSDT/1m/*/train.log | tail -n1)
+          l1=$(grep -n '\[DEBUG_EXPORT\]' "$log" | tail -1 | cut -d: -f1)
+          l2=$(grep -n '\[CHARTS\]' "$log" | tail -1 | cut -d: -f1)
+          l3=$(grep -n '\[POSTRUN\]' "$log" | tail -1 | cut -d: -f1)
+          test "$l1" -lt "$l2" && test "$l2" -lt "$l3"
+          rid=$(basename "$(dirname "$log")")
+          charts_dir=reports/PPO/BTCUSDT/1m/$rid/charts
+          count=$(find "$charts_dir" -name '*.png' | wc -l)
+          test "$count" -ge 5
+          for f in "$charts_dir"/*.png; do test $(stat -c%s "$f") -gt 1024; done
+          test -f "$charts_dir/risk_flags.png"
+      - run: python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest | grep '\[EVAL\]'
+      - run: python -m bot_trade.tools.dev_checks
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts
+          path: |
+            logs/**/train.log
+            reports/**/charts/*
+            reports/**/performance/*
+            summary.csv
