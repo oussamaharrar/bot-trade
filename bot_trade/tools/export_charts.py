@@ -14,7 +14,7 @@ from typing import Dict, Any, Tuple
 
 import pandas as pd
 
-from bot_trade.config.rl_paths import RunPaths
+from bot_trade.config.rl_paths import RunPaths, DEFAULT_REPORTS_DIR
 from bot_trade.tools.atomic_io import write_png
 from bot_trade.tools.latest import latest_run
 from bot_trade.tools._headless import ensure_headless_once
@@ -305,7 +305,8 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI helper
     root = Path(ns.base) if ns.base else get_root()
     rid = ns.run_id
     if str(rid).lower() in {"latest", "last"}:
-        rid = latest_run(ns.symbol, ns.frame, root / "reports")
+        reports_root = (Path(ns.base).resolve() / "reports" if ns.base else Path(DEFAULT_REPORTS_DIR))
+        rid = latest_run(ns.symbol, ns.frame, reports_root / "PPO")
         if not rid:
             print("[LATEST] none")
             return 2

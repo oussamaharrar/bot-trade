@@ -183,3 +183,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: large sweeps may still be slow; smoke workflow covers only minimal steps.
 - Migration: run `python -m bot_trade.tools.sweep` for CPU grids; inspect `smoke.yml` for CI expectations.
 - Contracts: single headless notice preserved; `[LATEST] none` returns exit 2; CSV/MD/JSONL written atomically.
+
+## Developer Notes — 2025-10-06T00:00:00Z (Headless notice & latest guards)
+- What: consolidated single `[HEADLESS] backend=Agg` notice per CLI, moved backend selection into entrypoints, appended `[POSTRUN]` in `eval_run` with `eval_max_drawdown`, and hardened `--run-id latest` guards across export/eval/monitor.
+- Why: avoid duplicate headless prints, surface max drawdown in eval summaries, and ensure predictable exits when no runs exist.
+- Risks: base-directory overrides may still misalign with `BOT_REPORTS_DIR`.
+- Migration Steps: none; CLIs remain unchanged but consumers should expect updated headless line and POSTRUN metrics.
+- Next Actions: unify path resolution for custom report roots.

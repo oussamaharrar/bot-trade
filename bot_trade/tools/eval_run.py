@@ -167,6 +167,16 @@ def main(argv: list[str] | None = None) -> int:
         ts_path = generate_tearsheet(rp, pdf=args.pdf)
         print(f"[TEARSHEET] out={ts_path.resolve()}")
 
+    print(
+        "[POSTRUN] run_id=%s eval_win_rate=%s eval_sharpe=%s eval_max_drawdown=%s"
+        % (
+            run_id,
+            _fmt(summary.get("win_rate")),
+            _fmt(summary.get("sharpe")),
+            _fmt(summary.get("max_drawdown")),
+        )
+    )
+
     return 0
 
 

@@ -33,7 +33,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         root = Path(ns.base).resolve() if ns.base else get_root()
-        reports_root = Path(DEFAULT_REPORTS_DIR) / "PPO"
+        reports_root = (
+            Path(ns.base).resolve() / "reports" if ns.base else Path(DEFAULT_REPORTS_DIR)
+        )
+        reports_root = reports_root / "PPO"
         run_id = ns.run_id
         if run_id in {None, "latest", "", "last"}:
             run_id = latest_run(ns.symbol, ns.frame, reports_root)
