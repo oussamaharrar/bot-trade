@@ -165,6 +165,7 @@ def generate_tearsheet(rp, pdf: bool = False) -> Path:
                 write_pdf_atomic(pdf_path, pdf_bytes)
         except Exception:
             pass
+    print(f"[TEARSHEET] out={html_path.resolve()}")
     return html_path
 
 
@@ -190,11 +191,10 @@ def main(argv: list[str] | None = None) -> int:
         run_id = rid
     rp = RunPaths(ns.symbol, ns.frame, run_id)
     try:
-        out = generate_tearsheet(rp, pdf=ns.pdf)
+        generate_tearsheet(rp, pdf=ns.pdf)
     except Exception as exc:  # pragma: no cover
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
-    print(f"[TEARSHEET] out={out.resolve()}")
     return 0
 
 

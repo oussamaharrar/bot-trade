@@ -330,3 +330,18 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - `[POSTRUN]` lines report algorithm, win rate, sharpe and max drawdown.
 - evaluation modules: `equity.build_equity_drawdown`, `metrics.compute_all`, walk-forward summaries.
 - migration: KB entries now include `sortino`, `calmar` and `images_list`; update parsers accordingly.
+
+## 2025-09-02
+- **Files**: bot_trade/tools/export_charts.py, bot_trade/tools/monitor_manager.py, bot_trade/tools/eval_run.py, bot_trade/eval/metrics.py, bot_trade/eval/tearsheet.py, DEV_NOTES.md, CHANGE_NOTES.md
+- **Rationale**: unify headless prints, enforce latest guards, consolidate evaluation suite and enrich knowledge base entries.
+- **Risks**: downstream parsers may rely on prior metric ordering or KB fields.
+- **Test Steps**: `python -m py_compile bot_trade/**/*.py bot_trade/*.py`; run synth training and evaluation commands from quick verification.
+
+## Developer Notes — 2025-09-02 23:16:24 UTC
+- Unified headless single-notice in CLIs
+- Strict latest guards (exit=2)
+- Canonical [EVAL] then [POSTRUN] (includes algorithm & eval_max_drawdown)
+- Evaluation suite: metrics/equity/walk_forward/tearsheet
+- KB enrichment: metrics+images, duplicate run_id guard
+- Placeholders for sparse data; all outputs atomic
+- Migration notes for older scripts parsing POSTRUN

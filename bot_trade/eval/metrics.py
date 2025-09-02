@@ -182,23 +182,28 @@ def avg_trade_pnl(trades_df: 'pd.DataFrame') -> Optional[float]:
 
 
 def compute_all(
-    reward_df: 'pd.DataFrame', trades_df: 'pd.DataFrame', cfg: Dict[str, Any] | None = None
+    equity_df: 'pd.DataFrame | pd.Series', trades_df: 'pd.DataFrame', cfg: Dict[str, Any] | None = None
 ) -> Dict[str, float | None]:
-    """Compute standard evaluation metrics.
+    """Compute standard evaluation metrics from equity and trades.
 
-    Returns a dictionary with stable numeric ratios or ``None`` when
-    insufficient data is available.
+    ``equity_df`` may be a Series or a DataFrame containing an ``equity``
+    column. Numeric guards ensure ``None`` is returned for unstable ratios.
     """
 
     import pandas as pd
 
     period = (cfg or {}).get("period", "daily")
 
-    returns = pd.Series(dtype=float)
-    if reward_df is not None and not reward_df.empty and "reward" in reward_df:
-        returns = pd.to_numeric(reward_df["reward"], errors="coerce").dropna()
+    if equity_df is None or (hasattr(equity_df, "empty") and equity_df.empty):
+        eq = pd.Series(dtype=float)
+    elif isinstance(equity_df, pd.Series):
+        eq = pd.to_numeric(equity_df, errors="coerce").dropna()
+    else:
+        col = "equity" if "equity" in equity_df else equity_df.columns[0]
+        eq = pd.to_numeric(equity_df[col], errors="coerce").dropna()
 
-    eq = equity_from_rewards(reward_df, cfg)
+    returns = eq.diff().dropna()
+
     metrics = {
         "sharpe": sharpe(returns, period=period),
         "sortino": sortino(returns, period=period),

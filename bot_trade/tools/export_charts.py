@@ -12,12 +12,9 @@ import os
 from pathlib import Path
 from typing import Dict, Any, Tuple
 
-import pandas as pd
-
 from bot_trade.config.rl_paths import RunPaths, DEFAULT_REPORTS_DIR
 from bot_trade.tools.atomic_io import write_png
 from bot_trade.tools.latest import latest_run
-from bot_trade.tools._headless import ensure_headless_once
 
 
 # ---------------------------------------------------------------------------
@@ -36,12 +33,14 @@ ALIAS_MAP: Dict[str, str] = {
 
 def _read_csv_safe(
     path: Path, expected_cols: list[str] | None = None, alias_map: Dict[str, str] | None = None
-) -> pd.DataFrame:
+) -> "pd.DataFrame":
     """Read ``path`` returning an empty frame on failure.
 
     ``expected_cols`` ensures missing columns exist.  ``alias_map`` normalises
     column names (e.g. ``reward_total`` -> ``reward``).
     """
+
+    import pandas as pd
 
     if not path.exists() or path.is_dir():
         return pd.DataFrame(columns=expected_cols or [])
@@ -59,7 +58,9 @@ def _read_csv_safe(
     return df
 
 
-def _read_jsonl(path: Path) -> pd.DataFrame:
+def _read_jsonl(path: Path) -> "pd.DataFrame":
+    import pandas as pd
+
     if not path.exists() or path.is_dir():
         return pd.DataFrame()
     records = []
@@ -99,6 +100,7 @@ def export_run_charts(paths: RunPaths, run_id: str, debug: bool = False) -> Tupl
     Returns ``(charts_dir, image_count, rows_dict)``.
     """
 
+    import pandas as pd
     import matplotlib.pyplot as plt
 
     rp = paths if isinstance(paths, RunPaths) else RunPaths(paths.symbol, paths.frame, run_id)
@@ -289,7 +291,14 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI helper
     import argparse
     from bot_trade.config.rl_paths import get_root
 
-    ensure_headless_once("export_charts")
+    def _set_headless() -> None:
+        import matplotlib
+
+        if matplotlib.get_backend().lower() != "agg":
+            matplotlib.use("Agg")
+        print("[HEADLESS] backend=Agg")
+
+    _set_headless()
 
     ap = argparse.ArgumentParser(
         description="Export charts for a training run",
