@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import matplotlib
-matplotlib.use("Agg")
-
 from typing import Iterable, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -29,13 +26,28 @@ def _coerce_series(data):
     return s.dropna()
 
 
+def equity_from_rewards(step_df, cfg=None):
+    """Build an equity curve from reward/PNL logs.
+
+    ``step_df`` is expected to have a ``reward`` column. ``cfg`` may provide a
+    ``start`` value for the initial equity.
+    """
+    import pandas as pd
+
+    start = float(cfg.get("start", 0.0)) if isinstance(cfg, dict) else 0.0
+    if step_df is None or step_df.empty or "reward" not in step_df:
+        return pd.Series([start], dtype=float)
+    rewards = pd.to_numeric(step_df["reward"], errors="coerce").fillna(0.0)
+    equity = rewards.cumsum().add(start)
+    return equity
+
+
 def to_equity_from_returns(returns, start: float = 1.0):
     import pandas as pd
 
     s = _coerce_series(returns)
-    if s.empty:
-        return pd.Series([start], dtype=float)
-    return s.cumsum().add(start)
+    df = pd.DataFrame({"reward": s})
+    return equity_from_rewards(df, {"start": start})
 
 
 def sharpe(returns: Iterable[float] | 'pd.Series', rf: float = 0.0, period: str = "daily") -> Optional[float]:

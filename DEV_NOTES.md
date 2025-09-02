@@ -162,3 +162,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: misconfigured mappings may over-clamp values or miss logging; regime chart relies on adaptive_log presence.
 - Migration: supply `regime` config with thresholds, mappings, and weight/bound limits; parse `adaptive_log.jsonl` and KB `regime` field; expect `[LATEST] none` and single `[HEADLESS]` lines.
 - Next Actions: expand regime taxonomy and integrate distribution into analysis tools.
+
+## Developer Notes — 2025-09-02T06:03:52Z (Phase 2 — Evaluation Suite)
+- What: implemented equity-from-rewards curve, purged/embargoed walk-forward with aggregate keys, optional PDF tearsheet with trades/risk/regime panels, and PDF passthrough flags in eval_run/monitor_manager with embargo clamping.
+- Why: finalize evaluation suite with robust metrics and artifacts.
+- Risks: WFA needs sufficient data; PDF generation depends on optional libraries; placeholders may hide data gaps.
+- Migration: handle None ratios and new `splits` field in `wfa.json`; install PDF tools if needed.
+- Next Actions: enrich visualisation and add algorithm metadata to reports.
