@@ -309,3 +309,11 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Rationale**: ensure single `[HEADLESS] backend=Agg` notice per CLI, expose `eval_max_drawdown` on `[POSTRUN]`, and harden `--run-id latest` guards across export/eval/monitor tools.
 - **Risks**: base path overrides may diverge from `BOT_REPORTS_DIR`.
 - **Test Steps**: `python -m py_compile $(git ls-files '*.py')`; synthetic run `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --algorithm PPO --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 32 --batch-size 32 --total-steps 64 --headless --allow-synth --data-dir data_ready`; missing-run guards `python -m bot_trade.tools.monitor_manager --symbol FAKE --frame 1m --run-id latest; test $? -eq 2 && echo EXIT_CODE_2`; same for `export_charts` and `eval_run`; evaluation `python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest`.
+
+## Developer Notes — 2025-09-02 22:30:40 UTC
+- headless notice confined to module `main` ensuring a single `[HEADLESS] backend=Agg` line per CLI.
+- strict `[LATEST] none` guard (exit code 2) retained across export/monitor/eval tools.
+- `[POSTRUN]` lines now include `algorithm`, `eval_win_rate`, `eval_sharpe`, and `eval_max_drawdown`.
+- evaluation suite refined: metrics, walk-forward, and tearsheet utilities integrated through `tools.eval_run`.
+- RL algorithm registry uses lazy imports; off-policy stubs validate Box spaces and emit clear skip notices.
+- migration: callers continue using `--algorithm` for `train_rl`; TD3/TQC remain stubs exiting early.

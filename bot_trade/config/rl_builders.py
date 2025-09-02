@@ -18,7 +18,6 @@ from .rl_paths import best_agent, last_agent, get_root
 
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
-from stable_baselines3 import PPO, SAC
 
 # استيراد بيئتك
 from .env_trading import TradingEnv
@@ -199,6 +198,8 @@ def _resolve_ppo_warmstart(args) -> Path | None:
 
 
 def build_ppo(env, args, policy_kwargs):
+    from stable_baselines3 import PPO
+
     action_space, is_discrete = detect_action_space(env)
     use_sde = bool(args.sde and (not is_discrete))
     if args.sde and is_discrete:
@@ -233,6 +234,8 @@ def build_ppo(env, args, policy_kwargs):
 
 def build_sac(env, args, policy_kwargs):
     """Return a configured SAC model (from stable_baselines3)."""
+    from stable_baselines3 import SAC
+    from .env_config import get_config
     action_space, _ = detect_action_space(env)
     from gymnasium import spaces as gym_spaces
 
@@ -241,8 +244,6 @@ def build_sac(env, args, policy_kwargs):
         logging.getLogger(__name__).error(msg)
         print(msg, flush=True)
         raise SystemExit(1)
-
-    from .env_config import get_config
 
     cfg = get_config()
     rl_cfg = cfg.get("rl", {}) if isinstance(cfg, dict) else {}
@@ -325,12 +326,24 @@ def build_sac(env, args, policy_kwargs):
     return model
 
 
+def _require_box(env, name: str) -> None:
+    action_space, _ = detect_action_space(env)
+    from gymnasium import spaces as gym_spaces
+    if not isinstance(action_space, gym_spaces.Box):
+        msg = f"[ALGO] {name} requires a continuous (Box) action space, got {type(action_space).__name__}"
+        logging.getLogger(__name__).error(msg)
+        print(msg, flush=True)
+        raise SystemExit(1)
+
+
 def build_td3_stub(env, args, policy_kwargs):  # noqa: ARG001
+    _require_box(env, "TD3")
     print("[ALGO] TD3 not implemented yet", flush=True)
     raise SystemExit(2)
 
 
 def build_tqc_stub(env, args, policy_kwargs):  # noqa: ARG001
+    _require_box(env, "TQC")
     print("[ALGO] TQC not implemented yet", flush=True)
     raise SystemExit(2)
 
