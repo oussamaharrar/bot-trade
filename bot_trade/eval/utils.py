@@ -1,10 +1,5 @@
 from __future__ import annotations
 
-from __future__ import annotations
-
-import matplotlib
-matplotlib.use("Agg")
-
 from pathlib import Path
 from typing import TYPE_CHECKING
 
