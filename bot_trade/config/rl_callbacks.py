@@ -545,3 +545,34 @@ class CompositeCallback(BaseCallback):
             self.um.on_training_end()
         except Exception:
             pass
+
+class AdaptiveRegimeCallback(BaseCallback):
+    """Periodic regime detection and controller update."""
+
+    def __init__(self, controller, window: int = 100, verbose: int = 0):
+        super().__init__(verbose)
+        self.controller = controller
+        self.window = max(1, int(window))
+        self._last = 0
+
+    def _on_training_start(self) -> None:
+        self._update()
+
+    def _on_step(self) -> bool:
+        step = int(self.num_timesteps)
+        dones = self.locals.get("dones")
+        if step - self._last >= self.window or (dones is not None and any(dones)):
+            self._update()
+            self._last = step
+        return True
+
+    def _update(self) -> None:
+        try:
+            env0 = self.training_env.envs[0]
+            df = env0.df.loc[env0.current_symbol].iloc[: env0.ptr + 1]
+        except Exception:
+            df = None
+        try:
+            self.controller.update(df)
+        except Exception:
+            pass

@@ -382,3 +382,39 @@ risk:
     cooldown_steps: 50
   max_notional: null
   max_units: null
+
+regime:
+  thresholds:
+    volatility:
+      window: 20
+      high: 0.05
+    trend:
+      window: 20
+      up: 0.0005
+      down: -0.0005
+    spread_bp:
+      window: 5
+      high: 10
+    volume:
+      window: 20
+      low: 0.5
+  bounds:
+    max_spread_bp: {min: 0, max: 50}
+    exposure_cap: {min: 0.0, max: 1.0}
+    freeze_after_losses: {min: 1, max: 10}
+  mappings:
+    range:
+      reward_weights: {dd_penalty: 0.35, holding_penalty: 0.02, trend_bonus: 0.0}
+      risk_bounds: {max_spread_bp: 10, exposure_cap: 0.5, freeze_after_losses: 5}
+    trend_up:
+      reward_weights: {dd_penalty: 0.3, holding_penalty: 0.01, trend_bonus: 0.1}
+      risk_bounds: {max_spread_bp: 8, exposure_cap: 0.8, freeze_after_losses: 4}
+    trend_down:
+      reward_weights: {dd_penalty: 0.4, holding_penalty: 0.02, trend_bonus: -0.1}
+      risk_bounds: {max_spread_bp: 8, exposure_cap: 0.8, freeze_after_losses: 4}
+    high_vol:
+      reward_weights: {dd_penalty: 0.5, holding_penalty: 0.03, trend_bonus: 0.0}
+      risk_bounds: {max_spread_bp: 5, exposure_cap: 0.3, freeze_after_losses: 6}
+    low_liquidity:
+      reward_weights: {dd_penalty: 0.4, holding_penalty: 0.03, trend_bonus: 0.0}
+      risk_bounds: {max_spread_bp: 12, exposure_cap: 0.2, freeze_after_losses: 7}

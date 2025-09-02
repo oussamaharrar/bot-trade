@@ -126,3 +126,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: simplified slippage models and circuit breakers may misrepresent live conditions; downstream tooling must handle new log columns.
 - Migration: update parsing scripts to read `risk_flag` columns and optional execution metrics; adjust configs/CLIs if relying on previous fixed fills.
 - Next: refine depth-aware modelling and expand evaluation around circuit-breaker effectiveness.
+
+## Developer Notes — 2025-09-02T04:20:01Z (Regime-aware & hardening merge)
+- What: added regime detection & adaptive reward/risk controller; enforced log order [DEBUG_EXPORT]→[CHARTS]→[POSTRUN], risk flag CSV schema, placeholder risk_flags.png & regimes.png, [RISK_DIAG] no_flags_fired, headless notice, [LATEST] none exit 2.
+- Why: enable regime-aware training with robust execution safeguards.
+- Risks: misconfigured thresholds may mute controller; extra plotting adds overhead.
+- Migration: supply regime mappings in config, enable with --regime-aware; consumers should parse new adaptive_log.jsonl and KB.regime.
+- Next Actions: refine regime classifier and expose more metrics.

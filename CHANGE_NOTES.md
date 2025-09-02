@@ -236,3 +236,9 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Risks**: simplified execution may misprice fills; downstream tools must handle new risk_log order and diagnostic line.
 - **Migration Steps**: consume new CLI flags, update parsers for risk_log columns, accept optional `[RISK_DIAG]` output.
 - **Next Actions**: add regime detection interfaces and wire multi-algo registry.
+
+## 2025-09-02
+- **Files**: `bot_trade/strat/regime.py`, `bot_trade/strat/adaptive_controller.py`, `bot_trade/config/config.yaml`, `bot_trade/config/rl_args.py`, `bot_trade/config/rl_callbacks.py`, `bot_trade/train_rl.py`, `DEV_NOTES.md`
+- **Rationale**: add regime detection and adaptive reward/risk controller, integrate execution hardening logs and charts.
+- **Risks**: misconfigured thresholds may return unknown regimes; extra logging and plotting add minor overhead.
+- **Test Steps**: `python -m py_compile bot_trade/strat/regime.py bot_trade/strat/adaptive_controller.py bot_trade/config/rl_args.py bot_trade/config/rl_callbacks.py bot_trade/train_rl.py`; `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 128 --batch-size 128 --total-steps 256 --headless --allow-synth --data-dir data_ready --regime-aware --regime-log`; `python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --run-id latest --tearsheet`; `python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest --tearsheet`; `python -m bot_trade.tools.monitor_manager --symbol FAKE --frame 1m --run-id latest`.

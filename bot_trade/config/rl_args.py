@@ -233,6 +233,9 @@ def parse_args():
     ap.add_argument("--allow-partial-exec", action="store_true")
     ap.add_argument("--slippage-model", type=str, default=None)
     ap.add_argument("--slippage-params", type=str, default=None)
+    ap.add_argument("--regime-aware", action="store_true", help="Enable regime-aware adjustments")
+    ap.add_argument("--regime-window", type=int, default=0, help="Steps between regime checks")
+    ap.add_argument("--regime-log", action=argparse.BooleanOptionalAction, default=None, help="Log adaptive regime adjustments")
     ap.add_argument(
         "--algorithm",
         type=str,
@@ -256,6 +259,8 @@ def parse_args():
     defaults = vars(ap.parse_args([]))
     args = ap.parse_args()
     args._defaults = defaults
+    if args.regime_log is None:
+        args.regime_log = bool(args.regime_aware)
     level_name = str(getattr(args, "log_level", "INFO")).upper()
     import logging
     args.log_level = getattr(logging, level_name, logging.INFO)
