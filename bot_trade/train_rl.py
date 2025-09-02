@@ -157,6 +157,8 @@ def _postrun_summary(paths, meta):
         "sharpe": eval_summary.get("sharpe"),
         "max_drawdown": eval_summary.get("max_drawdown"),
         "avg_trade_pnl": eval_summary.get("avg_trade_pnl"),
+        "turnover": eval_summary.get("turnover"),
+        "slippage_proxy": eval_summary.get("slippage_proxy"),
     }
 
     portfolio_entry = {
@@ -1231,6 +1233,22 @@ def main():
 
     # Resolve dataset root (CLI > config.yaml > default)
     cfg = get_config()
+    exec_cfg = cfg.setdefault("execution", {})
+    if getattr(args, "slippage_model", None):
+        exec_cfg["model"] = args.slippage_model
+    if getattr(args, "slippage_params", None):
+        try:
+            import json as _json
+
+            exec_cfg["params"] = _json.loads(args.slippage_params)
+        except Exception:
+            pass
+    if getattr(args, "latency_ms", None) is not None:
+        exec_cfg["latency_ms"] = int(args.latency_ms)
+    if getattr(args, "allow_partial_exec", False):
+        exec_cfg["allow_partial"] = True
+    if getattr(args, "max_spread_bp", None) is not None:
+        exec_cfg["max_spread_bp"] = float(args.max_spread_bp)
     cfg_paths = cfg.get("project", {}).get("paths", {}) if isinstance(cfg, dict) else {}
     cfg_root = cfg_paths.get("ready_dir") or cfg_paths.get("data_dir")
     cli_root = getattr(args, "data_root", None)

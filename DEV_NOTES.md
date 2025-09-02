@@ -119,3 +119,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: resolver may miss unconventional layouts; warm-start assumes compatible feature extractors.
 - Migration: none, existing flags unchanged.
 - Next: implement full TD3/TQC support.
+
+## Developer Notes — 2025-09-29 (Execution realism & safety)
+- What: Added pluggable `ExecutionSim` with fixed/vol/depth-aware slippage, latency and partial fills; integrated circuit-breaker risk guards (spread jump, gap, liquidity, loss streak) plus exposure caps and execution diagnostics in step/risk logs. CLI overrides surface slippage model and latency; knowledge base and evaluation now track turnover and slippage_proxy.
+- Why: decouple order execution from environment and provide configurable safety rails for more realistic simulations.
+- Risks: simplified slippage models and circuit breakers may misrepresent live conditions; downstream tooling must handle new log columns.
+- Migration: update parsing scripts to read `risk_flag` columns and optional execution metrics; adjust configs/CLIs if relying on previous fixed fills.
+- Next: refine depth-aware modelling and expand evaluation around circuit-breaker effectiveness.

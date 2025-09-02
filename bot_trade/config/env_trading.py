@@ -7,6 +7,7 @@ import pandas as pd
 from gymnasium import Env, spaces
 
 from bot_trade.config.risk_manager import RiskManager
+from bot_trade.env.execution_sim import ExecutionSim
 from bot_trade.config.signals.entry_signals import generate_entry_signals
 from bot_trade.config.signals.danger_signals import detect_danger_signals
 from bot_trade.config.signals.freeze_signals import check_freeze_conditions
@@ -78,15 +79,37 @@ class TradingEnv(Env):
         risk_log = None
         try:
             if writers is not None and hasattr(writers, "paths"):
-                risk_log = writers.paths.get("risk_csv")
+                base_logs = writers.paths.get("logs")
+                risk_log = writers.paths.get("risk_log") or writers.paths.get("risk_csv")
+                if not risk_log and base_logs:
+                    risk_log = os.path.join(base_logs, "risk_log.csv")
         except Exception:
             pass
+        risk_cfg = (self.config or {}).get("risk", {})
+        cb_cfg = risk_cfg.get("circuit_breakers", {})
         self.risk_engine = RiskManager(
             dynamic_sizing=rm_cfg.get("dynamic_sizing", True),
             min_pct=rm_cfg.get("min_pct", 0.1),
             max_pct=rm_cfg.get("max_pct", 1.0),
             max_drawdown_stop=rm_cfg.get("max_drawdown_stop", 0.3),
             log_path=risk_log,
+            circuit_breakers=cb_cfg,
+            max_notional=risk_cfg.get("max_notional"),
+            max_units=risk_cfg.get("max_units"),
+        )
+        exec_cfg = (self.config or {}).get("execution", {})
+        model = exec_cfg.get("model", "fixed_bp")
+        params = exec_cfg.get("params", {"bp": 0})
+        latency_ms = int(exec_cfg.get("latency_ms", 0))
+        allow_partial = bool(exec_cfg.get("allow_partial", False))
+        fee_bp = float(exec_cfg.get("fee_bp", 0.0))
+        self.max_spread_bp = float(exec_cfg.get("max_spread_bp", float("inf")))
+        self.exec_sim = ExecutionSim(
+            model=model,
+            params=params,
+            latency_ms=latency_ms,
+            allow_partial=allow_partial,
+            fee_bp=fee_bp,
         )
         rw_cfg = (self.config or {}).get("reward_shaping", {})
         self.reward_tracker = RewardSignalTracker(rw_cfg)
@@ -245,29 +268,65 @@ class TradingEnv(Env):
         if danger:
             self.risk_pct = float(np.clip(self.risk_pct * 0.5, 0.0, 1.0))
 
-        fee = float(self.config.get("fees", {}).get("commission_pct", 0.0))
+        spread = float(row.get("spread", price * 0.0))
+        vol_val = float(row.get("volatility", 0.0))
+        depth = row.get("depth")
+        spread_bp = (spread / price * 10_000.0) if price > 0 else 0.0
+        risk_flag_info = None
+        if spread_bp > self.max_spread_bp:
+            risk_flag_info = ("spread_jump", "execution spread limit", spread_bp, self.max_spread_bp)
+            action = 0
+        else:
+            cb = self.risk_engine.check_circuit_breakers(
+                spread_bp=spread_bp,
+                depth=depth,
+            )
+            if cb:
+                risk_flag_info = cb
+                action = 0
+        if self.risk_engine.cooldown_active():
+            action = 0
+
+        traded_qty = 0.0
+        trade_side = None
+        exec_res = None
+        fee = float(self.exec_sim.fee_bp) / 10_000.0
         if action == 1 and self.usdt > 0.0:
             buy_amt = self.usdt * float(np.clip(self.risk_pct, 0.0, 1.0))
-            qty = buy_amt / price
-            cost = buy_amt * (1.0 + fee)
-            if cost <= self.usdt and qty > 0.0:
-                self.usdt -= cost
-                self.coin += qty
-                if self.entry_price is None:
-                    self.entry_price = price
-                traded_qty = qty
-                trade_side = "BUY"
+            qty = buy_amt / price if price > 0 else 0.0
+            if self.risk_engine.max_notional is not None:
+                max_qty_n = max(0.0, self.risk_engine.max_notional / max(price, 1e-9) - self.coin)
+                if qty > max_qty_n:
+                    risk_flag_info = ("exposure_cap", "notional", qty * price, self.risk_engine.max_notional)
+                    qty = max_qty_n
+            if self.risk_engine.max_units is not None and qty > (self.risk_engine.max_units - self.coin):
+                risk_flag_info = ("exposure_cap", "units", self.coin + qty, self.risk_engine.max_units)
+                qty = max(0.0, self.risk_engine.max_units - self.coin)
+            if qty > 0:
+                exec_res = self.exec_sim.execute("buy", qty, self.steps, price, spread, vol=vol_val, depth=depth)
+                cost = exec_res["filled_qty"] * exec_res["avg_price"] + exec_res["fees"]
+                if cost <= self.usdt:
+                    self.usdt -= cost
+                    self.coin += exec_res["filled_qty"]
+                    if self.entry_price is None:
+                        self.entry_price = exec_res["avg_price"]
+                    traded_qty = exec_res["filled_qty"]
+                    trade_side = "BUY"
         elif action == 2 and self.coin > 1e-12:
             sell_qty = self.coin * float(np.clip(self.risk_pct, 0.0, 1.0))
-            proceeds = sell_qty * price * (1.0 - fee)
+            exec_res = self.exec_sim.execute("sell", sell_qty, self.steps, price, spread, vol=vol_val, depth=depth)
+            proceeds = exec_res["filled_qty"] * exec_res["avg_price"] - exec_res["fees"]
             self.usdt += proceeds
-            self.coin -= sell_qty
-            traded_qty = sell_qty
+            self.coin -= exec_res["filled_qty"]
+            traded_qty = exec_res["filled_qty"]
             trade_side = "SELL"
 
         value = self.usdt + self.coin * price
         pnl = value - self.prev_value
         self.prev_value = value
+        cb_post = self.risk_engine.check_circuit_breakers(pnl=pnl)
+        if cb_post and not risk_flag_info:
+            risk_flag_info = cb_post
 
         self.equity_curve.append(value)
         if len(self.equity_curve) > 1:
@@ -308,6 +367,28 @@ class TradingEnv(Env):
             "entry_blocked": (decision_reason == "ai_guard"), "decision_reason": decision_reason,
             "term_reason": term_reason,
         }
+        if exec_res:
+            info.update(
+                {
+                    "slippage_bp": exec_res.get("slippage_bp"),
+                    "fees": exec_res.get("fees"),
+                    "latency_ms": exec_res.get("latency_ms"),
+                    "partial": exec_res.get("partial"),
+                    "spread_bp": spread_bp,
+                }
+            )
+        if risk_flag_info:
+            flag, reason, val, thr = risk_flag_info
+            self.risk_engine.record_flag(flag, reason, val, thr)
+            info.update(
+                {
+                    "risk_flag": flag,
+                    "flag_reason": reason,
+                    "risk_value": val,
+                    "risk_threshold": thr,
+                }
+            )
+        self.risk_engine.step_cooldown()
         comps["pnl"] = float(pnl_pct)
         comps["trade_cost"] = float(trade_cost)
         comps["dwell_pen"] = float(dwell_pen)

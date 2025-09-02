@@ -1,7 +1,7 @@
 import logging
 import os
 import time
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 import csv
 
 class RiskManager:
@@ -20,6 +20,9 @@ class RiskManager:
         unfreeze_patience: int = 5,
         unfreeze_threshold: float = 0.1,
         log_path: Optional[str] = None,
+        circuit_breakers: Optional[Dict[str, float]] = None,
+        max_notional: Optional[float] = None,
+        max_units: Optional[float] = None,
     ):
         self.logger = logging.getLogger(__name__)
         self.dynamic_sizing = bool(dynamic_sizing)
@@ -45,9 +48,21 @@ class RiskManager:
             os.makedirs(os.path.dirname(self.risk_log_path), exist_ok=True)
             with open(self.risk_log_path, "w", encoding="utf-8", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["reason", "risk_pct", "ema_reward", "drawdown", "freeze_mode"])
+                writer.writerow(["ts", "risk_flag", "flag_reason", "value", "threshold"])
         self._last_multi_log = 0.0
         self._last_neg_log = 0.0
+
+        cb = circuit_breakers or {}
+        self.cb_enable = bool(cb.get("enable", False))
+        self.cb_max_spread_bp = float(cb.get("max_spread_bp", 0.0))
+        self.cb_gap_sigma = float(cb.get("gap_sigma", float("inf")))
+        self.cb_loss_trades = int(cb.get("loss_streak_trades", 0))
+        self.cb_loss_pnl = float(cb.get("loss_streak_pnl", 0.0))
+        self.cb_cooldown_steps = int(cb.get("cooldown_steps", 0))
+        self.cb_cooldown = 0
+        self.pnl_hist: List[float] = []
+        self.max_notional = max_notional
+        self.max_units = max_units
 
     def log_risk_reason(self, reason: str):
         level = logging.INFO
@@ -67,17 +82,70 @@ class RiskManager:
             if now - last < throttle:
                 return
             setattr(self, attr, now)
-        if self.risk_log_path:
-            with open(self.risk_log_path, "a", encoding="utf-8", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow([
-                    reason,
-                    f"{self.current_risk:.4f}",
-                    f"{self.ema_reward:.4f}",
-                    f"{self.max_drawdown:.4f}",
-                    str(self.freeze_mode)
-                ])
+        self.record_flag("note", reason, self.current_risk, self.max_drawdown)
         self.logger.log(level, f"[RISK_LOG] {reason} | risk={self.current_risk:.3f}")
+
+    # ------------------------------------------------------------------
+    def record_flag(self, flag: str, reason: str, value: float, threshold: float) -> None:
+        if not self.risk_log_path:
+            return
+        ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        with open(self.risk_log_path, "a", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([ts, flag, reason, value, threshold])
+
+    # ------------------------------------------------------------------
+    def check_circuit_breakers(
+        self,
+        *,
+        spread_bp: float = 0.0,
+        gap_sigma: Optional[float] = None,
+        depth: Optional[float] = None,
+        pnl: Optional[float] = None,
+    ) -> Optional[Tuple[str, str, float, float]]:
+        if not self.cb_enable:
+            return None
+        if self.cb_max_spread_bp and spread_bp > self.cb_max_spread_bp:
+            self.cb_cooldown = self.cb_cooldown_steps
+            return (
+                "spread_jump",
+                "spread_bp too high",
+                float(spread_bp),
+                float(self.cb_max_spread_bp),
+            )
+        if gap_sigma is not None and gap_sigma > self.cb_gap_sigma:
+            self.cb_cooldown = self.cb_cooldown_steps
+            return (
+                "gap",
+                "gap sigma too high",
+                float(gap_sigma),
+                float(self.cb_gap_sigma),
+            )
+        if depth is not None and depth <= 0:
+            self.cb_cooldown = self.cb_cooldown_steps
+            return ("liquidity", "depth low", float(depth), 0.0)
+        if pnl is not None and self.cb_loss_trades > 0:
+            self.pnl_hist.append(float(pnl))
+            if len(self.pnl_hist) > self.cb_loss_trades:
+                self.pnl_hist = self.pnl_hist[-self.cb_loss_trades :]
+            if len(self.pnl_hist) == self.cb_loss_trades:
+                avg = sum(self.pnl_hist) / self.cb_loss_trades
+                if avg < self.cb_loss_pnl:
+                    self.cb_cooldown = self.cb_cooldown_steps
+                    return (
+                        "loss_streak",
+                        "rolling pnl below threshold",
+                        float(avg),
+                        float(self.cb_loss_pnl),
+                    )
+        return None
+
+    def cooldown_active(self) -> bool:
+        return self.cb_cooldown > 0
+
+    def step_cooldown(self) -> None:
+        if self.cb_cooldown > 0:
+            self.cb_cooldown -= 1
 
     def update(
         self,

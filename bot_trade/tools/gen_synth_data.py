@@ -23,6 +23,9 @@ def generate(symbol: str, frame: str, out_dir: Path) -> Path:
         "low": price - rng.random(periods),
         "close": price + rng.normal(0, 0.2, periods),
         "volume": rng.random(periods) * 10,
+        "spread": np.abs(rng.normal(0.05, 0.01, periods)),
+        "volatility": np.abs(rng.normal(0.5, 0.1, periods)),
+        "depth": rng.random(periods) * 5,
     })
     out_dir.mkdir(parents=True, exist_ok=True)
     sub = out_dir / frame

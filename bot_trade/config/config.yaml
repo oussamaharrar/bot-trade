@@ -363,3 +363,22 @@ risk_manager:
   dynamic_sizing: true
   max_drawdown_stop: 0.25
   reduce_size_below_equity: 0.2
+
+execution:
+  model: fixed_bp
+  params: { bp: 0 }
+  latency_ms: 0
+  allow_partial: false
+  fee_bp: 0.0
+  max_spread_bp: 15
+
+risk:
+  circuit_breakers:
+    enable: true
+    max_spread_bp: 25
+    gap_sigma: 6.0
+    loss_streak_trades: 5
+    loss_streak_pnl: -0.02
+    cooldown_steps: 50
+  max_notional: null
+  max_units: null

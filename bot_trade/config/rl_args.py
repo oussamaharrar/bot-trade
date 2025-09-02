@@ -228,6 +228,11 @@ def parse_args():
     ap.add_argument("--export-min-images", type=int, default=5)
     ap.add_argument("--debug-export", action="store_true")
     ap.add_argument("--allow-synth", action="store_true")
+    ap.add_argument("--latency-ms", type=int, default=None)
+    ap.add_argument("--max-spread-bp", type=float, default=None)
+    ap.add_argument("--allow-partial-exec", action="store_true")
+    ap.add_argument("--slippage-model", type=str, default=None)
+    ap.add_argument("--slippage-params", type=str, default=None)
     ap.add_argument(
         "--algorithm",
         type=str,
