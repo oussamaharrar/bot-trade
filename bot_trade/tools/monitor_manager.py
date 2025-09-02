@@ -9,11 +9,17 @@ from pathlib import Path
 from bot_trade.config.rl_paths import RunPaths, get_root, DEFAULT_REPORTS_DIR
 from bot_trade.tools.latest import latest_run
 from bot_trade.tools import export_charts
-from bot_trade.tools._headless import ensure_headless_once
 
 
 def main(argv: list[str] | None = None) -> int:
-    ensure_headless_once("monitor_manager")
+    def _set_headless() -> None:
+        import matplotlib
+
+        if matplotlib.get_backend().lower() != "agg":
+            matplotlib.use("Agg")
+        print("[HEADLESS] backend=Agg")
+
+    _set_headless()
     ap = argparse.ArgumentParser(
         description="Generate charts for a finished training run",
         epilog=(
@@ -62,8 +68,7 @@ def main(argv: list[str] | None = None) -> int:
         if ns.tearsheet:
             from bot_trade.eval.tearsheet import generate_tearsheet
 
-            ts_path = generate_tearsheet(rp, pdf=ns.pdf)
-            print(f"[TEARSHEET] out={ts_path.resolve()}")
+            generate_tearsheet(rp, pdf=ns.pdf)
         return 0 if images > 0 else 2
     except Exception as exc:  # pragma: no cover
         print(f"[ERROR] {exc}", file=sys.stderr)

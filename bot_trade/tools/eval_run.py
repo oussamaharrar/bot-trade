@@ -17,13 +17,13 @@ from typing import Dict, Any, List
 from bot_trade.config.rl_paths import RunPaths, DEFAULT_REPORTS_DIR
 from bot_trade.tools.atomic_io import write_json, write_png, write_text
 from bot_trade.tools.latest import latest_run
-from bot_trade.tools._headless import ensure_headless_once
 from bot_trade.tools import export_charts
+from bot_trade.tools.kb_writer import kb_append
 
 
 
 
-def evaluate_run(symbol: str, frame: str, run_id: str) -> Dict[str, Any]:
+def _evaluate_run(symbol: str, frame: str, run_id: str) -> tuple[Dict[str, Any], Dict[str, Any]]:
     """Compute evaluation metrics and equity/drawdown series."""
 
     import pandas as pd
@@ -38,7 +38,7 @@ def evaluate_run(symbol: str, frame: str, run_id: str) -> Dict[str, Any]:
     reward_df = load_reward_log(rp.logs)
     trades = load_trades(rp.logs)
     equity, drawdown = build_equity_drawdown(rp.logs)
-    metrics_dict = metrics.compute_all(reward_df, trades, {})
+    metrics_dict = metrics.compute_all(equity.to_frame(name="equity"), trades, {})
 
     summary: Dict[str, Any] = {
         "run_id": run_id,
@@ -74,11 +74,25 @@ def evaluate_run(symbol: str, frame: str, run_id: str) -> Dict[str, Any]:
     except Exception:
         pass
 
+    return summary, portfolio
+
+
+def evaluate_run(symbol: str, frame: str, run_id: str) -> Dict[str, Any]:
+    """Compatibility wrapper returning only the summary."""
+
+    summary, _ = _evaluate_run(symbol, frame, run_id)
     return summary
 
 
 def main(argv: list[str] | None = None) -> int:
-    ensure_headless_once("eval_run")
+    def _set_headless() -> None:
+        import matplotlib
+
+        if matplotlib.get_backend().lower() != "agg":
+            matplotlib.use("Agg")
+        print("[HEADLESS] backend=Agg")
+
+    _set_headless()
     p = argparse.ArgumentParser(
         description="Synthetic run evaluation",
         epilog=(
@@ -104,6 +118,14 @@ def main(argv: list[str] | None = None) -> int:
     rp = RunPaths(args.symbol, args.frame, str(run_id))
 
     charts_dir, img_count, rows = export_charts.export_run_charts(rp, run_id)
+    required = {"reward.png", "sharpe.png", "loss.png", "entropy.png", "risk_flags.png"}
+    for name in required:
+        p = charts_dir / name
+        if not p.exists():
+            try:
+                export_charts._placeholder(p, "NO DATA")
+            except Exception:
+                pass
     print(
         "[DEBUG_EXPORT] reward_rows=%d step_rows=%d train_rows=%d risk_rows=%d callbacks_rows=%d signals_rows=%d"
         % (
@@ -118,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[CHARTS] dir={charts_dir.resolve()} images={img_count}")
 
     try:
-        summary = evaluate_run(args.symbol, args.frame, run_id=run_id)
+        summary, portfolio = _evaluate_run(args.symbol, args.frame, run_id=run_id)
     except Exception as exc:  # pragma: no cover
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
@@ -128,14 +150,14 @@ def main(argv: list[str] | None = None) -> int:
         return f"{v:.3f}" if isinstance(v, (int, float)) and v is not None else "null"
 
     metrics_part = (
-        "{win_rate:%s, sharpe:%s, sortino:%s, calmar:%s, max_drawdown:%s, turnover:%s, avg_trade_pnl:%s}"
+        "{sharpe:%s, sortino:%s, calmar:%s, max_drawdown:%s, turnover:%s, win_rate:%s, avg_trade_pnl:%s}"
         % (
-            _fmt(summary.get("win_rate")),
             _fmt(summary.get("sharpe")),
             _fmt(summary.get("sortino")),
             _fmt(summary.get("calmar")),
             _fmt(summary.get("max_drawdown")),
             _fmt(summary.get("turnover")),
+            _fmt(summary.get("win_rate")),
             _fmt(summary.get("avg_trade_pnl")),
         )
     )
@@ -165,8 +187,64 @@ def main(argv: list[str] | None = None) -> int:
     if args.tearsheet:
         from bot_trade.eval.tearsheet import generate_tearsheet
 
-        ts_path = generate_tearsheet(rp, pdf=args.pdf)
-        print(f"[TEARSHEET] out={ts_path.resolve()}")
+        generate_tearsheet(rp, pdf=args.pdf)
+
+    images_list = sorted(
+        [p.name for p in charts_dir.glob("*.png") if p.is_file() and not p.is_symlink()]
+    )
+    kb_payload = {
+        "run_id": run_id,
+        "symbol": args.symbol,
+        "frame": args.frame,
+        "algorithm": rp.algo,
+        "ts": dt.datetime.utcnow().isoformat(),
+        "images": len(images_list),
+        "images_list": images_list,
+        "rows_reward": rows.get("reward", 0),
+        "rows_step": rows.get("step", 0),
+        "rows_train": rows.get("train", 0),
+        "rows_risk": rows.get("risk", 0),
+        "rows_callbacks": rows.get("callbacks", 0),
+        "rows_signals": rows.get("signals", 0),
+        "vecnorm_applied": rp.vecnorm_path.exists(),
+        "eval": {
+            "sharpe": summary.get("sharpe"),
+            "sortino": summary.get("sortino"),
+            "calmar": summary.get("calmar"),
+            "max_drawdown": summary.get("max_drawdown"),
+            "turnover": summary.get("turnover"),
+            "win_rate": summary.get("win_rate"),
+            "avg_trade_pnl": summary.get("avg_trade_pnl"),
+        },
+        "portfolio": portfolio,
+    }
+    reg_file = rp.performance_dir / "adaptive_log.jsonl"
+    if reg_file.exists():
+        try:
+            import json as _json
+            from collections import Counter
+
+            counts: Counter[str] = Counter()
+            active = ""
+            with reg_file.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        rec = _json.loads(line)
+                    except Exception:
+                        continue
+                    regime = rec.get("regime")
+                    if regime is None:
+                        continue
+                    regime = str(regime)
+                    counts[regime] += 1
+                    active = regime
+            total = sum(counts.values())
+            dist = {k: v / total for k, v in counts.items()} if total else {}
+            kb_payload["regime"] = {"active": active, "distribution": dist}
+        except Exception:
+            pass
+
+    kb_append(rp, kb_payload)
 
     print(
         "[POSTRUN] run_id=%s algorithm=%s eval_win_rate=%s eval_sharpe=%s eval_max_drawdown=%s"

@@ -197,3 +197,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: walk-forward outputs may be empty on small logs; downstream parsers must handle new KB fields.
 - Migration Steps: regenerate eval artifacts; update KB consumers for added fields.
 - Next Actions: broaden regime metrics and refine WFA robustness.
+
+## Developer Notes — 2025-09-02 23:16:24 UTC (Eval suite consolidation)
+- What: localized `[HEADLESS]` prints in export/eval/monitor CLIs, enriched KB entries with metrics and image names, moved `[TEARSHEET]` prints into generator, and switched metrics.compute_all to equity-based inputs.
+- Why: ensure single headless notice per CLI, avoid duplicate KB records, and finalize evaluation artifact workflow.
+- Risks: downstream parsers may expect previous metric order or tearsheet prints from callers.
+- Migration Steps: adjust scripts to new `[EVAL]` metric order and rely on `eval.tearsheet.generate_tearsheet` for its notice.
+- Next Actions: extend metrics and regime analytics across evaluation utilities.
