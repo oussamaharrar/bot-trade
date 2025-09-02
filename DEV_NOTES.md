@@ -176,3 +176,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: SAC fails on discrete actions; TD3/TQC currently unimplemented (exit 2).
 - Migration: specify `--algorithm` and ensure environments expose Box spaces for SAC; legacy PPO checkpoints remain readable.
 - Next Actions: implement full TD3/TQC builders and expand warm-start compatibility checks.
+
+## Developer Notes — 2025-10-04T00:00:00Z (Phase 4 — Sweep & Smoke)
+- What: added CPU-only `tools.sweep` CLI writing `runs.jsonl` and ranked `summary.csv`/`summary.md` with failure rows and atomic writers; extended `dev_checks` to assert log order, chart sizes and KB fields; introduced `smoke.yml` workflow running synth data, PPO train, eval, sweep and checks.
+- Why: provide quick experiment sweeps and automated end-to-end validation with algorithm metadata.
+- Risks: large sweeps may still be slow; smoke workflow covers only minimal steps.
+- Migration: run `python -m bot_trade.tools.sweep` for CPU grids; inspect `smoke.yml` for CI expectations.
+- Contracts: single headless notice preserved; `[LATEST] none` returns exit 2; CSV/MD/JSONL written atomically.

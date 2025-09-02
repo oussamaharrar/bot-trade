@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from bot_trade.tools._headless import ensure_headless_once
-from bot_trade.tools.atomic_io import write_text
+from bot_trade.tools.atomic_io import append_jsonl, write_text
 from bot_trade.config.rl_paths import RunPaths, DEFAULT_KB_FILE
 
 
@@ -22,7 +22,10 @@ def _parse_param_grid(grid: str) -> Dict[str, List[str]]:
         if "=" not in part:
             continue
         key, vals = part.split("=", 1)
-        params[key.strip()] = [v.strip() for v in vals.split("|") if v.strip()]
+        vals = vals.strip()
+        if vals.startswith("[") and vals.endswith("]"):
+            vals = vals[1:-1]
+        params[key.strip()] = [v.strip() for v in re.split(r"[|,]", vals) if v.strip()]
     return params
 
 
@@ -35,7 +38,7 @@ def _cartesian(params: Dict[str, List[str]]):
         yield {k: v for k, v in zip(keys, combo)}
 
 
-def _append_csv(path: Path, rows: List[Dict[str, str]], header: List[str]) -> None:
+def _write_csv(path: Path, rows: List[Dict[str, str]], header: List[str]) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     path.parent.mkdir(parents=True, exist_ok=True)
     with tmp.open("w", newline="", encoding="utf-8") as fh:
@@ -46,11 +49,11 @@ def _append_csv(path: Path, rows: List[Dict[str, str]], header: List[str]) -> No
     os.replace(tmp, path)
 
 
-def _to_float(v: str | None) -> float:
+def _to_float(v: str | None, default: float) -> float:
     try:
-        return float(v) if v not in {None, "", "null", "NaN"} else float("-inf")
+        return float(v) if v not in {None, "", "null", "NaN"} else default
     except Exception:
-        return float("-inf")
+        return default
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -65,7 +68,7 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("--headless", action="store_true")
     ap.add_argument("--data-dir", type=str, default=None)
     ap.add_argument("--out-dir", required=True)
-    ns = ap.parse_args(argv)
+    ns, rest = ap.parse_known_args(argv)
 
     out_dir = Path(ns.out_dir)
     if out_dir.exists() and out_dir.is_symlink():
@@ -127,95 +130,94 @@ def main(argv: List[str] | None = None) -> int:
                     str(batch),
                     "--total-steps",
                     str(total_steps),
-                    "--headless",
                 ]
+                if ns.headless:
+                    cmd.append("--headless")
                 if ns.allow_synth:
                     cmd.append("--allow-synth")
                 if ns.data_dir:
                     cmd.extend(["--data-dir", ns.data_dir])
+                cmd.extend(rest)
                 try:
                     proc = subprocess.run(
                         cmd, capture_output=True, text=True, check=False
                     )
                 except Exception as e:  # pragma: no cover
-                    rows.append(
-                        {
-                            "run_id": "",
-                            "algorithm": algo,
-                            "symbol": ns.symbol,
-                            "frame": ns.frame,
-                            "total_steps": str(total_steps),
-                            "n_steps": str(n_steps),
-                            "batch_size": str(batch),
-                            "eval_win_rate": "",
-                            "eval_sharpe": "",
-                            "eval_max_drawdown": "",
-                            "avg_trade_pnl": "",
-                            "images": "",
-                            "reward_lines": "",
-                            "step_lines": "",
-                            "train_lines": "",
-                            "risk_lines": "",
-                            "signals_lines": "",
-                            "status": "fail",
-                            "reason": f"exec err {e}",
-                        }
-                    )
-                    _append_csv(out_dir / "summary.csv", rows, header)
+                    row = {
+                        "run_id": "",
+                        "algorithm": algo,
+                        "symbol": ns.symbol,
+                        "frame": ns.frame,
+                        "total_steps": str(total_steps),
+                        "n_steps": str(n_steps),
+                        "batch_size": str(batch),
+                        "eval_win_rate": "",
+                        "eval_sharpe": "",
+                        "eval_max_drawdown": "",
+                        "avg_trade_pnl": "",
+                        "images": "",
+                        "reward_lines": "",
+                        "step_lines": "",
+                        "train_lines": "",
+                        "risk_lines": "",
+                        "signals_lines": "",
+                        "status": "fail",
+                        "reason": f"exec err {e}",
+                    }
+                    rows.append(row)
+                    append_jsonl(out_dir / "runs.jsonl", row)
                     continue
                 if proc.returncode != 0:
                     reason = f"exit={proc.returncode} tail={proc.stderr.strip()[-200:]}"
-                    rows.append(
-                        {
-                            "run_id": "",
-                            "algorithm": algo,
-                            "symbol": ns.symbol,
-                            "frame": ns.frame,
-                            "total_steps": str(total_steps),
-                            "n_steps": str(n_steps),
-                            "batch_size": str(batch),
-                            "eval_win_rate": "",
-                            "eval_sharpe": "",
-                            "eval_max_drawdown": "",
-                            "avg_trade_pnl": "",
-                            "images": "",
-                            "reward_lines": "",
-                            "step_lines": "",
-                            "train_lines": "",
-                            "risk_lines": "",
-                            "signals_lines": "",
-                            "status": "fail",
-                            "reason": reason,
-                        }
-                    )
-                    _append_csv(out_dir / "summary.csv", rows, header)
+                    row = {
+                        "run_id": "",
+                        "algorithm": algo,
+                        "symbol": ns.symbol,
+                        "frame": ns.frame,
+                        "total_steps": str(total_steps),
+                        "n_steps": str(n_steps),
+                        "batch_size": str(batch),
+                        "eval_win_rate": "",
+                        "eval_sharpe": "",
+                        "eval_max_drawdown": "",
+                        "avg_trade_pnl": "",
+                        "images": "",
+                        "reward_lines": "",
+                        "step_lines": "",
+                        "train_lines": "",
+                        "risk_lines": "",
+                        "signals_lines": "",
+                        "status": "fail",
+                        "reason": reason,
+                    }
+                    rows.append(row)
+                    append_jsonl(out_dir / "runs.jsonl", row)
                     continue
                 m = re.findall(r"\[POSTRUN\].*", proc.stdout)
                 if not m:
-                    rows.append(
-                        {
-                            "run_id": "",
-                            "algorithm": algo,
-                            "symbol": ns.symbol,
-                            "frame": ns.frame,
-                            "total_steps": str(total_steps),
-                            "n_steps": str(n_steps),
-                            "batch_size": str(batch),
-                            "eval_win_rate": "",
-                            "eval_sharpe": "",
-                            "eval_max_drawdown": "",
-                            "avg_trade_pnl": "",
-                            "images": "",
-                            "reward_lines": "",
-                            "step_lines": "",
-                            "train_lines": "",
-                            "risk_lines": "",
-                            "signals_lines": "",
-                            "status": "fail",
-                            "reason": "no postrun",
-                        }
-                    )
-                    _append_csv(out_dir / "summary.csv", rows, header)
+                    row = {
+                        "run_id": "",
+                        "algorithm": algo,
+                        "symbol": ns.symbol,
+                        "frame": ns.frame,
+                        "total_steps": str(total_steps),
+                        "n_steps": str(n_steps),
+                        "batch_size": str(batch),
+                        "eval_win_rate": "",
+                        "eval_sharpe": "",
+                        "eval_max_drawdown": "",
+                        "avg_trade_pnl": "",
+                        "images": "",
+                        "reward_lines": "",
+                        "step_lines": "",
+                        "train_lines": "",
+                        "risk_lines": "",
+                        "signals_lines": "",
+                        "status": "fail",
+                        "reason": "no postrun",
+                    }
+                    rows.append(row)
+                    append_jsonl(out_dir / "runs.jsonl", row)
                     continue
                 line = m[-1]
                 parts = dict(re.findall(r"(\w+)=([^ ]+)", line))
@@ -239,36 +241,46 @@ def main(argv: List[str] | None = None) -> int:
                         avg_pnl = meta.get("avg_trade_pnl", avg_pnl)
                     except Exception:
                         pass
-                rows.append(
-                    {
-                        "run_id": run_id,
-                        "algorithm": algo,
-                        "symbol": ns.symbol,
-                        "frame": ns.frame,
-                        "total_steps": str(total_steps),
-                        "n_steps": parts.get("n_steps", str(n_steps)),
-                        "batch_size": parts.get("batch_size", str(batch)),
-                        "eval_win_rate": parts.get("eval_win_rate", ""),
-                        "eval_sharpe": parts.get("eval_sharpe", ""),
-                        "eval_max_drawdown": parts.get("eval_max_drawdown", ""),
-                        "avg_trade_pnl": str(avg_pnl),
-                        "images": parts.get("images", ""),
-                        "reward_lines": parts.get("reward_lines", ""),
-                        "step_lines": parts.get("step_lines", ""),
-                        "train_lines": parts.get("train_lines", ""),
-                        "risk_lines": parts.get("risk_lines", ""),
-                        "signals_lines": parts.get("signals_lines", ""),
-                        "status": "ok",
-                        "reason": "",
-                    }
-                )
-                _append_csv(out_dir / "summary.csv", rows, header)
+                row = {
+                    "run_id": run_id,
+                    "algorithm": algo,
+                    "symbol": ns.symbol,
+                    "frame": ns.frame,
+                    "total_steps": str(total_steps),
+                    "n_steps": parts.get("n_steps", str(n_steps)),
+                    "batch_size": parts.get("batch_size", str(batch)),
+                    "eval_win_rate": parts.get("eval_win_rate", ""),
+                    "eval_sharpe": parts.get("eval_sharpe", ""),
+                    "eval_max_drawdown": parts.get("eval_max_drawdown", ""),
+                    "avg_trade_pnl": str(avg_pnl),
+                    "images": parts.get("images", ""),
+                    "reward_lines": parts.get("reward_lines", ""),
+                    "step_lines": parts.get("step_lines", ""),
+                    "train_lines": parts.get("train_lines", ""),
+                    "risk_lines": parts.get("risk_lines", ""),
+                    "signals_lines": parts.get("signals_lines", ""),
+                    "status": "ok",
+                    "reason": "",
+                }
+                rows.append(row)
+                append_jsonl(out_dir / "runs.jsonl", row)
 
-    # summary.md
+    rows_sorted = sorted(
+        rows,
+        key=lambda r: (
+            -_to_float(r.get("eval_sharpe"), float("-inf")),
+            _to_float(r.get("eval_max_drawdown"), float("inf")),
+        ),
+    )
+    _write_csv(out_dir / "summary.csv", rows_sorted, header)
+
+    ok_rows: List[Dict[str, str]] = []
     try:
-        ok_rows = [r for r in rows if r.get("status") == "ok"]
-        ok_rows.sort(key=lambda r: _to_float(r.get("eval_sharpe")), reverse=True)
-        lines = ["| run_id | algorithm | eval_sharpe | eval_win_rate | eval_max_drawdown | avg_trade_pnl |", "|---|---|---|---|---|---|"]
+        ok_rows = [r for r in rows_sorted if r.get("status") == "ok"]
+        lines = [
+            "| run_id | algorithm | eval_sharpe | eval_win_rate | eval_max_drawdown | avg_trade_pnl |",
+            "|---|---|---|---|---|---|",
+        ]
         for r in ok_rows:
             lines.append(
                 f"| {r['run_id']} | {r['algorithm']} | {r['eval_sharpe']} | {r['eval_win_rate']} | {r['eval_max_drawdown']} | {r['avg_trade_pnl']} |"
@@ -280,15 +292,14 @@ def main(argv: List[str] | None = None) -> int:
     best = "none"
     best_algo = ""
     best_sharpe = ""
-    if rows:
-        ok_rows = [r for r in rows if r.get("status") == "ok"]
-        if ok_rows:
-            ok_rows.sort(key=lambda r: _to_float(r.get("eval_sharpe")), reverse=True)
-            best = ok_rows[0]["run_id"]
-            best_algo = ok_rows[0]["algorithm"]
-            best_sharpe = ok_rows[0].get("eval_sharpe", "")
+    if ok_rows:
+        best = ok_rows[0]["run_id"]
+        best_algo = ok_rows[0]["algorithm"]
+        best_sharpe = ok_rows[0].get("eval_sharpe", "")
     abs_csv = (out_dir / "summary.csv").resolve()
-    print(f"[SWEEP] runs={total_runs} best_run={best} algo={best_algo} sharpe={best_sharpe} out={abs_csv}")
+    print(
+        f"[SWEEP] runs={total_runs} best_run={best} algo={best_algo} sharpe={best_sharpe} out={abs_csv}"
+    )
     return 0
 
 
