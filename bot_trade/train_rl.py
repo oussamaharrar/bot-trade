@@ -28,9 +28,6 @@ from bot_trade.config.rl_paths import (
     RunPaths,
     ensure_contract,
     DEFAULT_KB_FILE,
-    best_agent,
-    last_agent,
-    get_root,
 )
 from bot_trade.config.device import normalize_device, maybe_print_device_report
 from bot_trade.config.rl_callbacks import _save_vecnorm
@@ -200,6 +197,7 @@ def _postrun_summary(paths, meta):
 
     win_rate = eval_summary.get("win_rate")
     sharpe = eval_summary.get("sharpe")
+    max_dd = eval_summary.get("max_drawdown")
     line = (
         f"[POSTRUN] run_id={run_id} symbol={sym} frame={frm} algorithm={algo} "
         f"charts={charts_dir.resolve()} images={img_count} reward_lines={reward_lines} "
@@ -207,7 +205,8 @@ def _postrun_summary(paths, meta):
         f"vecnorm_applied={str(vec_applied).lower()} vecnorm_snapshot={str(vec_snapshot).lower()} "
         f"best={str(best_ok).lower()} last={str(last_ok).lower()} "
         f"eval_win_rate={(f'{win_rate:.3f}' if win_rate is not None else 'null')} "
-        f"eval_sharpe={(f'{sharpe:.3f}' if sharpe is not None else 'null')}"
+        f"eval_sharpe={(f'{sharpe:.3f}' if sharpe is not None else 'null')} "
+        f"eval_max_drawdown={(f'{max_dd:.3f}' if max_dd is not None else 'null')}"
     )
     logger.info(line)
     print(line, flush=True)
@@ -757,35 +756,6 @@ def train_one_file(args, data_file: str) -> bool:
 
                 args.learning_rate = lr_schedule
         model = build_algorithm(algo, vec_env, args, args.policy_kwargs)
-        if algo == "SAC" and getattr(args, "sac_warmstart_from_ppo", False):
-            candidates = []
-            cli_path = getattr(args, "warmstart_from_ppo", None)
-            if cli_path:
-                candidates.append(Path(cli_path))
-            candidates.append(best_agent(args.symbol, args.frame, "PPO"))
-            candidates.append(last_agent(args.symbol, args.frame, "PPO"))
-            legacy_dir = get_root() / "agents" / args.symbol.upper() / str(args.frame)
-            candidates.append(legacy_dir / "deep_rl_best.zip")
-            candidates.append(legacy_dir / "deep_rl_last.zip")
-            candidates.append(legacy_dir / "deep_rl.zip")
-            ppo_path = next((str(p) for p in candidates if p and os.path.exists(p)), None)
-            if ppo_path:
-                try:
-                    from stable_baselines3 import PPO as _PPO
-
-                    _ppo = _PPO.load(ppo_path, device=args.device_str)
-                    model.policy.features_extractor.load_state_dict(
-                        _ppo.policy.features_extractor.state_dict(), strict=False
-                    )
-                    logging.getLogger(__name__).info(
-                        "[ALGO] warm-started SAC feature extractor from %s", ppo_path
-                    )
-                except Exception as e:
-                    logging.getLogger(__name__).warning("[ALGO] warm-start skipped: %s", e)
-            else:
-                msg = "[ALGO] warm-start skipped: compatible PPO checkpoint not found"
-                print(msg)
-                logging.info(msg)
         if algo == "PPO":
             logging.info(
                 "[PPO] Built new model (device=%s, use_sde=%s)",

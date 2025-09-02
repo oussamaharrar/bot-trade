@@ -209,3 +209,9 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Tearsheet emits NO DATA placeholders and writes HTML/PDF atomically.
 - Risks: consumers must handle None metrics and env overrides.
 - Test Steps: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/eval/*.py bot_trade/train_rl.py`; synthetic run then `python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest --wfa-splits 4 --wfa-embargo 0.02 --tearsheet`.
+
+## 2025-09-28
+- **Files**: `bot_trade/config/rl_builders.py`, `bot_trade/train_rl.py`, `DEV_NOTES.md`, `CHANGE_NOTES.md`
+- **Rationale**: move SAC warm-start into builder with prioritized PPO checkpoint search and clearer Box-space guard logging.
+- **Risks**: warm-start resolver may miss unconventional layouts; assumes compatible feature extractors.
+- **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py`; `python -m bot_trade.train_rl --help`; PPO and SAC smoke runs verifying warm-start skip message.

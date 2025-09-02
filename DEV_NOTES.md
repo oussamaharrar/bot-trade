@@ -112,3 +112,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: consumers must handle None metrics and misconfigured report paths; PDF generation still depends on optional dependencies.
 - Migration: set BOT_REPORTS_DIR to redirect reports, handle None in metrics, and install `weasyprint` for PDF output.
 - Next: broaden stability checks to additional metrics and integrate more comprehensive tests.
+
+## Developer Notes — 2025-09-28T00:00:00Z (Phase 3 warm-start relocation)
+- What: moved SAC warm-start into `build_sac` with prioritized PPO checkpoint resolver; `train_rl` no longer duplicates logic.
+- Why: centralize algorithm-specific setup and keep CLI flags authoritative.
+- Risks: resolver may miss unconventional layouts; warm-start assumes compatible feature extractors.
+- Migration: none, existing flags unchanged.
+- Next: implement full TD3/TQC support.
