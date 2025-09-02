@@ -188,3 +188,16 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Risks: warm-start assumes compatible PPO feature extractors; path scoping may miss custom layouts.
 - Migration: use new --algorithm flag and algo-scoped helpers; legacy paths remain read-only fallbacks.
 - Next: implement full TD3/TQC support and expand SAC validation.
+
+## 2025-09-27
+- **Files**: `bot_trade/eval/*`, `bot_trade/tools/eval_run.py`, `bot_trade/tools/monitor_manager.py`, `bot_trade/tools/atomic_io.py`, `CHANGE_NOTES.md`
+- **Rationale**: add evaluation suite with metrics, walk-forward analysis, and tearsheet generation.
+- **Risks**: optional PDF generation may fail if dependencies missing; WFA requires sufficient data for splits.
+- **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/eval/*.py bot_trade/train_rl.py`; run synthetic training then `python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest --wfa-splits 4 --wfa-embargo 0.02 --tearsheet`.
+
+## Developer Notes — 2025-09-27T00:00:00Z (Phase 2 — Evaluation Suite)
+- Added eval package: metrics.py, walk_forward.py (purged/embargoed), tearsheet.py (HTML/PDF).
+- Extended eval_run summary with sortino/calmar/max_drawdown/turnover/slippage_proxy.
+- Added WFA CLI & Tearsheet CLI with headless Agg and atomic writes; placeholders on missing data.
+- Latest guards: [LATEST] none + exit=2 for walk_forward/tearsheet when no runs.
+- No breaking changes to existing flags/prints; heavy deps imported inside main().

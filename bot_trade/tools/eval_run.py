@@ -24,56 +24,56 @@ from bot_trade.tools._headless import ensure_headless_once
 
 def evaluate_run(
     symbol: str, frame: str, run_id: str | None = None, episodes: int = 10
-) -> Dict[str, float]:
+) -> Dict[str, float | None]:
     """Evaluate a training run using logged rewards or signals."""
 
-    import numpy as np
+    import pandas as pd
     import matplotlib.pyplot as plt
+    from bot_trade.eval import metrics
+    from bot_trade.eval.utils import load_reward_log, load_trades
 
-    if not run_id or str(run_id).lower() in {"latest", "last"}:
-        run_id = _latest_run(symbol, frame)
-        if not run_id:
-            raise RuntimeError("latest run-id not found")
+    if not run_id:
+        raise RuntimeError("run_id required")
 
     rp = RunPaths(symbol, frame, str(run_id))
-    paths = rp.as_dict()
     perf_dir = rp.performance_dir
 
-    rewards: List[float] = []
-    steps: List[int] = []
-    reward_path = Path(paths.get("reward_csv", rp.logs / "reward.log"))
-    if reward_path.exists():
-        for line in reward_path.read_text(encoding="utf-8").splitlines():
-            if not line.strip() or line.startswith("#"):
-                continue
-            parts = [p.strip() for p in line.split(",")]
-            try:
-                rewards.append(float(parts[-1]))
-                steps.append(int(parts[0]))
-            except Exception:
-                continue
+    reward_df = load_reward_log(rp.logs)
+    returns = reward_df["reward"] if not reward_df.empty else pd.Series(dtype=float)
+    steps = reward_df["step"].tolist() if not reward_df.empty else []
+    equity = metrics.to_equity_from_returns(returns, start=0.0)
+    drawdown = equity.cummax() - equity
+    trades = load_trades(rp.logs)
 
-    equity = np.cumsum(rewards) if rewards else np.array([0.0])
-    peaks = np.maximum.accumulate(equity)
-    drawdown = peaks - equity
-    returns = np.diff(equity, prepend=0)
+    sharpe = metrics.sharpe(returns)
+    sortino = metrics.sortino(returns)
+    calmar_ratio = metrics.calmar(equity)
+    max_dd = metrics.max_drawdown(equity)
+    turnover_val = metrics.turnover(trades)
+    slippage = metrics.slippage_proxy(trades)
+    win_rate_val = metrics.win_rate(trades)
+    avg_trade = metrics.avg_trade_pnl(trades)
 
-    win_rate = float((returns > 0).sum() / len(returns)) if len(returns) else 0.0
-    sharpe = float(np.mean(returns) / np.std(returns)) if np.std(returns) > 0 else 0.0
-    max_dd = float(drawdown.max()) if len(drawdown) else 0.0
-    avg_trade = float(np.mean(returns)) if len(returns) else 0.0
+    if win_rate_val is None and len(returns) > 0:
+        win_rate_val = float((returns > 0).mean())
+    if avg_trade is None and len(returns) > 0:
+        avg_trade = float(returns.mean())
 
     summary = {
-        "win_rate": win_rate,
+        "win_rate": win_rate_val,
         "sharpe": sharpe,
+        "sortino": sortino,
+        "calmar": calmar_ratio,
         "max_drawdown": max_dd,
+        "turnover": turnover_val,
         "avg_trade_pnl": avg_trade,
+        "slippage_proxy": slippage,
     }
     write_json(perf_dir / "summary.json", summary)
 
     portfolio = {
-        "equity": float(equity[-1]),
-        "cash": float(equity[-1]),
+        "equity": float(equity.iloc[-1]) if not equity.empty else 0.0,
+        "cash": float(equity.iloc[-1]) if not equity.empty else 0.0,
         "positions": {},
         "step": int(steps[-1]) if steps else 0,
         "ts": dt.datetime.utcnow().isoformat(),
@@ -109,10 +109,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--frame", required=True)
     p.add_argument("--run-id")
     p.add_argument("--episodes", type=int, default=10)
+    p.add_argument("--wfa-splits", type=int, default=0)
+    p.add_argument("--wfa-embargo", type=float, default=0.01)
+    p.add_argument("--tearsheet", action="store_true")
     args = p.parse_args(argv)
     run_id = args.run_id
     if not run_id or str(run_id).lower() in {"latest", "last"}:
-        rid = latest_run(args.symbol, args.frame)
+        rid = latest_run(args.symbol, args.frame, Path(DEFAULT_REPORTS_DIR) / "PPO")
         if not rid:
             print("[LATEST] none")
             return 2
@@ -126,17 +129,42 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
     out_dir = rp.performance_dir
+
+    def _fmt(v: Any) -> str:
+        return f"{v:.3f}" if isinstance(v, (int, float)) and v is not None else "null"
+
     print(
-        "[EVAL] run_id=%s metrics={win_rate:%.3f, sharpe:%.3f, max_drawdown:%.3f, avg_trade_pnl:%.3f} out=%s"
+        "[EVAL] run_id=%s metrics={win_rate:%s, sharpe:%s, sortino:%s, calmar:%s, max_drawdown:%s, turnover:%s, avg_trade_pnl:%s, slippage_proxy:%s} out=%s"
         % (
             run_id,
-            summary.get("win_rate", 0.0),
-            summary.get("sharpe", 0.0),
-            summary.get("max_drawdown", 0.0),
-            summary.get("avg_trade_pnl", 0.0),
+            _fmt(summary.get("win_rate")),
+            _fmt(summary.get("sharpe")),
+            _fmt(summary.get("sortino")),
+            _fmt(summary.get("calmar")),
+            _fmt(summary.get("max_drawdown")),
+            _fmt(summary.get("turnover")),
+            _fmt(summary.get("avg_trade_pnl")),
+            _fmt(summary.get("slippage_proxy")),
             out_dir.resolve(),
         )
     )
+
+    if args.wfa_splits:
+        from bot_trade.eval.walk_forward import walk_forward_eval
+
+        wfa_res = walk_forward_eval(rp.logs, n_splits=args.wfa_splits, embargo=args.wfa_embargo)
+        wfa_path = out_dir / "wfa.json"
+        write_json(wfa_path, wfa_res)
+        print(
+            f"[WFA] run_id={run_id} splits={args.wfa_splits} embargo={args.wfa_embargo} out={wfa_path.resolve()}"
+        )
+
+    if args.tearsheet:
+        from bot_trade.eval.tearsheet import generate_tearsheet
+
+        ts_path = generate_tearsheet(rp)
+        print(f"[TEARSHEET] out={ts_path.resolve()}")
+
     return 0
 
 
