@@ -30,7 +30,7 @@ from bot_trade.config.rl_paths import (
     DEFAULT_KB_FILE,
 )
 from bot_trade.config.device import normalize_device, maybe_print_device_report
-from bot_trade.config.rl_callbacks import _save_vecnorm
+from bot_trade.config.rl_callbacks import _save_vecnorm, AdaptiveRegimeCallback
 from bot_trade.config.rl_args import validate_args, clamp_batch, auto_shape_resources
 from bot_trade.config.log_setup import drain_log_queue
 from bot_trade.tools import export_charts
@@ -43,6 +43,9 @@ from bot_trade.tools.run_state import (
     write_run_state_files,
 )
 from bot_trade.tools._headless import ensure_headless_once
+
+
+from bot_trade.strat.adaptive_controller import AdaptiveController
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
 # imported inside `main` to keep import-time side effects minimal and to
@@ -59,6 +62,24 @@ from bot_trade.tools._headless import ensure_headless_once
 
 
 
+
+from bot_trade.tools.atomic_io import write_png
+import matplotlib
+matplotlib.use("Agg")
+from matplotlib import pyplot as plt
+
+def _write_regime_chart(charts_dir, dist):
+    fig, ax = plt.subplots()
+    if dist:
+        names = list(dist.keys())
+        vals = [dist[k] for k in names]
+        ax.bar(names, vals)
+        ax.set_ylabel("proportion")
+    else:
+        ax.text(0.5,0.5,"NO DATA", ha="center", va="center")
+        ax.set_axis_off()
+    write_png(Path(charts_dir) / "regimes.png", fig, dpi=120)
+    plt.close(fig)
 
 def _postrun_summary(paths, meta):
     logger = logging.getLogger()
@@ -105,6 +126,14 @@ def _postrun_summary(paths, meta):
             img_count = 0
             row_counts = {}
             logger.warning("[POSTRUN_EXPORT] export_failed err=%s", e)
+    reg = meta.get("regime", {})
+    dist = reg.get("distribution", {}) if isinstance(reg, dict) else {}
+    if dist is not None:
+        try:
+            _write_regime_chart(charts_dir, dist)
+            img_count += 1
+        except Exception:
+            pass
     rows_reward = row_counts.get("reward", 0)
     rows_step = row_counts.get("step", 0)
     rows_train = row_counts.get("train", 0)
@@ -191,6 +220,7 @@ def _postrun_summary(paths, meta):
             "best_model_path": str(rp.best_model.resolve()),
             "eval": eval_entry,
             "portfolio": portfolio_entry,
+            "regime": meta.get("regime"),
             "notes": str(meta.get("notes", "")),
         }
         kb_append(rp, kb_entry)
@@ -564,6 +594,16 @@ def train_one_file(args, data_file: str) -> bool:
     vecnorm_ref = vec_env if getattr(args, "vecnorm", False) else None
 
     # expose risk manager for snapshots/resume
+    controller = None
+    if getattr(args, "regime_aware", False):
+        base_env = None
+        try:
+            base_env = vec_env.envs[0]
+        except Exception:
+            pass
+        log_path = paths_obj.performance_dir / "adaptive_log.jsonl" if getattr(args, "regime_log", False) else None
+        controller = AdaptiveController(cfg.get("regime", {}), env=base_env, log_path=log_path)
+
     risk_manager = None
     try:
         risk_manager = vec_env.get_attr("risk_engine")[0]
@@ -804,6 +844,9 @@ def train_one_file(args, data_file: str) -> bool:
     )
     extras.append(periodic_cb)
 
+    if controller is not None:
+        extras.append(AdaptiveRegimeCallback(controller, window=max(1, int(getattr(args, "regime_window", 0) or 100))))
+
     eval_cb: Optional[EvalCallback] = None
     if cfg.get("eval", {}).get("enable", True):
         eval_cb = EvalSaveCallback(
@@ -902,6 +945,8 @@ def train_one_file(args, data_file: str) -> bool:
                 "best_model": best_path,
                 "vecnorm_snapshot_saved": saved_vec,
             })
+            if controller:
+                run_meta["regime"] = {"active": controller.last_regime, "distribution": controller.get_distribution()}
             paths_obj.write_run_meta({
                 "vecnorm_applied": vecnorm_applied,
                 "best_model_path": best_path,
