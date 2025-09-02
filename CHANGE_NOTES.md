@@ -79,6 +79,7 @@ PY`
 ## Developer Notes — 2025-09-23
 - A) KB: canonical JSONL appender; atomic writes; schema stabilized; integrated after charts+eval+state.
 
+
 ## 2025-09-01
 - **Files**: `bot_trade/config/rl_args.py`, `bot_trade/config/device.py`, `bot_trade/config/log_setup.py`, `bot_trade/tools/monitor_launch.py`, `bot_trade/tools/run_state.py`, `bot_trade/train_rl.py`, `DEV_NOTES.md`, `CHANGE_NOTES.md`
 - **Rationale**: split train orchestrator utilities into dedicated modules and merge duplicate run-state helpers.
@@ -228,3 +229,10 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Rationale**: introduce pluggable execution simulator with slippage/latency models, add circuit-breaker risk guards and exposure caps, surface execution metrics via logs and CLI overrides, and extend knowledge base schema.
 - **Risks**: simplified models may not capture real market behavior; new risk flags require downstream parsers to handle additional columns.
 - **Test Steps**: `python -m py_compile bot_trade/env/execution_sim.py bot_trade/config/env_trading.py bot_trade/config/risk_manager.py bot_trade/config/rl_callbacks.py bot_trade/config/rl_args.py bot_trade/tools/gen_synth_data.py bot_trade/tools/kb_writer.py bot_trade/train_rl.py`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 256 --batch-size 256 --total-steps 512 --headless --allow-synth --data-dir data_ready --slippage-model vol_aware --slippage-params '{"k":0.5,"vol_window":50}' --latency-ms 40 --max-spread-bp 20 --allow-partial-exec`; `python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --run-id latest --tearsheet`
+
+## Developer Notes — 2025-09-02 03:41:34Z
+- **What**: execution simulator models with unified params; structured risk circuit breakers and logs; CLI overrides for slippage/latency/partial/max-spread; evaluation turnover & slippage proxies; headless prints and latest guards unified; POSTRUN/KB enriched with algorithm and eval_max_drawdown.
+- **Why**: prepare pluggable execution and risk safety foundation with consistent reporting.
+- **Risks**: simplified execution may misprice fills; downstream tools must handle new risk_log order and diagnostic line.
+- **Migration Steps**: consume new CLI flags, update parsers for risk_log columns, accept optional `[RISK_DIAG]` output.
+- **Next Actions**: add regime detection interfaces and wire multi-algo registry.

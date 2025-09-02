@@ -123,6 +123,8 @@ def _postrun_summary(paths, meta):
         )
     )
     print(f"[CHARTS] dir={charts_dir.resolve()} images={img_count}")
+    if rows_risk == 0:
+        print("[RISK_DIAG] no_flags_fired (smoke run)")
 
     agents_base = Path(rp.agents)
     best = agents_base / "deep_rl_best.zip"
