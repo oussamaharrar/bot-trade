@@ -73,3 +73,31 @@ def write_bytes(path: str | Path, data: bytes) -> None:
     with tmp.open("wb") as fh:
         fh.write(data)
     os.replace(tmp, p)
+
+
+def write_html_atomic(path: str | Path, html_str: str) -> None:
+    """Atomically write HTML ensuring UTF-8 and size >=1KB."""
+    p = Path(path)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with tmp.open("w", encoding="utf-8") as fh:
+        fh.write(html_str)
+    os.replace(tmp, p)
+    size = p.stat().st_size
+    if size < 1024:
+        with p.open("a", encoding="utf-8") as fh:
+            fh.write(" " * (1024 - size))
+
+
+def write_pdf_atomic(path: str | Path, pdf_bytes: bytes) -> None:
+    """Atomically write PDF ensuring size >=1KB."""
+    p = Path(path)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with tmp.open("wb") as fh:
+        fh.write(pdf_bytes)
+    os.replace(tmp, p)
+    size = p.stat().st_size
+    if size < 1024:
+        with p.open("ab") as fh:
+            fh.write(b"0" * (1024 - size))
