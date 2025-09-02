@@ -424,6 +424,10 @@ regime:
     max_spread_bp: {min: 0, max: 50}
     exposure_cap: {min: 0.0, max: 1.0}
     freeze_after_losses: {min: 1, max: 10}
+  weight_limits:
+    dd_penalty: {min: 0.0, max: 1.0}
+    holding_penalty: {min: 0.0, max: 1.0}
+    trend_bonus: {min: -1.0, max: 1.0}
   mappings:
     range:
       reward_weights: {dd_penalty: 0.35, holding_penalty: 0.02, trend_bonus: 0.0}

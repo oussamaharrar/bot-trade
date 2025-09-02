@@ -225,6 +225,36 @@ def export_run_charts(paths: RunPaths, run_id: str, debug: bool = False) -> Tupl
         _placeholder(charts_dir / "safety.png", "NO DATA")
         images += 1
 
+    # regimes distribution chart
+    reg_file = rp.performance_dir / "adaptive_log.jsonl"
+    dist: Dict[str, float] = {}
+    if reg_file.exists():
+        try:
+            import json
+            from collections import Counter
+
+            counts: Counter[str] = Counter()
+            with reg_file.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        rec = json.loads(line)
+                        counts[str(rec.get("regime", "unknown"))] += 1
+                    except Exception:
+                        continue
+            total = sum(counts.values())
+            if total > 0:
+                dist = {k: v / total for k, v in counts.items()}
+        except Exception:
+            dist = {}
+    if dist:
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.bar(list(dist.keys()), list(dist.values()))
+        ax.set_title("regimes")
+        save_fig(fig, "regimes.png")
+    else:
+        _placeholder(charts_dir / "regimes.png", "NO DATA")
+        images += 1
+
     images = len([p for p in charts_dir.glob("*.png") if p.is_file() and not p.is_symlink()])
 
     rows = {

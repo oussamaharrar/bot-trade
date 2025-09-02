@@ -261,3 +261,9 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Risks**: external imports from removed modules may fail until switched to `strategy_features`.
 - **Test Steps**: `python -m py_compile bot_trade/config/strategy_features.py bot_trade/config/rl_callbacks.py bot_trade/train_rl.py`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 32 --batch-size 32 --total-steps 64 --headless --allow-synth --data-dir data_ready`
 
+## 2025-10-02
+- **Files**: `bot_trade/config/config.yaml`, `bot_trade/strat/adaptive_controller.py`, `bot_trade/config/strategy_features.py`, `bot_trade/tools/export_charts.py`, `bot_trade/tools/kb_writer.py`, `bot_trade/DEV_NOTES.md`, `CHANGE_NOTES.md`
+- **Rationale**: add regime weight limits with clamped controller, log strategy_failure as risk flag, export regimes chart, and extend KB schema with regime summary.
+- **Risks**: misconfigured limits may over-clamp adjustments; charts rely on adaptive_log presence.
+- **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/strat/*.py bot_trade/train_rl.py`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 32 --batch-size 32 --total-steps 64 --headless --allow-synth --data-dir data_ready --regime-aware --regime-log --regime-window 5`; `python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --run-id latest --tearsheet`; `python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest --tearsheet`; `python -m bot_trade.tools.monitor_manager --symbol FAKE --frame 1m --run-id latest`
+

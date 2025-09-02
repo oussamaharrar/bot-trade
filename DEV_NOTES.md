@@ -154,4 +154,11 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Why: remove duplicate files and centralize strategy utilities.
 - Risks: code still importing `config.strategy_failure` must switch to `config.strategy_features`.
 - Migration: replace imports with `from bot_trade.config import strategy_features`.
-- Next Actions: watch for edge cases in merged failure logic.
+  - Next Actions: watch for edge cases in merged failure logic.
+
+## Developer Notes — 2025-10-02T00:00:00Z (Regime controller & safety)
+- What: added regime detection with adaptive reward/risk controller, single headless notice helper, latest-run guards, strategy_failure as risk flag, and ensured regimes.png/adaptive_log.jsonl artifacts.
+- Why: tune behaviour per market regime, avoid duplicate CLI prints, surface missing runs, keep risk logging invariant, and track regime adjustments.
+- Risks: misconfigured mappings may over-clamp values or miss logging; regime chart relies on adaptive_log presence.
+- Migration: supply `regime` config with thresholds, mappings, and weight/bound limits; parse `adaptive_log.jsonl` and KB `regime` field; expect `[LATEST] none` and single `[HEADLESS]` lines.
+- Next Actions: expand regime taxonomy and integrate distribution into analysis tools.
