@@ -29,7 +29,7 @@ from bot_trade.config.rl_paths import (
     ensure_contract,
     DEFAULT_KB_FILE,
     best_agent,
-    latest_agent,
+    last_agent,
 )
 from bot_trade.config.device import normalize_device, maybe_print_device_report
 from bot_trade.config.rl_callbacks import _save_vecnorm
@@ -429,36 +429,22 @@ def train_one_file(args, data_file: str) -> bool:
     # merge CLI overrides into cfg surface
     if algo == "SAC":
         sac_cfg = cfg.setdefault("sac", {})
-        overrides = {}
         if args.buffer_size is not None:
             sac_cfg["buffer_size"] = int(args.buffer_size)
-            overrides["buffer_size"] = int(args.buffer_size)
         if args.learning_starts is not None:
             sac_cfg["learning_starts"] = int(args.learning_starts)
-            overrides["learning_starts"] = int(args.learning_starts)
         if args.train_freq is not None:
             sac_cfg["train_freq"] = int(args.train_freq)
-            overrides["train_freq"] = int(args.train_freq)
         if args.gradient_steps is not None:
             sac_cfg["gradient_steps"] = int(args.gradient_steps)
-            overrides["gradient_steps"] = int(args.gradient_steps)
         if args.batch_size is not None:
             sac_cfg["batch_size"] = int(args.batch_size)
-            overrides["batch_size"] = int(args.batch_size)
         if args.tau is not None:
             sac_cfg["tau"] = float(args.tau)
-            overrides["tau"] = float(args.tau)
         if args.ent_coef is not None:
             sac_cfg["ent_coef"] = args.ent_coef
-            overrides["ent_coef"] = args.ent_coef
         if getattr(args, "sac_gamma", None) is not None:
             sac_cfg["gamma"] = float(args.sac_gamma)
-            overrides["gamma"] = float(args.sac_gamma)
-        if overrides:
-            line = ", ".join(f"{k}={v}" for k, v in overrides.items())
-            msg = f"[ALGO] SAC overrides: {line}"
-            print(msg)
-            logging.info(msg)
     else:
         ppo_cfg = cfg.setdefault("ppo", {})
         ppo_cfg.update({
@@ -766,7 +752,7 @@ def train_one_file(args, data_file: str) -> bool:
             if not ppo_path:
                 ppo_path = str(best_agent(args.symbol, args.frame, "PPO"))
                 if not os.path.exists(ppo_path):
-                    ppo_path = str(latest_agent(args.symbol, args.frame, "PPO"))
+                    ppo_path = str(last_agent(args.symbol, args.frame, "PPO"))
             if ppo_path and os.path.exists(ppo_path):
                 try:
                     from stable_baselines3 import PPO as _PPO

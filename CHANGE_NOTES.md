@@ -175,3 +175,10 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Rationale**: registry-based algorithm selection with SAC warm-start option, legacy path fallbacks, and algorithm metadata in KB and post-run lines.
 - **Risks**: fallback detection may miss atypical layouts; warm-start assumes PPO checkpoints are compatible; TD3/TQC not yet implemented.
 - **Test Steps**: `python -m py_compile bot_trade/config/rl_builders.py bot_trade/config/rl_args.py bot_trade/config/rl_paths.py bot_trade/tools/kb_writer.py bot_trade/train_rl.py`, `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --total-steps 1 --n-envs 1 --n-steps 1 --batch-size 1 --headless --allow-synth`, `python -m bot_trade.train_rl --algorithm SAC --symbol BTCUSDT --frame 1m --total-steps 1 --n-envs 1 --n-steps 1 --batch-size 1 --headless --allow-synth; test $? -eq 1`, run a small script calling `build_algorithm('SAC', Pendulum-v1)` to verify warm-start skip message.
+
+## Developer Notes — 2025-09-02T00:02:38Z (Phase 3)
+- What: registry builder with SAC/TD3/TQC entries, SAC action-space guard & override prints, optional warm-start, algorithm-scoped paths with legacy read-only fallback, POSTRUN/KB include algorithm, explicit exit codes.
+- Why: enable multi-algorithm training and clear user feedback.
+- Risks: path resolution may miss atypical layouts; warm-start assumes PPO checkpoints compatible.
+- Migration: prefer new algo-scoped helpers (`last_agent`, `best_agent`); legacy paths remain read-only.
+- Next: implement TD3/TQC algorithms.

@@ -19,7 +19,7 @@ KB_DEFAULTS = {
     "run_id": "",
     "symbol": "",
     "frame": "",
-    "algorithm": "PPO",
+    "algorithm": None,
     "ts": None,
     "images": 0,
     "rows_reward": 0,

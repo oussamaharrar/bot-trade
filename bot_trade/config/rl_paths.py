@@ -128,18 +128,6 @@ def _legacy_agents_dir(symbol: str, frame: str, run_id: str | None = None) -> Pa
         base = base / run_id
     return base
 
-
-def latest_agent(symbol: str, frame: str, algo: str | None = None, run_id: str | None = None) -> Path:
-    """Return path to the latest agent checkpoint with legacy fallback."""
-
-    path = agents_dir(symbol, frame, algo, run_id) / "deep_rl.zip"
-    if not path.exists():
-        legacy = _legacy_agents_dir(symbol, frame, run_id) / "deep_rl.zip"
-        if legacy.exists():
-            return legacy
-    return path
-
-
 def best_agent(symbol: str, frame: str, algo: str | None = None, run_id: str | None = None) -> Path:
     """Return path to the best agent checkpoint with legacy fallback."""
 
@@ -149,6 +137,27 @@ def best_agent(symbol: str, frame: str, algo: str | None = None, run_id: str | N
         if legacy.exists():
             return legacy
     return path
+
+
+def last_agent(symbol: str, frame: str, algo: str | None = None, run_id: str | None = None) -> Path:
+    """Return path to the last agent checkpoint with legacy fallback."""
+
+    path = agents_dir(symbol, frame, algo, run_id) / "deep_rl_last.zip"
+    if not path.exists():
+        legacy_dir = _legacy_agents_dir(symbol, frame, run_id)
+        legacy = legacy_dir / "deep_rl_last.zip"
+        if legacy.exists():
+            return legacy
+        legacy_alt = legacy_dir / "deep_rl.zip"
+        if legacy_alt.exists():
+            return legacy_alt
+    return path
+
+
+def latest_agent(symbol: str, frame: str, algo: str | None = None, run_id: str | None = None) -> Path:
+    """Alias for :func:`last_agent` kept for backward compatibility."""
+
+    return last_agent(symbol, frame, algo, run_id)
 
 
 def vecnorm_path(symbol: str, frame: str) -> Path:
