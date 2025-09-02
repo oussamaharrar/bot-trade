@@ -30,6 +30,7 @@ from bot_trade.config.rl_paths import (
     DEFAULT_KB_FILE,
     best_agent,
     last_agent,
+    get_root,
 )
 from bot_trade.config.device import normalize_device, maybe_print_device_report
 from bot_trade.config.rl_callbacks import _save_vecnorm
@@ -362,10 +363,19 @@ def train_one_file(args, data_file: str) -> bool:
         run_id = getattr(args, "run_id", None) or new_run_id(args.symbol, args.frame)
     args.run_id = run_id
     cfg = get_config()
-    algo_cli = getattr(args, "algorithm", None)
-    algo_cfg = cfg.get("rl", {}).get("algorithm", "PPO")
-    algo = (algo_cli or algo_cfg or "PPO").upper()
-    source = "cli" if algo_cli else "config"
+    algo_cli = getattr(args, "algorithm", "PPO")
+    defaults = getattr(args, "_defaults", {})
+    user_set = algo_cli != defaults.get("algorithm")
+    algo_cfg = cfg.get("rl", {}).get("algorithm")
+    if user_set:
+        algo = algo_cli.upper()
+        source = "cli"
+    elif algo_cfg:
+        algo = str(algo_cfg).upper()
+        source = "config"
+    else:
+        algo = str(algo_cli or "PPO").upper()
+        source = "cli"
     args.algorithm = algo
     ts = dt.datetime.utcnow().isoformat()
     msg = f"[ALGO] selected={algo} source={source} ts={ts}"
@@ -748,12 +758,18 @@ def train_one_file(args, data_file: str) -> bool:
                 args.learning_rate = lr_schedule
         model = build_algorithm(algo, vec_env, args, args.policy_kwargs)
         if algo == "SAC" and getattr(args, "sac_warmstart_from_ppo", False):
-            ppo_path = getattr(args, "warmstart_from_ppo", None)
-            if not ppo_path:
-                ppo_path = str(best_agent(args.symbol, args.frame, "PPO"))
-                if not os.path.exists(ppo_path):
-                    ppo_path = str(last_agent(args.symbol, args.frame, "PPO"))
-            if ppo_path and os.path.exists(ppo_path):
+            candidates = []
+            cli_path = getattr(args, "warmstart_from_ppo", None)
+            if cli_path:
+                candidates.append(Path(cli_path))
+            candidates.append(best_agent(args.symbol, args.frame, "PPO"))
+            candidates.append(last_agent(args.symbol, args.frame, "PPO"))
+            legacy_dir = get_root() / "agents" / args.symbol.upper() / str(args.frame)
+            candidates.append(legacy_dir / "deep_rl_best.zip")
+            candidates.append(legacy_dir / "deep_rl_last.zip")
+            candidates.append(legacy_dir / "deep_rl.zip")
+            ppo_path = next((str(p) for p in candidates if p and os.path.exists(p)), None)
+            if ppo_path:
                 try:
                     from stable_baselines3 import PPO as _PPO
 
@@ -765,9 +781,7 @@ def train_one_file(args, data_file: str) -> bool:
                         "[ALGO] warm-started SAC feature extractor from %s", ppo_path
                     )
                 except Exception as e:
-                    logging.getLogger(__name__).warning(
-                        "[ALGO] warm-start skipped: %s", e
-                    )
+                    logging.getLogger(__name__).warning("[ALGO] warm-start skipped: %s", e)
             else:
                 msg = "[ALGO] warm-start skipped: compatible PPO checkpoint not found"
                 print(msg)
