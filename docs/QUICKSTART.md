@@ -9,7 +9,9 @@ python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest -
 
 2. Continuous SAC
 ```bash
-python -m bot_trade.train_rl --algorithm SAC --continuous-env --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --total-steps 128 --headless --allow-synth --data-dir data_ready --no-monitor
+python -m bot_trade.train_rl --algorithm SAC --continuous-env --gateway paper \
+  --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --total-steps 128 \
+  --headless --allow-synth --data-dir data_ready --no-monitor
 python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest
 ```
 

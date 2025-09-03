@@ -292,3 +292,9 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: legacy consumers expect risk_log.csv; risk rule registry is stubbed.
 - Migration steps: use --exec-config/--risk-config, read risk_flags.jsonl, update parsers for KB charts/execution/risk.
 - Next actions: wire risk rules into runtime and expand bridge integration.
+## Developer Notes — 2025-09-03T23:14:21Z (Paper gateway skeleton)
+- What changed: introduced in-memory `PaperGateway`, exposed via `--gateway` CLI flag, auto-initialised in `train_rl`, and updated quickstart/release docs.
+- Why: allow smoke tests to exercise a paper trading path and emit `[GATEWAY]` notices.
+- Risks: gateway is non-persistent and lacks real fills or reconciliation; future integration may alter interfaces.
+- Migration steps: pass `--gateway paper` (default) when training; import gateways from `bot_trade.gateways`.
+- Next actions: hook gateway into execution bridge, add fill polling, and expand risk wiring.
