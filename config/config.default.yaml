@@ -7,3 +7,18 @@ net:
   activation: ReLU
   ortho_init: true
 
+execution:
+  mode: backtest   # {backtest,paper,live}
+  slippage: vol_aware
+  latency_ms: 80
+  partial_fills: true
+  fees:
+    maker_bps: 1.0
+    taker_bps: 4.0
+  limits:
+    max_exposure: 0.9
+    min_notional: 10.0
+gateway:
+  provider: ccxt
+  sandbox: true
+

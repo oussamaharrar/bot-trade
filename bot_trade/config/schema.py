@@ -18,7 +18,33 @@ class RLConfig(BaseModel):
     total_steps: int = 100_000
 
 
+class ExecutionFees(BaseModel):
+    maker_bps: float = 0.0
+    taker_bps: float = 0.0
+
+
+class ExecutionLimits(BaseModel):
+    max_exposure: float | None = None
+    min_notional: float | None = None
+
+
+class ExecutionConfig(BaseModel):
+    mode: str = "backtest"
+    slippage: str = "fixed_bp"
+    latency_ms: int = 0
+    partial_fills: bool = True
+    fees: ExecutionFees = ExecutionFees()
+    limits: ExecutionLimits = ExecutionLimits()
+
+
+class GatewayConfig(BaseModel):
+    provider: str = "ccxt"
+    sandbox: bool = True
+
+
 class Config(BaseModel):
     rl: RLConfig = RLConfig()
     net: NetConfig = NetConfig()
+    execution: ExecutionConfig = ExecutionConfig()
+    gateway: GatewayConfig = GatewayConfig()
     extra: Dict[str, Any] = Field(default_factory=dict)
