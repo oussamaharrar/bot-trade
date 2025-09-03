@@ -233,6 +233,8 @@ def parse_args():
     ap.add_argument("--allow-partial-exec", action="store_true")
     ap.add_argument("--slippage-model", type=str, default=None)
     ap.add_argument("--slippage-params", type=str, default=None)
+    ap.add_argument("--fees-bps", type=float, default=None)
+    ap.add_argument("--partial-fills", choices=["on", "off"], default=None)
     ap.add_argument("--regime-aware", action="store_true", help="Enable regime-aware adjustments")
     ap.add_argument("--regime-window", type=int, default=0, help="Steps between regime checks")
     ap.add_argument("--regime-log", action=argparse.BooleanOptionalAction, default=None, help="Log adaptive regime adjustments")
@@ -276,6 +278,7 @@ def parse_args():
         action="store_true",
         help="Generate synthetic demo signals",
     )
+    ap.add_argument("--preset", action="append", default=[], help="Apply presets like training=name or net=name")
     defaults = vars(ap.parse_args([]))
     args = ap.parse_args()
     args._defaults = defaults
@@ -285,6 +288,9 @@ def parse_args():
             continue
         name = item[2:].split("=", 1)[0].replace("-", "_")
         specified.add(name)
+    if getattr(args, "partial_fills", None) is not None:
+        args.allow_partial_exec = args.partial_fills == "on"
+        specified.add("allow_partial_exec")
     args._specified = specified
     if getattr(args, "adaptive_spec", None):
         args.regime_aware = True

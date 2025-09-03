@@ -1,0 +1,10 @@
+# Conservative reward: prioritize capital preservation
+weights:
+  base_pnl: 0.5          # smaller profit emphasis
+  risk_drawdown: -1.0    # stronger drawdown penalty
+  slippage_penalty: -0.5 # heavier slippage cost
+clamps:
+  base_pnl: {min: -3.0, max: 3.0}
+  risk_drawdown: {min: -5.0, max: 5.0}
+  slippage_penalty: {min: -5.0, max: 5.0}
+global_clamp: {min: -8.0, max: 8.0}

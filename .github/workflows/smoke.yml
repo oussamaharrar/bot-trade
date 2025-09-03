@@ -20,6 +20,7 @@ jobs:
       - run: python -m bot_trade.train_rl --algorithm SAC --continuous-env --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 32 --batch-size 32 --total-steps 64 --headless --allow-synth --data-dir data_ready
       - run: python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest
       - run: python -m bot_trade.tools.sweep --mode random --n-trials 4 --symbol BTCUSDT --frame 1m --algorithm SAC --continuous-env --headless --allow-synth --data-dir data_ready
+      - run: python -m bot_trade.tools.train_long_run --algorithm SAC --continuous-env --symbol BTCUSDT --frame 1m --headless --allow-synth --data-dir data_ready --preset training=sac_cont_cpu_smoke --preset net=tiny --save-every 32 --eval-every 32 --max-steps 32
       - run: python -m bot_trade.tools.dev_checks --symbol BTCUSDT --frame 1m --run-id latest
       - uses: actions/upload-artifact@v4
         with:
@@ -30,3 +31,7 @@ jobs:
             reports/**/sweep_*/summary.csv
             reports/**/sweep_*/summary.md
             reports/**/sweep_*/runs.jsonl
+            reports/**/summary.csv
+            reports/**/summary.md
+            reports/**/runs.jsonl
+            reports/**/checkpoints/index.csv

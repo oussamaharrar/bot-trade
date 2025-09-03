@@ -1,0 +1,11 @@
+# Regime-based reward/risk adjustments
+regimes:
+  bull:
+    reward_delta: 0.1
+    risk_delta: -0.05
+  bear:
+    reward_delta: -0.1
+    risk_delta: 0.1
+clamps:
+  reward_delta: {min: -0.2, max: 0.2}
+  risk_delta: {min: -0.2, max: 0.2}

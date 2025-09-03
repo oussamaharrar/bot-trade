@@ -413,3 +413,9 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Strengthened dev_checks (fields, charts DPI/size, ai_core signals) with summary [CHECKS]
 - Improved atomic writers with [IO] fixed_trailing_newline
 - Added smoke CI pipeline and artifacts
+## Developer Notes — 2025-09-03 03:52:32 UTC
+- Added docs (REGISTRIES, CLI_HELP, KB_SCHEMA)
+- Introduced presets (net_arch, training) + non-breaking preset wiring
+- Implemented tools/train_long_run.py with periodic eval/tearsheet & checkpoints
+- Added optional risk config flags with clamps and [RISK_CFG]/[RISK_CLAMP] one-liners
+- Preserved sweeper thresholds & warns; no behavior changes to existing CLIs

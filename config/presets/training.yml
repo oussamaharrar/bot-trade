@@ -1,0 +1,40 @@
+ppo_cpu_smoke:
+  net: tiny
+  n_envs: 1
+  n_steps: 32
+  batch_size: 32
+  total_steps: 128
+  learning_rate: 0.0003
+  ent_coef: 0.0
+sac_cont_cpu_smoke:
+  net: tiny
+  n_envs: 1
+  n_steps: 32
+  batch_size: 32
+  total_steps: 128
+  learning_rate: 0.0003
+  buffer_size: 1000
+  train_freq: 32
+  gradient_steps: 32
+  ent_coef: 0.0
+  target_entropy: -1.0
+ppo_gpu_long:
+  net: large
+  n_envs: 16
+  n_steps: 1024
+  batch_size: 4096
+  total_steps: 10000000
+  learning_rate: 0.0003
+  ent_coef: 0.0
+sac_gpu_long:
+  net: large
+  n_envs: 8
+  n_steps: 128
+  batch_size: 256
+  total_steps: 5000000
+  learning_rate: 0.0003
+  buffer_size: 1000000
+  train_freq: 64
+  gradient_steps: 64
+  ent_coef: auto
+  target_entropy: -1.0
