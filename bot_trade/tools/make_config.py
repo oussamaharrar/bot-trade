@@ -8,7 +8,7 @@ from typing import Dict, List, Tuple
 
 import yaml  # type: ignore
 
-from bot_trade.config.encoding import force_utf8
+from bot_trade.tools.encoding import force_utf8
 from bot_trade.config.schema import Config
 
 PRESETS_DIR = Path(__file__).resolve().parents[1] / "config" / "presets"

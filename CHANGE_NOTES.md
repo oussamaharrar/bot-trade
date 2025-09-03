@@ -454,3 +454,14 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Rationale**: add migration guide covering vecnorm path change and configuration precedence; record developer notes.
 - **Risks**: documentation may become outdated if paths or config flow change again.
 - **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; smoke training and tests below.
+
+## 2025-09-03
+- **Files**: bot_trade/tools/encoding.py, bot_trade/config/encoding.py, run_multi_gpu.py, run_rl_agent.py, train_rl.py, prepare_data_ready.py, run_bot.py, bot_trade/run_multi_gpu.py, bot_trade/train_rl.py, bot_trade/run_bot.py, bot_trade/tools/gen_synth_data.py, bot_trade/tools/dev_checks.py, bot_trade/tools/data_doctor.py, bot_trade/tools/make_config.py, bot_trade/tools/paths_doctor.py, bot_trade/env/action_space.py, bot_trade/config/rl_builders.py, bot_trade/train_rl.py, bot_trade/config/env_config.py, bot_trade/config/rl_paths.py, tests/smoke/test_utf8.py, tests/smoke/test_action_detect.py
+- **Rationale**: centralize UTF-8 setup, expose action-space kind, log config file precedence, and migrate vecnorm stats to canonical paths.
+- **Risks**: downstream imports may rely on old encoding module; legacy vecnorm migration may be slow on large files.
+- **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `python - <<'PY'
+import os, sys
+from bot_trade.tools.encoding import force_utf8
+force_utf8()
+print("[ENCODING]", os.environ.get("PYTHONIOENCODING"), getattr(sys.stdout, "encoding", None))
+PY`; `python -m bot_trade.tools.make_config --out config.default.yaml --preset training=sac_cont_cpu_smoke --preset net=tiny`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --algorithm PPO --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --total-steps 128 --headless --allow-synth --data-dir data_ready --no-monitor`; `python -m bot_trade.train_rl --algorithm SAC --continuous-env --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --total-steps 128 --headless --allow-synth --data-dir data_ready --no-monitor --policy-kwargs '{"net_arch":[256,256],"activation_fn":"ReLU"}'`; `python -m bot_trade.tools.paths_doctor --symbol BTCUSDT --frame 1m --run-id latest --algorithm SAC`; `python -m bot_trade.tools.data_doctor`; `python -m bot_trade.tools.dev_checks --symbol BTCUSDT --frame 1m --run-id latest`; `PYTHONPATH=. pytest -q tests/smoke/test_utf8.py tests/smoke/test_action_detect.py tests/unit/test_splits.py tests/smoke/test_vecnorm_paths.py`

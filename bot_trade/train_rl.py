@@ -898,7 +898,7 @@ def train_one_file(args, data_file: str) -> bool:
 
     # 7) Action space detection
     info = detect_action_space(vec_env)
-    logging.info("[ENV] action_space=%s | is_discrete=%s", info["shape"], info["is_discrete"])
+    logging.info("[ENV] action_space=%s | kind=%s", info["shape"], info["kind"])
 
     # 8) Batch clamping
     n_envsn_steps = int(args.n_envs) * int(args.n_steps)
@@ -1025,7 +1025,7 @@ def train_one_file(args, data_file: str) -> bool:
             logging.info(
                 "[PPO] Built new model (device=%s, use_sde=%s)",
                 args.device_str,
-                bool(args.sde and not info["is_discrete"]),
+                bool(args.sde and info["kind"] != "discrete"),
             )
         elif algo == "SAC":
             logging.info("[SAC] Built new model (device=%s)", args.device_str)
@@ -1623,7 +1623,7 @@ def main():
 
 if __name__ == "__main__":
     import multiprocessing as mp
-    from bot_trade.config.encoding import force_utf8
+    from bot_trade.tools.encoding import force_utf8
 
     force_utf8()
     mp.freeze_support()
