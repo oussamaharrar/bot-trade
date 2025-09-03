@@ -14,6 +14,7 @@ from bot_trade.config.rl_paths import (
     DEFAULT_KB_FILE,
     DEFAULT_LOGS_DIR,
     DEFAULT_REPORTS_DIR,
+    memory_dir,
 )
 
 
@@ -123,6 +124,11 @@ def main(argv: list[str] | None = None) -> int:
                 reasons.append("kb missing fields")
         except Exception:
             reasons.append("kb invalid")
+
+    if any("[AI_CORE]" in ln for ln in lines):
+        sig_path = memory_dir() / "Knowlogy" / "signals.jsonl"
+        if not sig_path.exists():
+            reasons.append("signals.jsonl missing")
 
     if reasons:
         for r in reasons:

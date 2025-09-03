@@ -269,6 +269,13 @@ def parse_args():
         action="store_true",
         help="Warm-start SAC feature extractor from best PPO checkpoint if available",
     )
+    ap.add_argument("--ai-core", action="store_true", help="Enable ai_core pipeline and bridge")
+    ap.add_argument("--dry-run", action="store_true", help="Run ai_core without writing outputs")
+    ap.add_argument(
+        "--emit-dummy-signals",
+        action="store_true",
+        help="Generate synthetic demo signals",
+    )
     defaults = vars(ap.parse_args([]))
     args = ap.parse_args()
     args._defaults = defaults
