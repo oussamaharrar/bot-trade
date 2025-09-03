@@ -38,6 +38,104 @@ from bot_trade.tools.evaluate_model import evaluate_for_run
 from bot_trade.tools.eval_run import evaluate_run
 from bot_trade.tools.kb_writer import kb_append
 from bot_trade.tools.monitor_launch import spawn_monitor_manager
+
+
+def _load_yaml(path: Path) -> Dict[str, Any]:
+    try:
+        import yaml  # type: ignore
+
+        with path.open("r", encoding="utf-8") as fh:
+            return yaml.safe_load(fh) or {}
+    except Exception:
+        return {}
+
+
+def _apply_presets(args) -> None:
+    base = Path(__file__).resolve().parent.parent / "config" / "presets"
+    training_name = None
+    net_name = None
+    for item in getattr(args, "preset", []) or []:
+        if "=" in item:
+            k, v = item.split("=", 1)
+            if k.strip() == "training":
+                training_name = v.strip()
+            elif k.strip() == "net":
+                net_name = v.strip()
+    overrides = 0
+    if training_name:
+        presets = _load_yaml(base / "training.yml")
+        tp = presets.get(training_name, {})
+        net_ref = tp.get("net")
+        for k, v in tp.items():
+            if k == "net":
+                continue
+            if k not in getattr(args, "_specified", set()):
+                setattr(args, k, v)
+                overrides += 1
+        if net_ref and not net_name:
+            net_name = net_ref
+    if net_name:
+        npresets = _load_yaml(base / "net_arch.yml")
+        np = npresets.get(net_name, {})
+        if "layers" in np and "net_arch" not in getattr(args, "_specified", set()):
+            args.net_arch = ",".join(str(x) for x in np["layers"])
+            overrides += 1
+        if "activation" in np and "activation" not in getattr(args, "_specified", set()):
+            args.activation = str(np["activation"])
+            overrides += 1
+        if "ortho_init" in np and "ortho_init" not in getattr(args, "_specified", set()):
+            args.ortho_init = bool(np["ortho_init"])
+            overrides += 1
+        if np.get("layer_norm") and "layer_norm" not in getattr(args, "_specified", set()):
+            args.layer_norm = True
+            overrides += 1
+    if training_name or net_name:
+        print(
+            f"[PRESET] training={training_name or 'none'} net={net_name or 'none'} overrides={overrides}"
+        )
+    args.preset_training = training_name
+    args.preset_net = net_name
+
+
+def _clamp(val: Optional[float], lo: float, hi: float, field: str) -> Optional[float]:
+    if val is None:
+        return None
+    v = max(lo, min(hi, float(val)))
+    if v != val:
+        print(f"[RISK_CLAMP] field={field} from={val} to={v}")
+    return v
+
+
+def _apply_risk_cfg(args) -> None:
+    provided = any(
+        [
+            getattr(args, "slippage_model", None),
+            getattr(args, "fees_bps", None) is not None,
+            getattr(args, "latency_ms", None) is not None,
+            getattr(args, "allow_partial_exec", False),
+        ]
+    )
+    for fld, lo, hi in (
+        ("loss_streak", 1, 1_000),
+        ("max_drawdown_bp", 0.0, 100.0),
+        ("spread_jump_bp", 0.0, 1_000.0),
+        ("slippage_spike_bp", 0.0, 1_000.0),
+        ("fees_bps", 0.0, 100.0),
+        ("latency_ms", 0.0, 10_000.0),
+        ("max_spread_bp", 0.0, 1_000.0),
+    ):
+        val = getattr(args, fld, None)
+        clamped = _clamp(val, lo, hi, fld)
+        if clamped is not None:
+            setattr(args, fld, clamped)
+    if provided:
+        sm = getattr(args, "slippage_model", None) or "default"
+        fees = getattr(args, "fees_bps", 0.0) or 0.0
+        lat = getattr(args, "latency_ms", 0.0) or 0.0
+        pf = "on" if getattr(args, "allow_partial_exec", False) else "off"
+        print(
+            f"[RISK_CFG] slippage={sm} fees_bps={fees} latency_ms={lat} partial_fills={pf}"
+        )
 from bot_trade.tools.run_state import (
     update_portfolio_state,
     write_run_state_files,
@@ -1206,6 +1304,7 @@ def main():
     global torch, np, pd, psutil, subprocess, shutil
 
     args = parse_args()
+    _apply_presets(args)
     args.kb_file = str(Path(getattr(args, "kb_file", DEFAULT_KB_FILE) or DEFAULT_KB_FILE))
 
     device_str = normalize_device(getattr(args, "device", None), os.environ)
@@ -1234,6 +1333,9 @@ def main():
     args.device_str = device_str
     logging.info("Using device=%s", device_str)
     args.policy_kwargs = build_policy_kwargs(args.net_arch, args.activation, args.ortho_init)
+    if getattr(args, "layer_norm", False):
+        args.policy_kwargs["layer_norm"] = True
+    _apply_risk_cfg(args)
     global build_env_fns, make_vec_env, detect_action_space, build_algorithm, build_callbacks
     global build_paths, ensure_state_files
     global Writers, create_loggers, setup_worker_logging, UpdateManager, CompositeCallback, get_config
@@ -1415,6 +1517,8 @@ def main():
         exec_cfg["allow_partial"] = True
     if getattr(args, "max_spread_bp", None) is not None:
         exec_cfg["max_spread_bp"] = float(args.max_spread_bp)
+    if getattr(args, "fees_bps", None) is not None:
+        exec_cfg["fee_bp"] = float(args.fees_bps)
 
     cfg_paths = cfg.get("project", {}).get("paths", {}) if isinstance(cfg, dict) else {}
     cfg_root = cfg_paths.get("ready_dir") or cfg_paths.get("data_dir")

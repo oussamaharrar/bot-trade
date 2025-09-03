@@ -1,0 +1,17 @@
+tiny:
+  layers: [64, 64]
+  activation: ReLU
+  ortho_init: true
+small:
+  layers: [128, 128, 64]
+  activation: ReLU
+  ortho_init: true
+medium:
+  layers: [256, 256, 128]
+  activation: ReLU
+  ortho_init: true
+large:
+  layers: [1024, 1024, 512, 512, 256, 256]
+  activation: Swish
+  ortho_init: true
+  layer_norm: true
