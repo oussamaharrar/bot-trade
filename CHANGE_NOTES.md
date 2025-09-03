@@ -391,3 +391,12 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Risks: Minimal signal set; future collectors may need concurrency handling; dry-run skips feature injection.
 - Migration: Use --ai-core to enable pipeline; consume new ai_core section in KB; optional dummy signals via --emit-dummy-signals.
 - Next Actions: Expand collectors, refine feature mapping, and connect signals to policy components.
+
+## Developer Notes — 2025-09-03 02:32:43 UTC
+- Implemented ai_core pipeline (collectors/normalizers/enrichers/signal_engine/bridge)
+- Added dummy-signal recipe (MACD/RSI/Realized Volatility) with z-score normalization and guards
+- Wrote atomic memory/Knowlogy/signals.jsonl (de-dupe, newline discipline)
+- Added read_exogenous_signals and one-shot [AI_CORE] injection log
+- Flags: --ai-core, --dry-run, --emit-dummy-signals (backward compatible)
+- Extended KB with ai_core.signals_count and sources
+- Kept logging contracts and Evaluation Suite behavior unchanged
