@@ -1362,6 +1362,17 @@ def main():
     _apply_presets(args)
     args.kb_file = str(Path(getattr(args, "kb_file", DEFAULT_KB_FILE) or DEFAULT_KB_FILE))
 
+    # Initialise gateway for side-effect logging (e.g. [GATEWAY] line)
+    gw = getattr(args, "gateway", "paper")
+    if gw == "paper":
+        from bot_trade.gateways import PaperGateway
+
+        PaperGateway(symbol=args.symbol)
+    else:
+        from bot_trade.gateways import CCXTAdapter
+
+        CCXTAdapter(symbol=args.symbol, sandbox=gw != "live")
+
     device_str = normalize_device(getattr(args, "device", None), os.environ)
     try:
         import torch  # type: ignore

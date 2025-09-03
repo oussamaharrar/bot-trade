@@ -507,3 +507,8 @@ PY`
 - **Rationale**: finalize execution simulator and risk artifacts with JSONL logging, registry-driven slippage, config flags, and KB/dev checks wiring.
 - **Risks**: consumers relying on `risk_log.csv` must migrate; risk rule integration remains superficial.
 - **Test Steps**: compile, synth data, PPO/SAC smoke, charts, eval_run, sweep, dev_checks.
+## 2025-09-03
+- **Files**: bot_trade/gateways/paper.py, bot_trade/gateways/__init__.py, bot_trade/config/rl_args.py, bot_trade/train_rl.py, docs/QUICKSTART.md, docs/RELEASE.md, DEV_NOTES.md
+- **Rationale**: add paper trading gateway stub with CLI flag and docs updates.
+- **Risks**: gateway lacks persistence and real fill handling; future integration may change interface.
+- **Test Steps**: py_compile; synth data; PPO smoke; SAC smoke with `--gateway paper`; export_charts; eval_run; sweep; dev_checks.
