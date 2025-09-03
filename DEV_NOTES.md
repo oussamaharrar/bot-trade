@@ -218,3 +218,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: signal file may grow quickly; normalization assumes finite inputs.
 - Migration steps: enable with --ai-core and optional --emit-dummy-signals; consume via strategy_features.read_exogenous_signals.
 - Next actions: hook real collectors and broaden feature set.
+
+## Developer Notes — 2025-10-08
+- What: CPU-only sweeper with grid/random modes and eval integration, stronger dev checks with chart DPI/size and ai_core signal assertions, algorithm-aware eval_run, newline fix logger, and expanded smoke workflow.
+- Why: automate quick experiments and enforce artifact integrity in CI.
+- Risks: sweep runs still spawn training loops; dev_checks rely on KB entries.
+- Migration Steps: use `python -m bot_trade.tools.sweep` and `python -m bot_trade.tools.dev_checks --symbol <S> --frame <F> --run-id latest`.
+- Next Actions: broaden hyper-parameter coverage and extend checks to additional artifacts.

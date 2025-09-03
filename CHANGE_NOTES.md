@@ -400,3 +400,9 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Flags: --ai-core, --dry-run, --emit-dummy-signals (backward compatible)
 - Extended KB with ai_core.signals_count and sources
 - Kept logging contracts and Evaluation Suite behavior unchanged
+
+## 2025-10-08
+- **Files**: bot_trade/tools/atomic_io.py, bot_trade/tools/eval_run.py, bot_trade/tools/dev_checks.py, bot_trade/tools/sweep.py, .github/workflows/smoke.yml, DEV_NOTES.md, CHANGE_NOTES.md
+- **Rationale**: add CPU-only sweep with grid/random modes and eval metrics, strengthen dev checks with chart DPI/size and ai_core signal assertions, log trailing newline fixes, and expand smoke CI to train/eval PPO+SAC and run random sweeps.
+- **Risks**: sweep may prolong CI; dev checks depend on knowledge base availability.
+- **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `python -m bot_trade.tools.sweep --mode random --n-trials 4 --symbol BTCUSDT --frame 1m --algorithm SAC --continuous-env --headless --allow-synth --data-dir data_ready`; `python -m bot_trade.tools.dev_checks --symbol BTCUSDT --frame 1m --run-id latest`

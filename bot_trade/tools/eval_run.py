@@ -23,7 +23,7 @@ from bot_trade.tools.kb_writer import kb_append
 
 
 
-def _evaluate_run(symbol: str, frame: str, run_id: str) -> tuple[Dict[str, Any], Dict[str, Any]]:
+def _evaluate_run(symbol: str, frame: str, run_id: str, algo: str) -> tuple[Dict[str, Any], Dict[str, Any]]:
     """Compute evaluation metrics and equity/drawdown series."""
 
     import pandas as pd
@@ -32,7 +32,7 @@ def _evaluate_run(symbol: str, frame: str, run_id: str) -> tuple[Dict[str, Any],
     from bot_trade.eval.utils import load_reward_log, load_trades
     from bot_trade.eval.equity import build_equity_drawdown
 
-    rp = RunPaths(symbol, frame, str(run_id))
+    rp = RunPaths(symbol, frame, str(run_id), algo)
     perf_dir = rp.performance_dir
 
     reward_df = load_reward_log(rp.logs)
@@ -77,10 +77,10 @@ def _evaluate_run(symbol: str, frame: str, run_id: str) -> tuple[Dict[str, Any],
     return summary, portfolio
 
 
-def evaluate_run(symbol: str, frame: str, run_id: str) -> Dict[str, Any]:
+def evaluate_run(symbol: str, frame: str, run_id: str, algo: str = "PPO") -> Dict[str, Any]:
     """Compatibility wrapper returning only the summary."""
 
-    summary, _ = _evaluate_run(symbol, frame, run_id)
+    summary, _ = _evaluate_run(symbol, frame, run_id, algo)
     return summary
 
 
@@ -103,19 +103,21 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--symbol", required=True)
     p.add_argument("--frame", required=True)
     p.add_argument("--run-id")
+    p.add_argument("--algorithm", default="PPO")
     p.add_argument("--wfa-splits", type=int, default=0)
     p.add_argument("--wfa-embargo", type=float, default=0.01)
     p.add_argument("--tearsheet", action="store_true")
     p.add_argument("--pdf", action="store_true")
     args = p.parse_args(argv)
     run_id = args.run_id
+    algo = args.algorithm.upper()
     if not run_id or str(run_id).lower() in {"latest", "last"}:
-        rid = latest_run(args.symbol, args.frame, Path(DEFAULT_REPORTS_DIR) / "PPO")
+        rid = latest_run(args.symbol, args.frame, Path(DEFAULT_REPORTS_DIR) / algo)
         if not rid:
             print("[LATEST] none")
             return 2
         run_id = rid
-    rp = RunPaths(args.symbol, args.frame, str(run_id))
+    rp = RunPaths(args.symbol, args.frame, str(run_id), algo)
 
     charts_dir, img_count, rows = export_charts.export_run_charts(rp, run_id)
     required = {"reward.png", "sharpe.png", "loss.png", "entropy.png", "risk_flags.png"}
@@ -140,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[CHARTS] dir={charts_dir.resolve()} images={img_count}")
 
     try:
-        summary, portfolio = _evaluate_run(args.symbol, args.frame, run_id=run_id)
+        summary, portfolio = _evaluate_run(args.symbol, args.frame, run_id=run_id, algo=algo)
     except Exception as exc:  # pragma: no cover
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
