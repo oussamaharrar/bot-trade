@@ -1,0 +1,1 @@
+"""Data platform skeleton."""

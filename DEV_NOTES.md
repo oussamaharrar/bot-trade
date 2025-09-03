@@ -232,3 +232,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: sweeps may be slow; dev_checks require populated knowledge base entries.
 - Migration Steps: invoke `tools.sweep` for CPU grids or random trials; run `tools.dev_checks --run-id latest` after sweeps; review smoke workflow for expected commands.
 - Next Actions: expand sweep hyper-parameters and extend dev checks to additional artifacts and metrics.
+
+## Developer Notes — 2025-09-03T05:32:21Z (Platform Hardening)
+- What changed: algorithm/run-scoped VecNormalize paths with legacy shim, UTF-8 enforcement across CLIs, configurable config generator, centralized action-space detection, data store skeleton with diagnostics, and warning-only dev checks.
+- Why: harden path/encoding contracts, ease configuration and future data-platform work.
+- Risks: deprecated vecnorm_path may hide legacy layouts; minimal data store offers limited validation.
+- Migration steps: use `RunPaths.features.vecnorm` for new paths, regenerate configs via `tools.make_config`, run `paths_doctor`/`data_doctor` for diagnostics.
+- Next actions: flesh out data store backends and expand config schema.

@@ -40,9 +40,11 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("--run-id", default="latest")
     args = ap.parse_args(argv)
 
+    details: list[str] = []
+
     parquet_store = Path("data_store") / "parquet"
     if not parquet_store.exists():
-        print("[DATA_WARN] parquet store not initialized")
+        details.append("missing_parquet")
 
     rid_arg = None if str(args.run_id).lower() in {"latest", "last"} else args.run_id
     run_id, kb_entry = _load_kb_entry(rid_arg)
@@ -51,22 +53,15 @@ def main(argv: List[str] | None = None) -> int:
         return 2
 
     algo = (kb_entry.get("algorithm") or "").upper()
-    warnings = 0
-
-    missing: list[str] = []
     if not algo:
-        missing.append("algorithm")
+        details.append("missing_algorithm")
     if kb_entry.get("eval", {}).get("max_drawdown") is None:
-        missing.append("eval.max_drawdown")
-    if missing:
-        print(f"[CHECKS] missing_fields fields={','.join(missing)}")
-        warnings += 1
+        details.append("missing_eval_max_drawdown")
 
     rp = RunPaths(args.symbol, args.frame, run_id, algo or "PPO")
     charts = rp.reports / "charts"
 
     def _check_png(name: str, tag: str) -> None:
-        nonlocal warnings
         p = charts / name
         ok = p.exists()
         size = dpi = 0
@@ -79,8 +74,7 @@ def main(argv: List[str] | None = None) -> int:
             except Exception:
                 dpi = 0
         if (not ok) or size < 1024 or dpi < 120:
-            print(f"[CHECKS] {tag}_png_too_small")
-            warnings += 1
+            details.append(f"{tag}_png")
 
     _check_png("risk_flags.png", "risk_flags")
     _check_png("regimes.png", "regimes")
@@ -95,13 +89,12 @@ def main(argv: List[str] | None = None) -> int:
                     fh.write(b"\n")
                 print(f"[IO] fixed_trailing_newline file={sig}")
         except FileNotFoundError:
-            print("[CHECKS] signals_jsonl_missing")
-            warnings += 1
+            details.append("signals_jsonl_missing")
         except Exception:
-            print("[CHECKS] signals_jsonl_missing")
-            warnings += 1
+            details.append("signals_jsonl_missing")
 
-    print(f"[CHECKS] ok={warnings == 0} warnings={warnings} run_id={run_id}")
+    status = "ok" if not details else "warnings"
+    print(f"[CHECKS] status={status} count={len(details)} details=[{','.join(details)}]")
     return 0
 
 

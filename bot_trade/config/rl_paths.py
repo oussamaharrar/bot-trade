@@ -164,16 +164,18 @@ _VECNORM_WARNED = False
 
 
 def vecnorm_path(symbol: str, frame: str, algo: str | None = None, run_id: str | None = None) -> Path:
-    """Return path to VecNormalize statistics scoped by algorithm/run."""
+    """Return path to VecNormalize statistics with legacy fallback."""
 
     global _VECNORM_WARNED
-    if algo is None:
-        if not _VECNORM_WARNED:
-            print("[DEPRECATION] vecnorm_path without algorithm is deprecated; using PPO")
-            _VECNORM_WARNED = True
-        algo = "PPO"
-    rp = RunPaths(symbol, frame, run_id or "latest", algo)
-    return rp.features.vecnorm
+    if algo and run_id:
+        rp = RunPaths(symbol, frame, run_id, algo)
+        return rp.features.vecnorm
+    if not _VECNORM_WARNED:
+        print("[DEPRECATION] vecnorm_path legacy lookup; use RunPaths.features_dir")
+        _VECNORM_WARNED = True
+    legacy = _legacy_results_dir(symbol, frame)
+    legacy.mkdir(parents=True, exist_ok=True)
+    return legacy / "vecnorm.pkl"
 
 
 def _legacy_results_dir(symbol: str, frame: str) -> Path:

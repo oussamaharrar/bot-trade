@@ -35,7 +35,13 @@ def main(argv: list[str] | None = None) -> int:
     if ns.run_id == "latest" and link.is_symlink():
         run_id = os.readlink(link)
     rp = RunPaths(ns.symbol, ns.frame, run_id, algo)
-    print(f"[PATHS] ok root={rp.root} algo={algo} run_id={run_id}")
+    vec_ok = "OK" if rp.vecnorm.parent == rp.features.base else "MISMATCH"
+    features_dir = rp.features.base
+    snapshots = rp.agents
+    tb = rp.logs / "events"
+    print(
+        f"[PATHS] vecnorm split={vec_ok} features_dir={features_dir} snapshots={snapshots} tensorboard={tb}"
+    )
     return 0
 
 
