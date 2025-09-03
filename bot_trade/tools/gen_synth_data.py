@@ -3,37 +3,38 @@
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from bot_trade.data.store_parquet import write_ohlcv
+
 
 def generate(symbol: str, frame: str, out_dir: Path) -> Path:
+    """Generate synthetic OHLCV data and store as Parquet."""
+
     rng = np.random.default_rng(0)
     periods = 90 * 24 * 60  # 90 days of minutes
     start = pd.Timestamp.utcnow() - pd.Timedelta(minutes=periods)
     idx = pd.date_range(start, periods=periods, freq="1min", tz="UTC")
     price = 100 + np.cumsum(rng.normal(0, 0.5, periods))
     df = pd.DataFrame({
-        "datetime": idx,
-        "open": price,
-        "high": price + rng.random(periods),
-        "low": price - rng.random(periods),
-        "close": price + rng.normal(0, 0.2, periods),
-        "volume": rng.random(periods) * 10,
-        "spread": np.abs(rng.normal(0.05, 0.01, periods)),
-        "volatility": np.abs(rng.normal(0.5, 0.1, periods)),
-        "depth": rng.random(periods) * 5,
+        "ts": idx.view("int64"),
+        "symbol": symbol,
+        "frame": frame,
+        "open": price.astype("float32"),
+        "high": (price + rng.random(periods)).astype("float32"),
+        "low": (price - rng.random(periods)).astype("float32"),
+        "close": (price + rng.normal(0, 0.2, periods)).astype("float32"),
+        "volume": (rng.random(periods) * 10).astype("float32"),
+        "trade_count": rng.integers(1, 5, periods, dtype="int32"),
     })
     out_dir.mkdir(parents=True, exist_ok=True)
     sub = out_dir / frame
     sub.mkdir(parents=True, exist_ok=True)
-    dest = sub / f"{symbol}-{frame}-synth.feather"
-    tmp = dest.with_suffix(dest.suffix + ".tmp")
-    df.to_feather(tmp)
-    os.replace(tmp, dest)
+    dest = sub / f"{symbol}-{frame}-synth.parquet"
+    write_ohlcv(df, dest)
     return dest
 
 

@@ -15,6 +15,7 @@ from typing import Dict, List
 from bot_trade.config.rl_paths import DEFAULT_KB_FILE, RunPaths, reports_dir
 from bot_trade.tools._headless import ensure_headless_once
 from bot_trade.tools.atomic_io import append_jsonl, write_text
+from bot_trade.eval.gate import load_thresholds, check
 
 
 def _parse_list(val: str) -> List[str]:
@@ -89,6 +90,7 @@ def main(argv: List[str] | None = None) -> int:
     thr_top_winrate = _env_float("SWEEP_THR_TOP_WINRATE", 0.45)
     thr_top_maxdd = _env_float("SWEEP_THR_TOP_MAXDD", 0.30)
     thr_max_turnover = _env_float("SWEEP_THR_MAX_TURNOVER", 8.0)
+    gate_thr = load_thresholds()
 
     rows: List[Dict[str, str]] = []
 
@@ -244,6 +246,12 @@ def main(argv: List[str] | None = None) -> int:
             except Exception:
                 ai_signals = 0
 
+        gate_pass, gate_reasons = check(metrics, gate_thr)
+        gate_status = "pass" if gate_pass else "fail"
+        print(
+            f"[SWEEP] trial={run_id} gate={gate_status} reasons=[{','.join(gate_reasons)}]"
+        )
+
         row = {
             "run_id": run_id,
             "algorithm": algo,
@@ -259,6 +267,8 @@ def main(argv: List[str] | None = None) -> int:
             "ai_core_signals": str(ai_signals),
             "regimes_png_exists": str(int(reg_exists)),
             "charts_count": str(charts_count),
+            "gate": gate_status,
+            "gate_reasons": ",".join(gate_reasons),
             "status": "ok",
             "reason": "",
         }
@@ -278,6 +288,7 @@ def main(argv: List[str] | None = None) -> int:
             _to_float(r.get("eval_max_drawdown", "nan")),
         ),
     )
+    pass_rows = [r for r in rows_sorted if r.get("gate") == "pass"]
 
     header = [
         "run_id",
@@ -294,6 +305,8 @@ def main(argv: List[str] | None = None) -> int:
         "ai_core_signals",
         "regimes_png_exists",
         "charts_count",
+        "gate",
+        "gate_reasons",
         "status",
         "reason",
     ]
@@ -308,12 +321,12 @@ def main(argv: List[str] | None = None) -> int:
     os.replace(tmp, csv_path)
 
     md_lines = [
-        "| run_id | algorithm | eval_sharpe | eval_max_drawdown | win_rate |",
-        "|---|---|---|---|---|",
+        "| run_id | algorithm | eval_sharpe | eval_max_drawdown | win_rate | gate |",
+        "|---|---|---|---|---|---|",
     ]
-    for r in rows_sorted[: min(5, len(rows_sorted))]:
+    for r in pass_rows[: min(5, len(pass_rows))]:
         md_lines.append(
-            f"| {r['run_id']} | {r['algorithm']} | {r['eval_sharpe']} | {r['eval_max_drawdown']} | {r['win_rate']} |"
+            f"| {r['run_id']} | {r['algorithm']} | {r['eval_sharpe']} | {r['eval_max_drawdown']} | {r['win_rate']} | {r['gate']} |"
         )
     write_text(base_dir / "summary.md", "\n".join(md_lines) + "\n")
 
@@ -325,7 +338,7 @@ def main(argv: List[str] | None = None) -> int:
         common = reasons.pop() if len(reasons) == 1 else "mixed"
         print(f"[SWEEP_WARN] all_trials_skipped reason=\"{common}\"")
 
-    top = rows_sorted[0] if rows_sorted else {}
+    top = pass_rows[0] if pass_rows else (rows_sorted[0] if rows_sorted else {})
     top_sharpe = _to_float(top.get("eval_sharpe", "nan"))
     top_win = _to_float(top.get("win_rate", "nan"))
     top_maxdd = _to_float(top.get("eval_max_drawdown", "nan"))

@@ -253,3 +253,9 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: external imports from `config.encoding` rely on shim; migrating large legacy vecnorm files may be slow.
 - Migration: import `force_utf8` from `bot_trade.tools.encoding`; watch for `[DEPRECATION]` notices during vecnorm migration.
 - Next actions: extend action-space guards to TD3/TQC builders and broaden data store checks.
+## Developer Notes — 2025-09-03 07:07:00 UTC
+- What changed: introduced Parquet data store modules, evaluation gate with YAML thresholds, sweep gate annotations, and enhanced dev checks with PNG sizes.
+- Why: unify data handling and enforce quality gates across training and evaluation.
+- Risks: thresholds may misclassify good runs; data doctor performs limited validation.
+- Migration steps: regenerate synthetic data via tools.gen_synth_data and ensure config/eval/gate.yml reflects desired limits.
+- Next actions: expand calendar checks and hook experiment tracking.

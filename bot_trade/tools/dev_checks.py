@@ -61,6 +61,8 @@ def main(argv: List[str] | None = None) -> int:
     rp = RunPaths(args.symbol, args.frame, run_id, algo or "PPO")
     charts = rp.reports / "charts"
 
+    sizes: dict[str, int] = {}
+
     def _check_png(name: str, tag: str) -> None:
         p = charts / name
         ok = p.exists()
@@ -75,6 +77,7 @@ def main(argv: List[str] | None = None) -> int:
                 dpi = 0
         if (not ok) or size < 1024 or dpi < 120:
             details.append(f"{tag}_png")
+        sizes[tag] = size
 
     _check_png("risk_flags.png", "risk_flags")
     _check_png("regimes.png", "regimes")
@@ -93,8 +96,14 @@ def main(argv: List[str] | None = None) -> int:
         except Exception:
             details.append("signals_jsonl_missing")
 
+    if not kb_entry.get("gate", {}).get("status"):
+        details.append("missing_gate")
+
     status = "ok" if not details else "warnings"
-    print(f"[CHECKS] status={status} count={len(details)} details=[{','.join(details)}]")
+    size_part = " ".join(f"{k}_size={v}" for k, v in sizes.items())
+    print(
+        f"[CHECKS] status={status} count={len(details)} details=[{','.join(details)}] {size_part}"
+    )
     return 0
 
 
