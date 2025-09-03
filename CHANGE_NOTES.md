@@ -364,3 +364,10 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Enabled PPO→SAC warm-start (encoder-only, shape-checked) with single-line status
 - Fixed policy_kwargs passthrough; support dict or JSON string; recorded condensed policy_kwargs in algo_meta
 - Kept logging contracts, latest guard, and Evaluation Suite behavior unchanged; all outputs atomic
+
+## Developer Notes — 2025-09-03 01:15:11 UTC
+- What: Added YAML-driven rewards registry with clamps, regime detector with JSONL logging, adaptive controller applying reward/risk deltas, regimes.png exports, dev_checks updates, KB log counts, and CLI flags for reward/adaptive specs.
+- Why: enable configurable reward shaping and regime-aware risk adjustments while preserving existing interfaces.
+- Risks: misconfigured specs may yield silent clamping or no adaptive triggers; reward registry not yet fully integrated with environment.
+- Migration: provide --reward-spec and --adaptive-spec paths (defaults available), parse regime/adaptive log counts in KB consumers.
+- Next Actions: expand reward terms, tighten regime thresholds, and link registry outputs directly to env rewards.

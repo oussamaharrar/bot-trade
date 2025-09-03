@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import datetime as dt
-import logging
 from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .regime import detect_regime
+from .regime import RegimeDetector
 from bot_trade.tools.atomic_io import append_jsonl
 
 
@@ -18,152 +17,107 @@ class AdaptiveController:
         cfg: Dict[str, Any],
         env: Optional[Any] = None,
         log_path: Optional[Path] = None,
+        regime_log_path: Optional[Path] = None,
     ) -> None:
         self.cfg = cfg or {}
         self.env = env
         self.log_path = Path(log_path) if log_path else None
-        self.warned = False
+        self.detector = RegimeDetector(self.cfg.get("detector", {}), regime_log_path)
         self.last_regime = "unknown"
         self.dist: Counter[str] = Counter()
 
-        # baselines
+        self.w_clamp = self.cfg.get("clamps", {}).get("reward_weight_delta", {})
+        self.b_clamp = self.cfg.get("clamps", {}).get("risk_bound_delta", {})
+
         rw = getattr(getattr(env, "reward_tracker", None), "w", None)
-        self.base_weights = tuple(rw) if rw else None
+        self.base_weights = list(rw) if rw else []
         re = getattr(env, "risk_engine", None)
-        ex = getattr(env, "exec_sim", None)
         self.base_bounds = {
-            "max_spread_bp": getattr(ex, "max_spread_bp", None),
-            "exposure_cap": getattr(re, "max_risk", None),
-            "freeze_after_losses": getattr(re, "freeze_limit", None),
+            "max_position": getattr(re, "max_units", None),
+            "max_leverage": getattr(re, "max_risk", None),
+            "trailing_dd_limit": getattr(re, "max_drawdown_stop", None),
         }
 
-    # ----------------------------------------------
+    # --------------------------------------------------------------
     def update(self, df_slice: Any) -> None:
-        info = detect_regime(df_slice, cfg=self.cfg)
+        info = self.detector.update(df_slice)
         regime = info.get("name", "unknown")
         self.last_regime = regime
         self.dist[regime] += 1
-        if self.env is not None:
-            try:
-                setattr(self.env, "current_regime", regime)
-            except Exception:
-                pass
-
-        mapping = (self.cfg.get("mappings", {}) or {}).get(regime)
-        if not mapping:
-            if not self.warned and regime != "unknown":
-                logging.warning("[REGIME] no mapping for %s", regime)
-                self.warned = True
-            weights = {}
-            bounds = {}
-        else:
-            weights = mapping.get("reward_weights", {})
-            bounds = mapping.get("risk_bounds", {})
-        applied_w = self._apply_weights(weights)
-        applied_b = self._apply_bounds(bounds)
+        mapping = (self.cfg.get("regime_rules") or {}).get(regime, {})
+        d_w = self._apply_reward_delta(mapping.get("reward_delta", {}))
+        d_r = self._apply_risk_delta(mapping.get("risk_clamp_delta", {}))
+        print(f"[ADAPT] regime={regime} dW={list(d_w.keys())} dRisk={list(d_r.keys())}")
         if self.log_path:
-            record = {
+            rec = {
                 "ts": dt.datetime.utcnow().isoformat(),
                 "regime": regime,
-                "weights": applied_w,
-                "risk_bounds": applied_b,
+                "dW": d_w,
+                "dRisk": d_r,
             }
             try:
-                append_jsonl(self.log_path, record)
+                append_jsonl(self.log_path, rec)
             except Exception:
                 pass
 
-    # ----------------------------------------------
-    def _apply_weights(self, weights: Dict[str, Any]) -> Dict[str, Any]:
-        env = self.env
-        tracker = getattr(env, "reward_tracker", None)
-        if tracker is None:
+    # --------------------------------------------------------------
+    def _clamp(self, value: float, clamp: Dict[str, float]) -> float:
+        lo = float(clamp.get("min", float("-inf")))
+        hi = float(clamp.get("max", float("inf")))
+        return max(lo, min(value, hi))
+
+    def _apply_reward_delta(self, delta: Dict[str, float]) -> Dict[str, float]:
+        tracker = getattr(self.env, "reward_tracker", None)
+        if tracker is None or not self.base_weights:
             return {}
-        w = list(self.base_weights or getattr(tracker, "w", []))
-        if len(w) != 7:
-            return {}
-        applied = {
-            "dd_penalty": w[2],
-            "trend_bonus": w[3],
-            "holding_penalty": w[6],
+        w = list(self.base_weights)
+        mapping = {
+            "base_pnl": 0,
+            "risk_drawdown": 2,
+            "slippage_penalty": 5,
+            "inventory_penalty": 6,
         }
-        if weights:
-            if "dd_penalty" in weights:
-                try:
-                    val = self._clamp("dd_penalty", float(weights["dd_penalty"]), kind="weights")
-                    w[2] = val
-                    applied["dd_penalty"] = val
-                except Exception:
-                    if not self.warned:
-                        logging.warning("[REGIME] invalid dd_penalty")
-                        self.warned = True
-            if "trend_bonus" in weights:
-                try:
-                    val = self._clamp("trend_bonus", float(weights["trend_bonus"]), kind="weights")
-                    w[3] = val
-                    applied["trend_bonus"] = val
-                except Exception:
-                    if not self.warned:
-                        logging.warning("[REGIME] invalid trend_bonus")
-                        self.warned = True
-            if "holding_penalty" in weights:
-                try:
-                    val = self._clamp("holding_penalty", float(weights["holding_penalty"]), kind="weights")
-                    w[6] = val
-                    applied["holding_penalty"] = val
-                except Exception:
-                    if not self.warned:
-                        logging.warning("[REGIME] invalid holding_penalty")
-                        self.warned = True
-        tracker.w = tuple(w)
+        applied: Dict[str, float] = {}
+        for k, v in (delta or {}).items():
+            idx = mapping.get(k)
+            if idx is None or idx >= len(w):
+                continue
+            adj = self._clamp(float(v), self.w_clamp)
+            if adj == 0:
+                continue
+            w[idx] = float(w[idx]) + adj
+            applied[k] = adj
+        if applied:
+            tracker.w = tuple(w)
+            self.base_weights = w
         return applied
 
-    def _clamp(self, key: str, value: float, kind: str = "bounds") -> Optional[float]:
-        if kind == "bounds":
-            cfg = self.cfg.get("bounds", {}) or {}
-        else:
-            cfg = self.cfg.get("weight_limits", {}) or {}
-        lim = cfg.get(key, {})
-        lo = float(lim.get("min", float("-inf")))
-        hi = float(lim.get("max", float("inf")))
-        clamped = max(lo, min(value, hi))
-        if clamped != value and not self.warned:
-            logging.warning("[REGIME] %s=%s clamped to [%s,%s]", key, value, lo, hi)
-            self.warned = True
-        return clamped
-
-    def _apply_bounds(self, bounds: Dict[str, Any]) -> Dict[str, Any]:
-        env = self.env
-        re = getattr(env, "risk_engine", None)
-        ex = getattr(env, "exec_sim", None)
-        base = dict(self.base_bounds)
-        if bounds:
-            base.update(bounds)
-        applied: Dict[str, Any] = {}
-        if "max_spread_bp" in base and ex is not None:
-            try:
-                val = self._clamp("max_spread_bp", float(base["max_spread_bp"]))
-                ex.max_spread_bp = val
-                applied["max_spread_bp"] = val
-            except Exception:
-                pass
-        if "exposure_cap" in base and re is not None:
-            try:
-                val = self._clamp("exposure_cap", float(base["exposure_cap"]))
-                re.max_risk = val
-                applied["exposure_cap"] = val
-            except Exception:
-                pass
-        if "freeze_after_losses" in base and re is not None:
-            try:
-                val = self._clamp("freeze_after_losses", float(base["freeze_after_losses"]))
-                re.freeze_limit = int(val)
-                applied["freeze_after_losses"] = int(val)
-            except Exception:
-                pass
+    def _apply_risk_delta(self, delta: Dict[str, float]) -> Dict[str, float]:
+        re = getattr(self.env, "risk_engine", None)
+        if re is None:
+            return {}
+        applied: Dict[str, float] = {}
+        for k, v in (delta or {}).items():
+            if k not in self.base_bounds:
+                continue
+            base = self.base_bounds.get(k)
+            if base is None:
+                continue
+            adj = self._clamp(float(v), self.b_clamp)
+            if adj == 0:
+                continue
+            new_val = base + adj
+            if k == "max_position":
+                re.max_units = new_val
+            elif k == "max_leverage":
+                re.max_risk = new_val
+            elif k == "trailing_dd_limit":
+                re.max_drawdown_stop = new_val
+            applied[k] = adj
+            self.base_bounds[k] = new_val
         return applied
 
-    # ----------------------------------------------
+    # --------------------------------------------------------------
     def get_distribution(self) -> Dict[str, float]:
         total = sum(self.dist.values())
         if total == 0:
