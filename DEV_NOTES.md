@@ -191,6 +191,20 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Migration Steps: none; CLIs remain unchanged but consumers should expect updated headless line and POSTRUN metrics.
 - Next Actions: unify path resolution for custom report roots.
 
+## Developer Notes — 2025-10-07
+- What: single `[ENV]` notice on continuous env instantiation, policy_kwargs parser with JSON support, unused-key and invalid-JSON warnings, standardized TQC guard, KB newline enforcement and condensed policy_kwargs metadata.
+- Why: tighten logging contracts and ensure KB entries capture algorithm config succinctly.
+- Risks: unused-key detection is shallow; newline fix touches entire KB file on very large runs.
+- Migration: none; pass policy_kwargs as dict/JSON; install `sb3-contrib` for TQC.
+- Next Actions: expand policy_kwargs validation depth and monitor KB file growth.
+
+## Developer Notes — 2025-10-07T00:00:01Z (env notice factory & net_arch meta)
+- What: moved continuous env notice to builder factory and added net_arch length hint in policy_kwargs metadata.
+- Why: keep imports quiet and summarize large architectures in KB/metadata.
+- Risks: direct `TradingEnvContinuous` usage skips `[ENV]` print; truncated lists may omit details.
+- Migration Steps: call `ensure_env_notice()` when instantiating `TradingEnvContinuous` outside factories.
+- Next Actions: watch for missed notices and refine metadata compaction.
+
 ## Developer Notes — 2025-09-02 22:47:38 UTC (Eval suite refresh)
 - What: added equity/drawdown helpers, metric aggregator, walk-forward summary exports, KB schema (sortino/calmar/images_list), and canonical chart/eval print flow.
 - Why: consolidate evaluation logic and enrich knowledge base context.

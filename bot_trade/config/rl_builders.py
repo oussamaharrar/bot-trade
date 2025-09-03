@@ -11,7 +11,7 @@ Key points:
 
 from __future__ import annotations
 from typing import Callable, List, Optional
-import os, logging
+import os, logging, json
 from pathlib import Path
 
 from .rl_paths import best_agent, last_agent, get_root
@@ -43,8 +43,12 @@ def make_env_ctor(
     """
     def _init():
         if continuous:
-            from bot_trade.env.trading_env_continuous import TradingEnvContinuous
+            from bot_trade.env.trading_env_continuous import (
+                TradingEnvContinuous,
+                ensure_env_notice,
+            )
 
+            ensure_env_notice()
             env = TradingEnvContinuous(
                 data=df,
                 frame=frame,
@@ -213,17 +217,24 @@ def _resolve_ppo_warmstart(args) -> Path | None:
             return c
     return None
 
-def _policy_kwargs_from_args(args) -> dict:
+_policy_json_warned = False
+_policy_unused_warned = False
+
+
+def _policy_kwargs_from_args(args) -> tuple[dict, set]:
+    global _policy_json_warned
     pk = getattr(args, "policy_kwargs", {}) or {}
     if isinstance(pk, str):
         try:
-            import json
-
             pk = json.loads(pk)
         except Exception:
+            if not _policy_json_warned:
+                print("[ARGS] invalid policy_kwargs JSON")
+                _policy_json_warned = True
             pk = {}
     if not isinstance(pk, dict):
         pk = {}
+    user_keys = set(pk.keys())
     act = pk.get("activation_fn")
     if isinstance(act, str):
         try:
@@ -239,7 +250,15 @@ def _policy_kwargs_from_args(args) -> dict:
             pk["activation_fn"] = mapping.get(act.lower(), nn.ReLU)
         except Exception:
             pk.pop("activation_fn", None)
-    return pk
+    return pk, user_keys
+
+
+def _warn_unused_policy_kwargs(user_keys: set, used: dict) -> None:
+    global _policy_unused_warned
+    unused = sorted(user_keys - set(used.keys()))
+    if unused and not _policy_unused_warned:
+        print(f"[ARGS] unused policy_kwargs keys={unused}")
+        _policy_unused_warned = True
 
 
 def _condense_policy_kwargs(pk: dict) -> dict:
@@ -248,7 +267,9 @@ def _condense_policy_kwargs(pk: dict) -> dict:
         if hasattr(v, "__name__"):
             out[k] = v.__name__
         elif isinstance(v, (list, tuple)):
-            if len(v) > 4:
+            if k == "net_arch" and len(v) > 4:
+                out[k] = [v[0], v[1], f"...({len(v)})", v[-2], v[-1]]
+            elif len(v) > 4:
                 out[k] = list(v[:3]) + ["..."]
             else:
                 out[k] = list(v)
@@ -274,7 +295,7 @@ def _require_box(env, name: str) -> None:
 def build_ppo(env, args, seed):
     from stable_baselines3 import PPO
 
-    pk = _policy_kwargs_from_args(args)
+    pk, pk_keys = _policy_kwargs_from_args(args)
     bs = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", 64)), env)
     action_space, is_discrete = detect_action_space(env)
     use_sde = bool(getattr(args, "sde", False) and not is_discrete)
@@ -302,6 +323,7 @@ def build_ppo(env, args, seed):
         verbose=getattr(args, "sb3_verbose", 1),
         tensorboard_log=getattr(args, "tensorboard_log", None),
     )
+    _warn_unused_policy_kwargs(pk_keys, model.policy_kwargs)
     meta = {
         "lr": args.learning_rate,
         "batch_size": bs,
@@ -315,7 +337,7 @@ def build_ppo(env, args, seed):
 def build_sac(env, args, seed):
     from stable_baselines3 import SAC
     _require_box(env, "SAC")
-    pk = _policy_kwargs_from_args(args)
+    pk, pk_keys = _policy_kwargs_from_args(args)
     pk = pk.copy()
     pk.pop("ortho_init", None)
     if isinstance(pk.get("net_arch"), dict):
@@ -367,6 +389,7 @@ def build_sac(env, args, seed):
             print("[WARM_START] source=PPO status=skipped reason=mismatch")
     else:
         print("[WARM_START] source=PPO status=skipped reason=not_found")
+    _warn_unused_policy_kwargs(pk_keys, model.policy_kwargs)
     meta = {
         "lr": getattr(args, "learning_rate", 3e-4),
         "batch_size": batch_size,
@@ -380,7 +403,7 @@ def build_sac(env, args, seed):
 def build_td3(env, args, seed):
     from stable_baselines3 import TD3
     _require_box(env, "TD3")
-    pk = _policy_kwargs_from_args(args)
+    pk, pk_keys = _policy_kwargs_from_args(args)
     pk = pk.copy()
     pk.pop("ortho_init", None)
     if isinstance(pk.get("net_arch"), dict):
@@ -410,6 +433,7 @@ def build_td3(env, args, seed):
         verbose=getattr(args, "sb3_verbose", 1),
         tensorboard_log=getattr(args, "tensorboard_log", None),
     )
+    _warn_unused_policy_kwargs(pk_keys, model.policy_kwargs)
     meta = {
         "lr": getattr(args, "learning_rate", 3e-4),
         "batch_size": batch_size,
@@ -425,9 +449,9 @@ def build_tqc(env, args, seed):
     try:
         from sb3_contrib import TQC
     except Exception:
-        print("[ALGO_GUARD] algorithm=TQC requires sb3-contrib; please install. Aborting.")
+        print("[ALGO_GUARD] algorithm=TQC unavailable (missing sb3-contrib). Aborting.")
         raise SystemExit(1)
-    pk = _policy_kwargs_from_args(args)
+    pk, pk_keys = _policy_kwargs_from_args(args)
     pk = pk.copy()
     pk.pop("ortho_init", None)
     if isinstance(pk.get("net_arch"), dict):
@@ -461,6 +485,7 @@ def build_tqc(env, args, seed):
         verbose=getattr(args, "sb3_verbose", 1),
         tensorboard_log=getattr(args, "tensorboard_log", None),
     )
+    _warn_unused_policy_kwargs(pk_keys, model.policy_kwargs)
     meta = {
         "lr": getattr(args, "learning_rate", 3e-4),
         "batch_size": batch_size,
