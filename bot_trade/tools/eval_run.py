@@ -19,6 +19,7 @@ from bot_trade.tools.atomic_io import write_json, write_png, write_text
 from bot_trade.tools.latest import latest_run
 from bot_trade.tools import export_charts
 from bot_trade.tools.kb_writer import kb_append
+from bot_trade.eval.gate import gate_metrics
 
 
 
@@ -104,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--frame", required=True)
     p.add_argument("--run-id")
     p.add_argument("--algorithm", default="PPO")
+    p.add_argument("--wfa", action="store_true", help="Run walk-forward with default splits")
     p.add_argument("--wfa-splits", type=int, default=0)
     p.add_argument("--wfa-embargo", type=float, default=0.01)
     p.add_argument("--tearsheet", action="store_true")
@@ -167,11 +169,26 @@ def main(argv: list[str] | None = None) -> int:
         f"[EVAL] symbol={args.symbol} frame={args.frame} run_id={run_id} metrics={metrics_part}"
     )
 
-    if args.wfa_splits:
+    passed, reasons = gate_metrics(
+        {
+            "sharpe": summary.get("sharpe"),
+            "max_drawdown": summary.get("max_drawdown"),
+            "sortino": summary.get("sortino"),
+            "calmar": summary.get("calmar"),
+            "turnover": summary.get("turnover"),
+            "win_rate": summary.get("win_rate"),
+            "avg_trade_pnl": summary.get("avg_trade_pnl"),
+        }
+    )
+    gate_status = "pass" if passed else "fail"
+    print(f"[GATE] status={gate_status} reasons=[{','.join(reasons)}]")
+
+    splits = args.wfa_splits if not args.wfa else max(args.wfa_splits, 5)
+    if splits:
         from bot_trade.eval.walk_forward import walk_forward_eval
 
         embargo = max(0.0, min(args.wfa_embargo, 0.5))
-        wfa_res = walk_forward_eval(rp.logs, n_splits=args.wfa_splits, embargo=embargo)
+        wfa_res = walk_forward_eval(rp.logs, n_splits=splits, embargo=embargo)
         json_path = out_dir / "wfa_summary.json"
         write_json(json_path, wfa_res)
         csv_path = out_dir / "wfa_summary.csv"
@@ -218,6 +235,7 @@ def main(argv: list[str] | None = None) -> int:
             "win_rate": summary.get("win_rate"),
             "avg_trade_pnl": summary.get("avg_trade_pnl"),
         },
+        "gate": {"status": gate_status, "reasons": reasons},
         "portfolio": portfolio,
     }
     reg_file = rp.performance_dir / "adaptive_log.jsonl"
