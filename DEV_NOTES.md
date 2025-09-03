@@ -259,3 +259,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: thresholds may misclassify good runs; data doctor performs limited validation.
 - Migration steps: regenerate synthetic data via tools.gen_synth_data and ensure config/eval/gate.yml reflects desired limits.
 - Next actions: expand calendar checks and hook experiment tracking.
+
+## Developer Notes — 2025-10-09T00:00:00Z (Data Gate & Thresholds)
+- What changed: hardened Parquet validators, introduced `tools.force_utf8`, updated action-space detection to expose `is_discrete`, wired evaluation gate with KB fields, and added sweep warning thresholds with gate tracking.
+- Why: improve data integrity, ensure UTF-8 consoles, safeguard algorithm guards, and surface eval quality in sweeps.
+- Risks: strict gate or sweep thresholds may over-warn; legacy scripts must import from new module.
+- Migration steps: regenerate synthetic data, import `force_utf8` from `bot_trade.tools.force_utf8`, parse `[DATA]` and `[GATE]` lines, and review config/eval_gate.yaml plus config/sweep_thresholds.yaml.
+- Next actions: broaden calendar validation and refine gating heuristics.

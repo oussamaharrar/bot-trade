@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from bot_trade.data.loaders import load_with_stats
-from bot_trade.tools.encoding import force_utf8
+from bot_trade.data.store_parquet import read_parquet_strict
+from bot_trade.data.validators import detect_gaps, detect_duplicates
+from bot_trade.tools.force_utf8 import force_utf8
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -15,20 +16,22 @@ def main(argv: list[str] | None = None) -> int:
     ns = ap.parse_args(argv)
 
     root = Path(ns.root).resolve()
-    gaps = dups = files = 0
+    gaps = dups = 0
+    files = 0
+    frames: set[str] = set()
     if root.exists():
         for p in root.rglob("*.parquet"):
             frame = p.parent.name
             try:
-                _, g, d = load_with_stats(p, frame)
-                gaps += g
-                dups += d
+                df = read_parquet_strict(p)
+                gaps += detect_gaps(df, frame)
+                dups += detect_duplicates(df)
+                frames.add(frame)
                 files += 1
             except Exception:
                 continue
-    missing = 0 if files else 1
     print(
-        f"[DATA] root={root} gaps={gaps} dups={dups} missing={missing}"
+        f"[DATA_DOCTOR] root={root} files={files} frames={len(frames)} gaps={gaps} dups={dups}"
     )
     return 0
 

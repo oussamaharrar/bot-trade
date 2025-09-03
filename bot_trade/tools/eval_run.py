@@ -47,6 +47,7 @@ def _evaluate_run(symbol: str, frame: str, run_id: str, algo: str) -> tuple[Dict
         "frame": frame,
         "ts": dt.datetime.utcnow().isoformat(),
         **metrics_dict,
+        "equity_len": int(len(equity)),
     }
     write_json(perf_dir / "summary.json", summary)
 
@@ -110,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--wfa-embargo", type=float, default=0.01)
     p.add_argument("--tearsheet", action="store_true")
     p.add_argument("--pdf", action="store_true")
+    p.add_argument("--gate", action="store_true")
     args = p.parse_args(argv)
     run_id = args.run_id
     algo = args.algorithm.upper()
@@ -169,21 +171,8 @@ def main(argv: list[str] | None = None) -> int:
         f"[EVAL] symbol={args.symbol} frame={args.frame} run_id={run_id} metrics={metrics_part}"
     )
 
-    passed, reasons = gate_metrics(
-        {
-            "sharpe": summary.get("sharpe"),
-            "max_drawdown": summary.get("max_drawdown"),
-            "sortino": summary.get("sortino"),
-            "calmar": summary.get("calmar"),
-            "turnover": summary.get("turnover"),
-            "win_rate": summary.get("win_rate"),
-            "avg_trade_pnl": summary.get("avg_trade_pnl"),
-        }
-    )
-    gate_status = "pass" if passed else "fail"
-    print(f"[GATE] status={gate_status} reasons=[{','.join(reasons)}]")
-
     splits = args.wfa_splits if not args.wfa else max(args.wfa_splits, 5)
+    wfa_pass = True
     if splits:
         from bot_trade.eval.walk_forward import walk_forward_eval
 
@@ -202,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"[WFA] run_id={run_id} splits={args.wfa_splits} embargo={embargo} out={json_path.resolve()}"
         )
+        wfa_pass = bool(wfa_res.get("folds"))
 
     if args.tearsheet:
         from bot_trade.eval.tearsheet import generate_tearsheet
@@ -211,6 +201,19 @@ def main(argv: list[str] | None = None) -> int:
     images_list = sorted(
         [p.name for p in charts_dir.glob("*.png") if p.is_file() and not p.is_symlink()]
     )
+    gate_pass, gate_details = gate_metrics(
+        {
+            "sharpe": summary.get("sharpe"),
+            "max_drawdown": summary.get("max_drawdown"),
+            "win_rate": summary.get("win_rate"),
+            "turnover": summary.get("turnover"),
+        },
+        wfa_pass=wfa_pass,
+    )
+    print(
+        f"[GATE] pass={str(gate_pass).lower()} details=[{','.join(gate_details)}]"
+    )
+
     kb_payload = {
         "run_id": run_id,
         "symbol": args.symbol,
@@ -235,7 +238,8 @@ def main(argv: list[str] | None = None) -> int:
             "win_rate": summary.get("win_rate"),
             "avg_trade_pnl": summary.get("avg_trade_pnl"),
         },
-        "gate": {"status": gate_status, "reasons": reasons},
+        "gate_pass": gate_pass,
+        "gate_details": gate_details,
         "portfolio": portfolio,
     }
     reg_file = rp.performance_dir / "adaptive_log.jsonl"
@@ -267,13 +271,14 @@ def main(argv: list[str] | None = None) -> int:
     kb_append(rp, kb_payload)
 
     print(
-        "[POSTRUN] run_id=%s algorithm=%s eval_win_rate=%s eval_sharpe=%s eval_max_drawdown=%s"
+        "[POSTRUN] run_id=%s algorithm=%s eval_win_rate=%s eval_sharpe=%s eval_max_drawdown=%s gate_pass=%s"
         % (
             run_id,
             rp.algo,
             _fmt(summary.get("win_rate")),
             _fmt(summary.get("sharpe")),
             _fmt(summary.get("max_drawdown")),
+            str(gate_pass).lower(),
         )
     )
 

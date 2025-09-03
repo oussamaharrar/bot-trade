@@ -1,0 +1,5 @@
+min_sharpe: 0.8
+max_drawdown: 0.25
+min_win_rate: 0.45
+max_turnover: 10.0
+require_walk_forward_pass: true

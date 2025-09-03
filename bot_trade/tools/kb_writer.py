@@ -58,6 +58,8 @@ KB_DEFAULTS = {
     "regime": {"active": "", "distribution": {}},
     "notes": "",
     "ai_core": {"signals_count": 0, "sources": []},
+    "gate_pass": None,
+    "gate_details": [],
 }
 
 
