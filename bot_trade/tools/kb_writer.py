@@ -60,11 +60,15 @@ KB_DEFAULTS = {
     "ai_core": {"signals_count": 0, "sources": []},
     "execution": {
         "mode": "",
-        "slippage": "",
+        "slippage_model": "",
         "fees": {"maker_bps": None, "taker_bps": None},
         "latency_ms": None,
+        "partial_fills": None,
+        "lot": None,
+        "notional_min": None,
     },
-    "risk": {"flags_count": 0},
+    "risk": {"flags_count": 0, "last_flag": None, "rules_active": []},
+    "charts": {"images": [], "sizes": {}},
     "gate_pass": None,
     "gate_details": [],
 }
@@ -111,6 +115,7 @@ def kb_append(run_paths: Any, payload: dict, kb_file: Optional[str] = None) -> N
     entry["ai_core"] = {**KB_DEFAULTS["ai_core"], **payload.get("ai_core", {})}
     entry["execution"] = {**KB_DEFAULTS["execution"], **payload.get("execution", {})}
     entry["risk"] = {**KB_DEFAULTS["risk"], **payload.get("risk", {})}
+    entry["charts"] = {**KB_DEFAULTS["charts"], **payload.get("charts", {})}
 
     # prevent duplicate run_id appends
     if path.exists():

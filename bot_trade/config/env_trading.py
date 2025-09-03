@@ -80,9 +80,9 @@ class TradingEnv(Env):
         try:
             if writers is not None and hasattr(writers, "paths"):
                 base_logs = writers.paths.get("logs")
-                risk_log = writers.paths.get("risk_log") or writers.paths.get("risk_csv")
+                risk_log = writers.paths.get("risk_flags") or writers.paths.get("risk_csv")
                 if not risk_log and base_logs:
-                    risk_log = os.path.join(base_logs, "risk_log.csv")
+                    risk_log = os.path.join(base_logs, "risk_flags.jsonl")
         except Exception:
             pass
         risk_cfg = (self.config or {}).get("risk", {})
@@ -103,6 +103,11 @@ class TradingEnv(Env):
         latency_ms = int(exec_cfg.get("latency_ms", 0))
         allow_partial = bool(exec_cfg.get("allow_partial", False))
         fee_bp = float(exec_cfg.get("fee_bp", 0.0))
+        fees_cfg = exec_cfg.get("fees", {}) if isinstance(exec_cfg, dict) else {}
+        maker_fee = float(fees_cfg.get("maker", fees_cfg.get("maker_bps", fee_bp)))
+        taker_fee = float(fees_cfg.get("taker", fees_cfg.get("taker_bps", fee_bp)))
+        lot_size = float(exec_cfg.get("lot", exec_cfg.get("lot_size", 0.0)))
+        min_notional = float(exec_cfg.get("min_notional", exec_cfg.get("notional_min", 0.0)))
         max_spread_bp = float(exec_cfg.get("max_spread_bp", float("inf")))
         self.exec_sim = ExecutionSim(
             model=model,
@@ -110,6 +115,10 @@ class TradingEnv(Env):
             latency_ms=latency_ms,
             allow_partial=allow_partial,
             fee_bp=fee_bp,
+            maker_fee=maker_fee,
+            taker_fee=taker_fee,
+            lot_size=lot_size,
+            min_notional=min_notional,
             max_spread_bp=max_spread_bp,
         )
         rw_cfg = (self.config or {}).get("reward_shaping", {})

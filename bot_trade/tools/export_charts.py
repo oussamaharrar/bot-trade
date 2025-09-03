@@ -116,7 +116,7 @@ def export_run_charts(paths: RunPaths, run_id: str, debug: bool = False) -> Tupl
     reward_file = rp.results / "reward" / "reward.log"
     step_file = rp.logs / "step_log.csv"
     train_file = rp.logs / "train_log.csv"
-    risk_file = rp.logs / "risk_log.csv"
+    risk_file = rp.logs / "risk_flags.jsonl"
     safety_file = rp.performance_dir / "safety_log.jsonl"
     callbacks_file = rp.logs / "callbacks.jsonl"
     signals_file = rp.logs / "signals.csv"
@@ -124,7 +124,7 @@ def export_run_charts(paths: RunPaths, run_id: str, debug: bool = False) -> Tupl
     reward = _read_csv_safe(reward_file, ["step", "reward", "ts"], ALIAS_MAP)
     step = _read_csv_safe(step_file)
     train = _read_csv_safe(train_file)
-    risk = _read_csv_safe(risk_file)
+    risk = _read_jsonl(risk_file)
     safety = _read_jsonl(safety_file)
     signals = _read_csv_safe(signals_file)
 

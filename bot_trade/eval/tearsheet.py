@@ -94,10 +94,10 @@ def generate_tearsheet(rp, pdf: bool = False) -> Path:
         figs["trades"] = tr_path.name
 
     risk_counts: Dict[str, int] = {}
-    risk_path = rp.logs / "risk_log.csv"
+    risk_path = rp.logs / "risk_flags.jsonl"
     if risk_path.exists():
         try:
-            risk_df = pd.read_csv(risk_path)
+            risk_df = pd.read_json(risk_path, lines=True)
             if "reason" in risk_df:
                 risk_counts = risk_df["reason"].value_counts().to_dict()
         except Exception:

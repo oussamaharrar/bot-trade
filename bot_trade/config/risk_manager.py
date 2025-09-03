@@ -1,8 +1,10 @@
 import logging
 import os
 import time
+from pathlib import Path
 from typing import Optional, Dict, List, Tuple
-import csv
+
+from bot_trade.tools.atomic_io import append_jsonl
 
 class RiskManager:
     """Dynamic risk manager using reward EMA, volatility, drawdown, and indicator signals."""
@@ -44,11 +46,11 @@ class RiskManager:
         self.max_drawdown = 0.0
 
         self.risk_log_path = log_path
+        self._flags_count = 0
+        self.last_flag: Optional[str] = None
         if self.risk_log_path:
             os.makedirs(os.path.dirname(self.risk_log_path), exist_ok=True)
-            with open(self.risk_log_path, "w", encoding="utf-8", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow(["risk_flag", "flag_reason", "value", "threshold", "ts"])
+            Path(self.risk_log_path).write_text("", encoding="utf-8")
         self.flags_fired = False
         self._last_multi_log = 0.0
         self._last_neg_log = 0.0
@@ -91,10 +93,17 @@ class RiskManager:
         if not self.risk_log_path:
             return
         ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        with open(self.risk_log_path, "a", encoding="utf-8", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([flag, reason, value, threshold, ts])
+        event = {
+            "name": flag,
+            "reason": reason,
+            "value": float(value),
+            "threshold": float(threshold),
+            "ts": ts,
+        }
+        append_jsonl(Path(self.risk_log_path), event)
         self.flags_fired = True
+        self._flags_count += 1
+        self.last_flag = flag
 
     # ------------------------------------------------------------------
     def check_circuit_breakers(

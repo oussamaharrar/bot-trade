@@ -287,3 +287,8 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: features largely stubbed; further wiring required before live trading; new config fields may surprise callers.
 - Migration Steps: regenerate configs via tools.make_config, update KB parsers for execution/risk fields, and handle [RISK_KILL]/[GATEWAY] lines.
 - Next Actions: wire bridge into environments, flesh out adapter and risk checks, implement real charts and kill-switch logic.
+## Developer Notes — 2025-10-11T00:00:00Z (Execution & Risk wiring)
+- What: added slippage model registry, execution/risk config flags and JSONL risk logging; KB charts/exec/risk sections and dev check for risk_flags.jsonl.
+- Risks: legacy consumers expect risk_log.csv; risk rule registry is stubbed.
+- Migration steps: use --exec-config/--risk-config, read risk_flags.jsonl, update parsers for KB charts/execution/risk.
+- Next actions: wire risk rules into runtime and expand bridge integration.

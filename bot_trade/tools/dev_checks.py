@@ -82,6 +82,15 @@ def main(argv: List[str] | None = None) -> int:
     _check_png("risk_flags.png", "risk_flags")
     _check_png("regimes.png", "regimes")
 
+    rf_jsonl = rp.logs / "risk_flags.jsonl"
+    try:
+        with rf_jsonl.open("r", encoding="utf-8") as fh:
+            rf_lines = sum(1 for ln in fh if ln.strip())
+    except FileNotFoundError:
+        rf_lines = 0
+    if rf_lines == 0:
+        details.append("risk_flags_jsonl")
+
     ai_core_used = kb_entry.get("ai_core", {}).get("signals_count", 0) > 0
     if ai_core_used:
         sig = memory_dir() / "Knowlogy" / "signals.jsonl"

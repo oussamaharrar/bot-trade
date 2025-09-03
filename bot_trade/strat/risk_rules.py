@@ -2,7 +2,7 @@ from __future__ import annotations
 """Risk management helpers with circuit breakers and kill switch."""
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List
+from typing import Callable, Dict, List
 
 from bot_trade.tools.atomic_io import append_jsonl, write_png
 
@@ -44,3 +44,47 @@ class RiskManager:
             write_png(path.with_suffix(".png"), fig)
         else:
             write_png(path.with_suffix(".png"), plt.figure(figsize=(6, 4)))
+
+
+RiskRule = Callable[[Dict, float], bool]
+RISK_RULES: Dict[str, RiskRule] = {}
+
+
+def register_rule(name: str) -> Callable[[RiskRule], RiskRule]:
+    def decorator(fn: RiskRule) -> RiskRule:
+        RISK_RULES[name] = fn
+        return fn
+    return decorator
+
+
+@register_rule("max_spread")
+def _max_spread(ctx: Dict, threshold: float) -> bool:
+    return float(ctx.get("spread_bp", 0.0)) > float(threshold)
+
+
+@register_rule("gap_guard")
+def _gap_guard(ctx: Dict, threshold: float) -> bool:
+    return float(ctx.get("gap", 0.0)) > float(threshold)
+
+
+@register_rule("loss_streak")
+def _loss_streak(ctx: Dict, threshold: float) -> bool:
+    return int(ctx.get("loss_streak", 0)) >= int(threshold)
+
+
+@register_rule("illiquidity")
+def _illiquidity(ctx: Dict, threshold: float) -> bool:
+    return float(ctx.get("depth", float("inf"))) < float(threshold)
+
+
+@register_rule("max_position")
+def _max_position(ctx: Dict, threshold: float) -> bool:
+    return abs(float(ctx.get("position", 0.0))) > float(threshold)
+
+
+@register_rule("drawdown_circuit")
+def _drawdown(ctx: Dict, threshold: float) -> bool:
+    return float(ctx.get("drawdown", 0.0)) > float(threshold)
+
+
+__all__ = ["RiskEvent", "RiskManager", "RISK_RULES", "register_rule"]

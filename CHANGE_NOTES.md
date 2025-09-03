@@ -502,3 +502,8 @@ PY`
 - **Rationale**: unify execution components with new order simulator and portfolio tracker, introduce ccxt gateway stub, basic risk management, config schema extensions, knowledge-base fields, export placeholders, and sweep warnings.
 - **Risks**: modules are minimally integrated; live trading remains stubbed; downstream consumers must handle new config blocks and KB fields.
 - **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`
+## 2025-10-11
+- **Files**: bot_trade/tools/execution/__init__.py, bot_trade/tools/execution/slippage_models.py, bot_trade/env/execution/order_sim.py, bot_trade/env/execution_sim.py, bot_trade/config/env_trading.py, bot_trade/config/rl_paths.py, bot_trade/config/risk_manager.py, bot_trade/tools/export_charts.py, bot_trade/tools/dev_checks.py, bot_trade/tools/kb_writer.py, bot_trade/train_rl.py, bot_trade/config/rl_args.py, bot_trade/eval/tearsheet.py, bot_trade/strat/risk_rules.py, config/execution.yaml, config/risk.yaml
+- **Rationale**: finalize execution simulator and risk artifacts with JSONL logging, registry-driven slippage, config flags, and KB/dev checks wiring.
+- **Risks**: consumers relying on `risk_log.csv` must migrate; risk rule integration remains superficial.
+- **Test Steps**: compile, synth data, PPO/SAC smoke, charts, eval_run, sweep, dev_checks.

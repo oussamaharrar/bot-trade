@@ -152,6 +152,8 @@ def parse_args():
         default=None,
         help="Path to config file (CLI > config.yaml > config.default.yaml)",
     )
+    ap.add_argument("--exec-config", type=str, default=None, help="Execution YAML config")
+    ap.add_argument("--risk-config", type=str, default=None, help="Risk YAML config")
     ap.add_argument("--policy", type=str, default="MlpPolicy")
     ap.add_argument("--device", type=str, default=None)
     ap.add_argument("--n-envs", type=int, default=0)

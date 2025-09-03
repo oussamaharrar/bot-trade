@@ -9,6 +9,8 @@ lot/min-notional checks.
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
+from bot_trade.tools.execution import get_slippage_model
+
 
 @dataclass
 class Fees:
@@ -40,18 +42,11 @@ class OrderSimulator:
 
     # ------------------------------------------------------------------
     def _slippage_bp(self, vol: Optional[float], depth: Optional[float]) -> float:
-        if self.model == "fixed_bp":
-            return float(self.params.get("bp", 0.0))
-        if self.model == "vol_aware":
-            k = float(self.params.get("k", 0.0))
-            return float(k * float(vol or 0.0))
-        if self.model == "depth_aware":
-            impact = float(self.params.get("book_impact", 0.0))
-            d = float(depth or 0.0)
-            if d <= 0:
-                return 0.0
-            return float(impact / d)
-        return 0.0
+        model_fn = get_slippage_model(self.model)
+        try:
+            return float(model_fn(self.params, vol, depth))
+        except Exception:
+            return 0.0
 
     # ------------------------------------------------------------------
     def _check_limits(self, qty: float, price: float) -> bool:
