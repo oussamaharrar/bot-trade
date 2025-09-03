@@ -266,3 +266,9 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: strict gate or sweep thresholds may over-warn; legacy scripts must import from new module.
 - Migration steps: regenerate synthetic data, import `force_utf8` from `bot_trade.tools.force_utf8`, parse `[DATA]` and `[GATE]` lines, and review config/eval_gate.yaml plus config/sweep_thresholds.yaml.
 - Next actions: broaden calendar validation and refine gating heuristics.
+## Developer Notes — 2025-10-10T00:00:00Z (Typed action space & UTF-8)
+- What changed: introduced frozen `ActionSpaceInfo` dataclass with `detect_action_space` pure function, deprecated `env.action_space` shim, enforced `force_utf8()` at entry of `train_rl`, `export_charts`, `eval_run` and `sweep`, and enabled per-module strict mypy with `py.typed` marker.
+- Why: stabilize action-space API, avoid Windows cp1252 issues, and improve typing guarantees on critical modules.
+- Risks: external consumers expecting dicts from `detect_action_space` must adapt; UTF-8 enforcement relies on `reconfigure` support.
+- Migration steps: import from `bot_trade.env.space_detect`, call `force_utf8()` in custom CLIs if not already; run `mypy` with new config.
+- Next actions: extend typing to additional modules and monitor deprecation notices for remaining shims.

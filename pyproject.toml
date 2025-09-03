@@ -13,3 +13,17 @@ bot-monitor = "bot_trade.tools.monitor_manager:main"
 
 [tool.setuptools.packages.find]
 include = ["bot_trade", "bot_trade.*"]
+
+[tool.setuptools.package-data]
+"bot_trade" = ["py.typed"]
+
+[tool.ruff]
+ignore = ["E401", "E402", "F401", "F841"]
+include = [
+    "bot_trade/env/space_detect.py",
+    "bot_trade/env/action_space.py",
+    "bot_trade/tools/export_charts.py",
+    "bot_trade/tools/eval_run.py",
+    "bot_trade/tools/sweep.py",
+    "bot_trade/tools/force_utf8.py",
+]

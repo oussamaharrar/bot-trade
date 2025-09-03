@@ -10,14 +10,15 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from bot_trade.config.rl_paths import DEFAULT_KB_FILE, RunPaths, reports_dir
 from bot_trade.tools._headless import ensure_headless_once
 from bot_trade.tools.atomic_io import append_jsonl, write_text
 from bot_trade.eval.gate import gate_metrics
+from bot_trade.tools.force_utf8 import force_utf8
 
 
 def _parse_list(val: str) -> List[str]:
@@ -31,7 +32,7 @@ def _fmt(v: float | None) -> str:
 THR_FILE = Path(__file__).resolve().parents[1] / "config" / "sweep_thresholds.yaml"
 
 
-def _load_thresholds() -> dict:
+def _load_thresholds() -> Dict[str, Any]:
     try:
         with THR_FILE.open("r", encoding="utf-8") as fh:
             return yaml.safe_load(fh) or {}
@@ -40,6 +41,7 @@ def _load_thresholds() -> dict:
 
 
 def main(argv: List[str] | None = None) -> int:
+    force_utf8()
     ensure_headless_once("tools.sweep")
     ap = argparse.ArgumentParser(description="CPU-only experiment sweeper")
     ap.add_argument("--mode", choices=["grid", "random"], default="grid")

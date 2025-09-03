@@ -479,3 +479,14 @@ PY`; `python -m bot_trade.tools.make_config --out config.default.yaml --preset t
 import os,sys; from bot_trade.tools.force_utf8 import force_utf8
 force_utf8(); print("[ENCODING]", os.environ.get("PYTHONIOENCODING"), getattr(sys.stdout,"encoding",None))
 PY`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.tools.data_doctor --root data_ready`; `python -m bot_trade.runners.train_rl --algorithm PPO --symbol BTCUSDT --frame 1m   --device cpu --n-envs 1 --total-steps 256 --headless --allow-synth --data-dir data_ready --no-monitor`; `python -m bot_trade.runners.train_rl --algorithm SAC --continuous-env --symbol BTCUSDT --frame 1m   --device cpu --n-envs 1 --total-steps 512 --headless --allow-synth --data-dir data_ready --no-monitor   --policy-kwargs '{"net_arch":[256,256],"activation_fn":"ReLU"}'`; `python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --run-id latest --tearsheet`; `python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest --wfa --tearsheet --gate`; `python -m bot_trade.tools.sweep --mode random --n-trials 4 --algorithm SAC --continuous-env --symbol BTCUSDT --frame 1m --headless --allow-synth --data-dir data_ready --gate`; `python -m bot_trade.tools.dev_checks --symbol BTCUSDT --frame 1m --run-id latest`
+
+## 2025-10-10
+- **Files**: bot_trade/env/space_detect.py, bot_trade/env/action_space.py, bot_trade/config/rl_builders.py, bot_trade/train_rl.py, train_rl.py, bot_trade/tools/force_utf8.py, bot_trade/tools/export_charts.py, bot_trade/tools/eval_run.py, bot_trade/tools/sweep.py, mypy.ini, pyproject.toml, bot_trade/py.typed, tests/smoke/test_utf8.py, tests/smoke/test_action_detect.py
+- **Rationale**: stabilize action-space detection with a typed dataclass and legacy shim, enforce UTF-8 across CLIs, and enable per-module strict type checking.
+- **Risks**: external callers expecting dicts from `detect_action_space` must adapt; UTF-8 configuration still depends on runtime support.
+- **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `ruff check bot_trade`; `mypy --strict bot_trade/env/space_detect.py bot_trade/env/action_space.py bot_trade/tools/export_charts.py bot_trade/tools/eval_run.py bot_trade/tools/sweep.py bot_trade/tools/force_utf8.py`; `PYTHONPATH=. pytest -k smoke`; `python - <<'PY'
+import os, sys
+from bot_trade.tools.force_utf8 import force_utf8
+force_utf8()
+print("[CHECK]", os.environ.get("PYTHONIOENCODING"), getattr(sys.stdout, "encoding", None))
+PY`

@@ -4,7 +4,7 @@ import os
 
 def test_force_utf8(capsys):
     force_utf8()
-    assert os.environ.get("PYTHONIOENCODING") == "utf-8"
+    assert os.environ.get("PYTHONIOENCODING") == "UTF-8"
     out = capsys.readouterr().out.strip()
-    assert out.startswith("[ENCODING] PYTHONIOENCODING=")
+    assert out == "[ENCODING] UTF-8"
 

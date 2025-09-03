@@ -20,6 +20,7 @@ from bot_trade.tools.latest import latest_run
 from bot_trade.tools import export_charts
 from bot_trade.tools.kb_writer import kb_append
 from bot_trade.eval.gate import gate_metrics
+from bot_trade.tools.force_utf8 import force_utf8
 
 
 
@@ -87,6 +88,8 @@ def evaluate_run(symbol: str, frame: str, run_id: str, algo: str = "PPO") -> Dic
 
 
 def main(argv: list[str] | None = None) -> int:
+    force_utf8()
+
     def _set_headless() -> None:
         import matplotlib
 
@@ -126,10 +129,10 @@ def main(argv: list[str] | None = None) -> int:
     charts_dir, img_count, rows = export_charts.export_run_charts(rp, run_id)
     required = {"reward.png", "sharpe.png", "loss.png", "entropy.png", "risk_flags.png"}
     for name in required:
-        p = charts_dir / name
-        if not p.exists():
+        target = charts_dir / name
+        if not target.exists():
             try:
-                export_charts._placeholder(p, "NO DATA")
+                export_charts._placeholder(target, "NO DATA")
             except Exception:
                 pass
     print(

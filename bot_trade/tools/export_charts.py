@@ -10,7 +10,12 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any, Tuple
+from typing import Any, Dict, Tuple, TYPE_CHECKING
+
+from bot_trade.tools.force_utf8 import force_utf8
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import pandas as pd
 
 from bot_trade.config.rl_paths import RunPaths, DEFAULT_REPORTS_DIR
 from bot_trade.tools.atomic_io import write_png
@@ -282,12 +287,13 @@ def export_for_run(run_paths: RunPaths, debug: bool = False) -> Dict[str, Any]:
     return {"charts_dir": str(charts_dir), "images": images, "rows": rows}
 
 
-def export_run(paths: RunPaths, debug: bool = False):  # pragma: no cover
-    cd, imgs, rows = export_run_charts(paths, paths.run_id, debug)
-    return cd, imgs, rows.get("reward", 0), rows.get("step", 0)
+def export_run(paths: RunPaths, debug: bool = False) -> Tuple[Path, int, int, int]:  # pragma: no cover
+    cd, img_count, rows = export_run_charts(paths, paths.run_id, debug)
+    return cd, img_count, rows.get("reward", 0), rows.get("step", 0)
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI helper
+    force_utf8()
     import argparse
     from bot_trade.config.rl_paths import get_root
 
