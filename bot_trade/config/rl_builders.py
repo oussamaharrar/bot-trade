@@ -15,7 +15,7 @@ import os, logging, json, hashlib
 from pathlib import Path
 
 from .rl_paths import best_agent, last_agent, get_root
-from bot_trade.env.action_space import detect_action_space
+from bot_trade.env.space_detect import ActionSpaceInfo, detect_action_space
 
 _ARGS_WARNED = False
 _GLOBAL_IGNORE = {
@@ -309,9 +309,9 @@ def _condense_policy_kwargs(pk: dict) -> dict:
     return out
 
 
-def _require_box(info: dict, name: str) -> None:
-    low = info.get("low")
-    if info.get("is_discrete") or low is None or getattr(low, "size", 0) == 0:
+def _require_box(info: ActionSpaceInfo, name: str) -> None:
+    low = info.low
+    if info.is_discrete or getattr(low, "size", 0) == 0:
         print(
             f"[ALGO_GUARD] algorithm={name} requires continuous Box action space; got discrete",
             flush=True,
@@ -325,8 +325,8 @@ def build_ppo(env, args, seed):
     pk, pk_keys = _policy_kwargs_from_args(args)
     bs = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", 64)), env)
     info = detect_action_space(env)
-    use_sde = bool(getattr(args, "sde", False) and not info["is_discrete"])
-    if getattr(args, "sde", False) and info["is_discrete"]:
+    use_sde = bool(getattr(args, "sde", False) and not info.is_discrete)
+    if getattr(args, "sde", False) and info.is_discrete:
         logging.warning("[PPO] gSDE disabled automatically for Discrete action space.")
     ent_coef = float(args.ent_coef) if isinstance(args.ent_coef, str) else args.ent_coef
     model = PPO(

@@ -38,7 +38,8 @@ from bot_trade.tools.evaluate_model import evaluate_for_run
 from bot_trade.tools.eval_run import evaluate_run
 from bot_trade.tools.kb_writer import kb_append
 from bot_trade.tools.monitor_launch import spawn_monitor_manager
-from bot_trade.env.action_space import detect_action_space
+from bot_trade.tools.force_utf8 import force_utf8
+from bot_trade.env.space_detect import detect_action_space
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -898,7 +899,7 @@ def train_one_file(args, data_file: str) -> bool:
 
     # 7) Action space detection
     info = detect_action_space(vec_env)
-    logging.info("[ENV] action_space=%s is_discrete=%s", info["shape"], info["is_discrete"])
+    logging.info("[ENV] action_space=%s is_discrete=%s", info.shape, info.is_discrete)
 
     # 8) Batch clamping
     n_envsn_steps = int(args.n_envs) * int(args.n_steps)
@@ -1025,7 +1026,7 @@ def train_one_file(args, data_file: str) -> bool:
             logging.info(
                 "[PPO] Built new model (device=%s, use_sde=%s)",
                 args.device_str,
-                bool(args.sde and not info["is_discrete"]),
+                bool(args.sde and not info.is_discrete),
             )
         elif algo == "SAC":
             logging.info("[SAC] Built new model (device=%s)", args.device_str)
@@ -1318,8 +1319,8 @@ def train_one_file(args, data_file: str) -> bool:
 # =============================
 
 def main():
+    force_utf8()
     ensure_headless_once("train_rl")
-    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     from bot_trade.config.rl_args import parse_args, finalize_args, build_policy_kwargs
     global torch, np, pd, psutil, subprocess, shutil
 
@@ -1623,7 +1624,6 @@ def main():
 
 if __name__ == "__main__":
     import multiprocessing as mp
-    from bot_trade.tools.encoding import force_utf8
 
     force_utf8()
     mp.freeze_support()
