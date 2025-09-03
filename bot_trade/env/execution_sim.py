@@ -14,11 +14,25 @@ class ExecutionSim(OrderSimulator):
         latency_ms: int = 0,
         allow_partial: bool = True,
         fee_bp: float = 0.0,
+        maker_fee: float | None = None,
+        taker_fee: float | None = None,
+        lot_size: float = 0.0,
+        min_notional: float = 0.0,
         max_spread_bp: float = float("inf"),
     ) -> None:
-        fees = Fees(maker_bps=fee_bp, taker_bps=fee_bp)
-        super().__init__(model=model, params=params, latency_ms=latency_ms, allow_partial=allow_partial, fees=fees)
+        mf = maker_fee if maker_fee is not None else fee_bp
+        tf = taker_fee if taker_fee is not None else fee_bp
+        fees = Fees(maker_bps=mf, taker_bps=tf)
+        super().__init__(
+            model=model,
+            params=params,
+            latency_ms=latency_ms,
+            allow_partial=allow_partial,
+            fees=fees,
+            min_notional=min_notional,
+            lot_size=lot_size,
+        )
         self.max_spread_bp = max_spread_bp
-        self.fee_bp = fee_bp
+        self.fee_bp = tf
 
 __all__ = ["ExecutionSim"]

@@ -323,6 +323,27 @@ def _postrun_summary(paths, meta):
     }
 
     try:
+        exec_cfg = cfg.get("execution", {}) if isinstance(cfg, dict) else {}
+        fees_cfg = exec_cfg.get("fees", {})
+        exec_meta = {
+            "mode": exec_cfg.get("mode", ""),
+            "slippage_model": exec_cfg.get("model", ""),
+            "fees": {
+                "maker_bps": fees_cfg.get("maker", fees_cfg.get("maker_bps")),
+                "taker_bps": fees_cfg.get("taker", fees_cfg.get("taker_bps")),
+            },
+            "latency_ms": exec_cfg.get("latency_ms"),
+            "partial_fills": bool(exec_cfg.get("allow_partial", False)),
+            "lot": exec_cfg.get("lot"),
+            "notional_min": exec_cfg.get("min_notional"),
+        }
+        risk_cfg = cfg.get("risk", {}) if isinstance(cfg, dict) else {}
+        risk_meta = {
+            "flags_count": rows_risk,
+            "last_flag": getattr(risk_manager, "last_flag", None),
+            "rules_active": list((risk_cfg.get("rules") or {}).keys()),
+        }
+        chart_sizes = {n: (charts_dir / n).stat().st_size for n in images_list}
         kb_entry = {
             "run_id": run_id,
             "symbol": sym,
@@ -353,6 +374,9 @@ def _postrun_summary(paths, meta):
             "safety": meta.get("safety"),
             "notes": str(meta.get("notes", "")),
             "ai_core": meta.get("ai_core", {}),
+            "execution": exec_meta,
+            "risk": risk_meta,
+            "charts": {"images": images_list, "sizes": chart_sizes},
         }
         kb_append(rp, kb_entry)
     except Exception as e:
@@ -1556,6 +1580,10 @@ def main():
 
     # Resolve dataset root (CLI > config.yaml > default)
     cfg = get_config()
+    if getattr(args, "exec_config", None):
+        cfg.setdefault("execution", {}).update(_load_yaml(Path(args.exec_config)))
+    if getattr(args, "risk_config", None):
+        cfg.setdefault("risk", {}).update(_load_yaml(Path(args.risk_config)))
     exec_cfg = cfg.setdefault("execution", {})
     if getattr(args, "slippage_model", None):
         exec_cfg["model"] = args.slippage_model

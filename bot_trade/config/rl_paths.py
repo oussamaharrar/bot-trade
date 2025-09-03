@@ -403,7 +403,8 @@ class RunPaths:
             "archive_best_dir": str(self.archive_best_dir),
             "train_csv": _p(self.logs, "train_log.csv"),
             "benchmark_log": _p(self.logs, "benchmark.log"),
-            "risk_log": _p(self.logs, "risk_log.csv"),
+            "risk_flags": _p(self.logs, "risk_flags.jsonl"),
+            "risk_log": _p(self.logs, "risk.log"),
             "signals_log": _p(self.logs, "signals_log.csv"),
             "callbacks_log": _p(self.logs, "callbacks_log.csv"),
             "step_csv": _p(self.logs, "step_log.csv"),
@@ -578,7 +579,8 @@ def build_paths(
     paths["error_log"] = os.path.join(paths["logs"], "error.log")
     paths["benchmark_log"] = os.path.join(paths["logs"], "benchmark.log")
     paths["train_log"] = os.path.join(paths["logs"], "train_log.csv")
-    paths["risk_log"] = os.path.join(paths["logs"], "risk_log.csv")
+    paths["risk_flags"] = os.path.join(paths["logs"], "risk_flags.jsonl")
+    paths["risk_log"] = os.path.join(paths["logs"], "risk.log")
     paths["risk_csv"] = os.path.join(paths["logs"], "risk.csv")
     paths["signals_log"] = os.path.join(paths["logs"], "signals_log.csv")
     paths["callbacks_log"] = os.path.join(paths["logs"], "callbacks_log.csv")
@@ -709,6 +711,7 @@ def get_paths(symbol: str, frame: str) -> dict:
         "step_csv": os.path.join(logs_dir, "step_log.csv"),
         "jsonl_decisions": os.path.join(logs_dir, "entry_decisions.jsonl"),
         "benchmark_log": os.path.join(logs_dir, "benchmark.log"),
+        "risk_flags": os.path.join(logs_dir, "risk_flags.jsonl"),
         "risk_log": os.path.join(logs_dir, "risk.log"),
         "risk_csv": os.path.join(logs_dir, "risk.csv"),
         "report_dir": _mk(DEFAULT_RESULTS_DIR, "reports"),
