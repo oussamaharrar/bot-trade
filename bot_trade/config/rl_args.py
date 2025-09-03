@@ -146,6 +146,12 @@ def parse_args():
     )
     ap.add_argument("--symbol", type=str, default="BTCUSDT")
     ap.add_argument("--frame", type=str, default="1m")
+    ap.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to config file (CLI > config.yaml > config.default.yaml)",
+    )
     ap.add_argument("--policy", type=str, default="MlpPolicy")
     ap.add_argument("--device", type=str, default=None)
     ap.add_argument("--n-envs", type=int, default=0)

@@ -527,7 +527,7 @@ def train_one_file(args, data_file: str) -> bool:
     else:
         run_id = getattr(args, "run_id", None) or new_run_id(args.symbol, args.frame)
     args.run_id = run_id
-    cfg = get_config()
+    cfg = get_config(getattr(args, "config", None))
     reward_spec_path = getattr(args, "reward_spec", None)
     if reward_spec_path is None:
         default_rspec = Path("config/rewards/default.yml")
@@ -898,7 +898,7 @@ def train_one_file(args, data_file: str) -> bool:
 
     # 7) Action space detection
     info = detect_action_space(vec_env)
-    logging.info("[ENV] action_space=%s | is_discrete=%s", info.dims, info.is_discrete)
+    logging.info("[ENV] action_space=%s | is_discrete=%s", info["shape"], info["is_discrete"])
 
     # 8) Batch clamping
     n_envsn_steps = int(args.n_envs) * int(args.n_steps)
@@ -1025,7 +1025,7 @@ def train_one_file(args, data_file: str) -> bool:
             logging.info(
                 "[PPO] Built new model (device=%s, use_sde=%s)",
                 args.device_str,
-                bool(args.sde and not info.is_discrete),
+                bool(args.sde and not info["is_discrete"]),
             )
         elif algo == "SAC":
             logging.info("[SAC] Built new model (device=%s)", args.device_str)

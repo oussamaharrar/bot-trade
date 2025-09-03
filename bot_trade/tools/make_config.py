@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Tuple
 
 import yaml  # type: ignore
 
@@ -23,34 +23,37 @@ def _load_yaml(path: Path) -> Dict:
         return {}
 
 
-def apply_presets(cfg: Dict, training: str | None, net: str | None) -> Dict:
-    if training:
-        training_map = _load_yaml(PRESETS_DIR / "training.yml")
-        cfg.update(training_map.get(training, {}))
-    if net:
-        net_map = _load_yaml(PRESETS_DIR / "net_arch.yml")
-        cfg.setdefault("net", {}).update(net_map.get(net, {}))
+def _apply_presets(cfg: Dict, presets: List[Tuple[str, str]]) -> Dict:
+    for key, name in presets:
+        mapping = _load_yaml(PRESETS_DIR / f"{key}.yml")
+        if key == "net":
+            cfg.setdefault("net", {}).update(mapping.get(name, {}))
+        else:
+            cfg.update(mapping.get(name, {}))
     return cfg
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Create config from defaults and presets")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--preset", action="append", default=[], help="training=name or net=name")
+    ap.add_argument("--preset", action="append", default=[], help="key=value overlay; multiple allowed")
+    ap.add_argument("--force", action="store_true", help="Overwrite if destination exists")
     ns = ap.parse_args(argv)
 
-    training = net = None
+    presets: List[Tuple[str, str]] = []
     for item in ns.preset:
         if "=" in item:
             k, v = item.split("=", 1)
-            if k == "training":
-                training = v
-            elif k == "net":
-                net = v
+            presets.append((k, v))
+
     cfg = _load_yaml(DEFAULT_CFG)
-    cfg = apply_presets(cfg, training, net)
+    cfg = _apply_presets(cfg, presets)
     Config.model_validate(cfg)  # type: ignore
+
     out_path = Path(ns.out)
+    if out_path.exists() and not ns.force:
+        print(f"[CONFIG] out={out_path} exists=true valid=false")
+        return 1
     out_path.parent.mkdir(parents=True, exist_ok=True)
     data = yaml.safe_dump(cfg, sort_keys=False)
     if not data.endswith("\n"):
@@ -58,7 +61,9 @@ def main(argv: list[str] | None = None) -> int:
     tmp = out_path.with_suffix(out_path.suffix + ".tmp")
     tmp.write_text(data, encoding="utf-8")
     tmp.replace(out_path)
-    print(f"[CONFIG] wrote={out_path} preset.training={training} preset.net={net}")
+    print(
+        f"[CONFIG] out={out_path} presets={[f'{k}={v}' for k, v in presets]} valid=true"
+    )
     return 0
 
 
