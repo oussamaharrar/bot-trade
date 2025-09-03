@@ -406,3 +406,10 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Rationale**: add CPU-only sweep with grid/random modes and eval metrics, strengthen dev checks with chart DPI/size and ai_core signal assertions, log trailing newline fixes, and expand smoke CI to train/eval PPO+SAC and run random sweeps.
 - **Risks**: sweep may prolong CI; dev checks depend on knowledge base availability.
 - **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `python -m bot_trade.tools.sweep --mode random --n-trials 4 --symbol BTCUSDT --frame 1m --algorithm SAC --continuous-env --headless --allow-synth --data-dir data_ready`; `python -m bot_trade.tools.dev_checks --symbol BTCUSDT --frame 1m --run-id latest`
+
+## Developer Notes — 2025-09-03 03:20:01 UTC
+- Added CPU sweeper (grid/random), atomic summaries (csv/md/jsonl), and [SWEEP] line
+- Implemented warning thresholds with env overrides; added [SWEEP_WARN] markers
+- Strengthened dev_checks (fields, charts DPI/size, ai_core signals) with summary [CHECKS]
+- Improved atomic writers with [IO] fixed_trailing_newline
+- Added smoke CI pipeline and artifacts

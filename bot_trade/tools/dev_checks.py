@@ -49,12 +49,13 @@ def main(argv: List[str] | None = None) -> int:
     algo = (kb_entry.get("algorithm") or "").upper()
     warnings = 0
 
+    missing: list[str] = []
     if not algo:
-        print("[CHECKS] missing_algorithm")
-        warnings += 1
-
+        missing.append("algorithm")
     if kb_entry.get("eval", {}).get("max_drawdown") is None:
-        print("[CHECKS] missing_eval_max_drawdown")
+        missing.append("eval.max_drawdown")
+    if missing:
+        print(f"[CHECKS] missing_fields fields={','.join(missing)}")
         warnings += 1
 
     rp = RunPaths(args.symbol, args.frame, run_id, algo or "PPO")
@@ -89,8 +90,6 @@ def main(argv: List[str] | None = None) -> int:
                 with sig.open("ab") as fh:
                     fh.write(b"\n")
                 print(f"[IO] fixed_trailing_newline file={sig}")
-                print("[CHECKS] signals_jsonl_fixed_newline")
-                warnings += 1
         except FileNotFoundError:
             print("[CHECKS] signals_jsonl_missing")
             warnings += 1

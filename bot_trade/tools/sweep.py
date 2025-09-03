@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
+import math
 import os
 import random
 import subprocess
@@ -10,28 +12,28 @@ import time
 from pathlib import Path
 from typing import Dict, List
 
+from bot_trade.config.rl_paths import DEFAULT_KB_FILE, RunPaths, reports_dir
 from bot_trade.tools._headless import ensure_headless_once
 from bot_trade.tools.atomic_io import append_jsonl, write_text
-from bot_trade.config.rl_paths import RunPaths, reports_dir, DEFAULT_KB_FILE
 
 
-def _parse_grid(grid: str) -> Dict[str, List[str]]:
-    params: Dict[str, List[str]] = {}
-    for part in filter(None, [p.strip() for p in grid.split(";")]):
-        if "=" not in part:
-            continue
-        k, v = part.split("=", 1)
-        vals = [x.strip() for x in v.strip().strip("[]").split("|") if x.strip()]
-        params[k.strip()] = vals
-    return params
-
-
-def _choose(params: Dict[str, List[str]]) -> Dict[str, str]:
-    return {k: random.choice(v) for k, v in params.items()}
+def _parse_list(val: str) -> List[str]:
+    return [v.strip() for v in val.split(",") if v.strip()]
 
 
 def _fmt(v: float | None) -> str:
     return f"{v:.3f}" if isinstance(v, (int, float)) and v is not None else ""
+
+
+def _env_float(key: str, default: float) -> float:
+    raw = os.getenv(key)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except Exception:
+        print(f"[SWEEP_WARN] env_override_invalid key={key} value={raw} using_default={default}")
+        return default
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -42,7 +44,9 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("--symbol", required=True)
     ap.add_argument("--frame", required=True)
     ap.add_argument("--algorithm", required=True)
-    ap.add_argument("--param-grid", default="")
+    ap.add_argument("--learning-rate", default="")
+    ap.add_argument("--batch-size", default="")
+    ap.add_argument("--net-arch-preset", default="")
     ap.add_argument("--continuous-env", action="store_true")
     ap.add_argument("--allow-synth", action="store_true")
     ap.add_argument("--headless", action="store_true")
@@ -56,20 +60,35 @@ def main(argv: List[str] | None = None) -> int:
     if runs_path.exists():
         runs_path.unlink()
 
-    grid = _parse_grid(ns.param_grid)
+    ranges: Dict[str, List[str]] = {}
+    if ns.learning_rate:
+        ranges["learning_rate"] = _parse_list(ns.learning_rate)
+    if ns.batch_size:
+        ranges["batch_size"] = _parse_list(ns.batch_size)
+    if ns.net_arch_preset:
+        ranges["net_arch_preset"] = _parse_list(ns.net_arch_preset)
+
     combos: List[Dict[str, str]] = []
     if ns.mode == "grid":
-        if not grid:
-            combos = [{}]
-        else:
-            keys = list(grid.keys())
+        if ranges:
             import itertools
 
-            for vals in itertools.product(*[grid[k] for k in keys]):
+            keys = list(ranges.keys())
+            for vals in itertools.product(*[ranges[k] for k in keys]):
                 combos.append({k: v for k, v in zip(keys, vals)})
+        else:
+            combos = [{}]
     else:  # random
-        for _ in range(ns.n_trials):
-            combos.append(_choose(grid) if grid else {})
+        if ranges:
+            for _ in range(ns.n_trials):
+                combos.append({k: random.choice(v) for k, v in ranges.items()})
+        else:
+            combos = [{} for _ in range(ns.n_trials)]
+
+    thr_top_sharpe = _env_float("SWEEP_THR_TOP_SHARPE", 0.20)
+    thr_top_winrate = _env_float("SWEEP_THR_TOP_WINRATE", 0.45)
+    thr_top_maxdd = _env_float("SWEEP_THR_TOP_MAXDD", 0.30)
+    thr_max_turnover = _env_float("SWEEP_THR_MAX_TURNOVER", 8.0)
 
     rows: List[Dict[str, str]] = []
 
@@ -89,12 +108,16 @@ def main(argv: List[str] | None = None) -> int:
             "--n-envs",
             "1",
             "--n-steps",
-            str(params.get("n_steps", 32)),
+            "32",
             "--batch-size",
             str(params.get("batch_size", 64)),
             "--total-steps",
-            str(params.get("total_steps", 128)),
+            "128",
         ]
+        if "learning_rate" in params:
+            cmd.extend(["--learning-rate", str(params["learning_rate"])])
+        if "net_arch_preset" in params:
+            cmd.extend(["--net-arch-preset", str(params["net_arch_preset"])])
         if ns.continuous_env:
             cmd.append("--continuous-env")
         if ns.headless:
@@ -103,10 +126,6 @@ def main(argv: List[str] | None = None) -> int:
             cmd.append("--allow-synth")
         if ns.data_dir:
             cmd.extend(["--data-dir", ns.data_dir])
-        for k, v in params.items():
-            if k in {"n_steps", "batch_size", "total_steps"}:
-                continue
-            cmd.extend([f"--{k.replace('_', '-')}", str(v)])
         cmd.extend(rest)
 
         proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -134,6 +153,7 @@ def main(argv: List[str] | None = None) -> int:
                 "avg_pnl": "",
                 "ai_core_signals": "",
                 "regimes_png_exists": "0",
+                "charts_count": "0",
                 "status": "skipped",
                 "reason": reason,
             }
@@ -171,6 +191,7 @@ def main(argv: List[str] | None = None) -> int:
                 "avg_pnl": "",
                 "ai_core_signals": "",
                 "regimes_png_exists": "0",
+                "charts_count": "0",
                 "status": "skipped",
                 "reason": reason,
             }
@@ -184,6 +205,33 @@ def main(argv: List[str] | None = None) -> int:
             summary = json.loads((rp.performance_dir / "summary.json").read_text(encoding="utf-8"))
         except Exception:
             summary = {}
+
+        metrics = {
+            "sharpe": summary.get("sharpe"),
+            "sortino": summary.get("sortino"),
+            "calmar": summary.get("calmar"),
+            "max_drawdown": summary.get("max_drawdown"),
+            "turnover": summary.get("turnover"),
+            "win_rate": summary.get("win_rate"),
+            "avg_trade_pnl": summary.get("avg_trade_pnl"),
+        }
+        unstable = []
+        for k, v in list(metrics.items()):
+            if not isinstance(v, (int, float)) or math.isnan(v) or math.isinf(v):
+                unstable.append(k)
+                metrics[k] = None
+        if unstable:
+            print(f"[SWEEP_WARN] unstable_metrics run_id={run_id} fields={','.join(unstable)}")
+
+        turnover_val = metrics.get("turnover")
+        if turnover_val is not None and turnover_val > thr_max_turnover:
+            print(f"[SWEEP_WARN] high_turnover run_id={run_id} val={turnover_val:.3f}")
+
+        charts_count = len(list(rp.charts_dir.glob("*.png")))
+        reg_exists = (rp.charts_dir / "regimes.png").exists()
+        if charts_count < 5 or not reg_exists:
+            print(f"[SWEEP_WARN] insufficient_artifacts run_id={run_id}")
+
         kb_path = Path(DEFAULT_KB_FILE)
         ai_signals = 0
         if kb_path.exists():
@@ -195,21 +243,22 @@ def main(argv: List[str] | None = None) -> int:
                             ai_signals = obj.get("ai_core", {}).get("signals_count", 0)
             except Exception:
                 ai_signals = 0
-        reg_exists = 1 if (rp.charts_dir / "regimes.png").exists() else 0
+
         row = {
             "run_id": run_id,
             "algorithm": algo,
             "symbol": ns.symbol,
             "frame": ns.frame,
-            "eval_sharpe": _fmt(summary.get("sharpe")),
-            "eval_sortino": _fmt(summary.get("sortino")),
-            "eval_calmar": _fmt(summary.get("calmar")),
-            "eval_max_drawdown": _fmt(summary.get("max_drawdown")),
-            "turnover": _fmt(summary.get("turnover")),
-            "win_rate": _fmt(summary.get("win_rate")),
-            "avg_pnl": _fmt(summary.get("avg_trade_pnl")),
+            "eval_sharpe": _fmt(metrics.get("sharpe")),
+            "eval_sortino": _fmt(metrics.get("sortino")),
+            "eval_calmar": _fmt(metrics.get("calmar")),
+            "eval_max_drawdown": _fmt(metrics.get("max_drawdown")),
+            "turnover": _fmt(metrics.get("turnover")),
+            "win_rate": _fmt(metrics.get("win_rate")),
+            "avg_pnl": _fmt(metrics.get("avg_trade_pnl")),
             "ai_core_signals": str(ai_signals),
-            "regimes_png_exists": str(reg_exists),
+            "regimes_png_exists": str(int(reg_exists)),
+            "charts_count": str(charts_count),
             "status": "ok",
             "reason": "",
         }
@@ -229,6 +278,7 @@ def main(argv: List[str] | None = None) -> int:
             _to_float(r.get("eval_max_drawdown", "nan")),
         ),
     )
+
     header = [
         "run_id",
         "algorithm",
@@ -243,10 +293,10 @@ def main(argv: List[str] | None = None) -> int:
         "avg_pnl",
         "ai_core_signals",
         "regimes_png_exists",
+        "charts_count",
         "status",
         "reason",
     ]
-    import csv
 
     csv_path = base_dir / "summary.csv"
     tmp = csv_path.with_suffix(".tmp")
@@ -267,9 +317,30 @@ def main(argv: List[str] | None = None) -> int:
         )
     write_text(base_dir / "summary.md", "\n".join(md_lines) + "\n")
 
-    best_sharpe = rows_sorted[0]["eval_sharpe"] if rows_sorted else ""
+    completed = sum(1 for r in rows if r["status"] == "ok")
+    skipped = len(rows) - completed
+
+    if completed == 0:
+        reasons = {r.get("reason", "") for r in rows}
+        common = reasons.pop() if len(reasons) == 1 else "mixed"
+        print(f"[SWEEP_WARN] all_trials_skipped reason=\"{common}\"")
+
+    top = rows_sorted[0] if rows_sorted else {}
+    top_sharpe = _to_float(top.get("eval_sharpe", "nan"))
+    top_win = _to_float(top.get("win_rate", "nan"))
+    top_maxdd = _to_float(top.get("eval_max_drawdown", "nan"))
+
+    if rows_sorted:
+        if not math.isnan(top_sharpe) and top_sharpe < thr_top_sharpe:
+            print(f"[SWEEP_WARN] low_top_sharpe={top.get('eval_sharpe','')}")
+        if not math.isnan(top_win) and top_win < thr_top_winrate:
+            print(f"[SWEEP_WARN] low_top_win_rate={top.get('win_rate','')}")
+        if not math.isnan(top_maxdd) and top_maxdd > thr_top_maxdd:
+            print(f"[SWEEP_WARN] high_top_maxdd={top.get('eval_max_drawdown','')}")
+
+    best_sharpe = top.get("eval_sharpe", "") if rows_sorted else ""
     print(
-        f"[SWEEP] trials={len(combos)} mode={ns.mode} top_sharpe={best_sharpe or 'null'} out={csv_path.resolve()}"
+        f"[SWEEP] trials={len(rows)} completed={completed} skipped={skipped} mode={ns.mode} top_sharpe={best_sharpe or 'null'} out={base_dir.resolve()}"
     )
     return 0
 
