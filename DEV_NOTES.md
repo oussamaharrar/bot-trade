@@ -272,3 +272,11 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: external consumers expecting dicts from `detect_action_space` must adapt; UTF-8 enforcement relies on `reconfigure` support.
 - Migration steps: import from `bot_trade.env.space_detect`, call `force_utf8()` in custom CLIs if not already; run `mypy` with new config.
 - Next actions: extend typing to additional modules and monitor deprecation notices for remaining shims.
+## Developer Notes — 2025-09-03T22:09:01Z (Action-space consolidation)
+- What changed: finalized `ActionSpaceInfo` with optional bounds, enforced `_require_box` and continuous-env checks in RL builders, added `.ruff.toml`, removed emoji training log, and ensured UTF-8 notices via `force_utf8()` in runners.
+- Why: complete action-space API and tighten lint/type gates.
+- Risks: misconfigured `--continuous-env` now aborts; shim prints once per process and asserts parity.
+- Migration steps: import from `bot_trade.env.space_detect`; legacy calls use `env.action_space` shim (single `[DEPRECATION]`).
+- Next actions: widen typing coverage and phase out deprecated shim.
+- py.typed location: `bot_trade/py.typed`.
+- Tests/lint/type: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `ruff check bot_trade --fix-only`; `mypy --strict bot_trade/env/space_detect.py bot_trade/env/action_space.py bot_trade/config/rl_builders.py bot_trade/tools/force_utf8.py`; `PYTHONPATH=. pytest -q -k 'smoke and (action_detect or utf8)'`; PPO/SAC smoke training commands above.

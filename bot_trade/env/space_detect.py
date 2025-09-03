@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
 
 import numpy as np
 from gymnasium import spaces as gym_spaces
@@ -11,26 +11,33 @@ from gymnasium import spaces as gym_spaces
 class ActionSpaceInfo:
     is_discrete: bool
     shape: Tuple[int, ...]
-    low: np.ndarray
-    high: np.ndarray
+    low: Optional[float]
+    high: Optional[float]
 
 
-def detect_action_space(space: Any) -> ActionSpaceInfo:
+def detect_action_space(env: Any) -> ActionSpaceInfo:
     """Detect basic properties of an environment's action space.
 
-    ``space`` may be an environment or a Gymnasium space instance.
+    ``env`` may be an environment or a Gymnasium space instance.
     """
 
-    s = getattr(space, "single_action_space", None) or getattr(space, "action_space", space)
-    if isinstance(s, gym_spaces.Discrete):
-        n = int(getattr(s, "n", 0))
-        low = np.array([0], dtype=np.int64)
-        high = np.array([n - 1], dtype=np.int64)
-        return ActionSpaceInfo(True, (1,), low, high)
-    if isinstance(s, gym_spaces.Box):
-        return ActionSpaceInfo(False, tuple(s.shape), np.asarray(s.low), np.asarray(s.high))
-    shape = tuple(getattr(s, "shape", ()) or ())
-    return ActionSpaceInfo(False, shape, np.array([]), np.array([]))
+    space = getattr(env, "single_action_space", None)
+    if space is None:
+        space = getattr(env, "action_space", None)
+    if space is None:
+        space = env
+    if isinstance(space, gym_spaces.Discrete):
+        n = int(getattr(space, "n", 0))
+        return ActionSpaceInfo(True, (1,), 0.0, float(n - 1))
+    if isinstance(space, gym_spaces.Box):
+        shape = tuple(space.shape)
+        low_arr = np.asarray(space.low, dtype=float)
+        high_arr = np.asarray(space.high, dtype=float)
+        low_val = float(low_arr.flat[0]) if np.all(low_arr == low_arr.flat[0]) else None
+        high_val = float(high_arr.flat[0]) if np.all(high_arr == high_arr.flat[0]) else None
+        return ActionSpaceInfo(False, shape, low_val, high_val)
+    shape = tuple(getattr(space, "shape", ()) or ())
+    return ActionSpaceInfo(False, shape, None, None)
 
 
 __all__ = ["ActionSpaceInfo", "detect_action_space"]

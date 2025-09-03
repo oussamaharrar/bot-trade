@@ -490,3 +490,9 @@ from bot_trade.tools.force_utf8 import force_utf8
 force_utf8()
 print("[CHECK]", os.environ.get("PYTHONIOENCODING"), getattr(sys.stdout, "encoding", None))
 PY`
+
+## 2025-10-11
+- **Files**: .ruff.toml, bot_trade/env/space_detect.py, bot_trade/env/action_space.py, bot_trade/config/rl_builders.py, bot_trade/runners/train_rl.py, bot_trade/train_rl.py, tests/smoke/test_action_detect.py, tests/smoke/test_utf8.py
+- **Rationale**: finalize typed action-space API with bounds, enforce single UTF-8 notice, add continuous-env validation, drop emoji logs, and introduce ruff lint gates.
+- **Risks**: strict env checks may abort misconfigured runs; legacy imports should migrate off the deprecated shim.
+- **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `ruff check bot_trade --fix-only`; `mypy --strict bot_trade/env/space_detect.py bot_trade/env/action_space.py bot_trade/config/rl_builders.py bot_trade/tools/force_utf8.py`; `PYTHONPATH=. pytest -q -k 'smoke and (action_detect or utf8)'`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.runners.train_rl --algorithm PPO --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --total-steps 128 --headless --allow-synth --data-dir data_ready --no-monitor`; `python -m bot_trade.runners.train_rl --algorithm SAC --continuous-env --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --total-steps 128 --headless --allow-synth --data-dir data_ready --no-monitor`
