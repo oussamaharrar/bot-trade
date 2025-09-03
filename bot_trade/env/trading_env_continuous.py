@@ -182,6 +182,10 @@ class TradingEnvContinuous(TradingEnv):
                 "risk_threshold": thr,
             })
         info["reward_components"] = comps
+        try:
+            info["regime"] = getattr(self, "current_regime", "unknown")
+        except Exception:
+            info["regime"] = "unknown"
         self._log_decision({
             "step": int(self.steps),
             "ptr": int(self.ptr),

@@ -333,6 +333,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI helper
         )
     )
     print(f"[CHARTS] dir={charts_dir.resolve()} images={images}")
+    rg = charts_dir / "regimes.png"
+    if rg.exists():
+        print(f"[ADAPT_CHARTS] regimes_png={rg.resolve()}")
     return 0 if images > 0 else 2
 
 

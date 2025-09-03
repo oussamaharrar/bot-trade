@@ -364,3 +364,17 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Enabled PPO→SAC warm-start (encoder-only, shape-checked) with single-line status
 - Fixed policy_kwargs passthrough; support dict or JSON string; recorded condensed policy_kwargs in algo_meta
 - Kept logging contracts, latest guard, and Evaluation Suite behavior unchanged; all outputs atomic
+
+## Developer Notes — 2025-09-03 01:15:11 UTC
+- What: Added YAML-driven rewards registry with clamps, regime detector with JSONL logging, adaptive controller applying reward/risk deltas, regimes.png exports, dev_checks updates, KB log counts, and CLI flags for reward/adaptive specs.
+- Why: enable configurable reward shaping and regime-aware risk adjustments while preserving existing interfaces.
+- Risks: misconfigured specs may yield silent clamping or no adaptive triggers; reward registry not yet fully integrated with environment.
+- Migration: provide --reward-spec and --adaptive-spec paths (defaults available), parse regime/adaptive log counts in KB consumers.
+- Next Actions: expand reward terms, tighten regime thresholds, and link registry outputs directly to env rewards.
+
+## Developer Notes — 2025-09-03 01:42:15 UTC
+- What: Debounced `[ADAPT]` logging per `{regime, window_id}`, seeded `RegimeDetector`, sanitized reward term handling, nested KB log counts, and enforced `regimes.png` DPI/size checks.
+- Why: reduce duplicate adaptive prints, ensure deterministic regime analysis and numeric stability, and satisfy artifact requirements.
+- Risks: adaptive deltas skipped if controller invoked repeatedly within same window; dev checks now fail on low-DPI regime charts.
+- Migration: consumers must read `logs.regime_log_count`/`logs.adaptive_log_count` instead of old flat fields.
+- Next Actions: monitor regime transitions in extended runs and refine detector thresholds.
