@@ -1,0 +1,9 @@
+# Default configuration for bot_trade
+rl:
+  algorithm: PPO
+  total_steps: 100000
+net:
+  layers: [64, 64]
+  activation: ReLU
+  ortho_init: true
+

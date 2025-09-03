@@ -89,13 +89,13 @@ def read_one_csv(path_str: str) -> Optional[pd.DataFrame]:
         else:
             unit_detected = "milliseconds"
         df["open_time"] = df["open_time"].astype("Int64")
-        print(f"ℹ️ {path.name}: detected {unit_detected}")
+        print(f"[INFO] {path.name}: detected {unit_detected}")
 
     # Bounds filter (milliseconds)
     df = df[(df["open_time"] >= MIN_TS_MS) & (df["open_time"] <= MAX_TS_MS)]
     if df.empty:
         # noisy files in 2025 seconds will be filtered here before conversion otherwise
-        print(f"⚠️ {path.name}: no rows within time bounds — skipping.")
+        print(f"[WARN] {path.name}: no rows within time bounds — skipping.")
         return None
 
     # Standardize
@@ -103,7 +103,7 @@ def read_one_csv(path_str: str) -> Optional[pd.DataFrame]:
     df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", errors="coerce")
     df = df[df["datetime"].notna()]
     if df.empty:
-        print(f"⚠️ {path.name}: no valid datetimes — skipping.")
+        print(f"[WARN] {path.name}: no valid datetimes — skipping.")
         return None
 
     df["symbol"] = _symbol_from_filename(path)
@@ -242,8 +242,11 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     for frame in frames:
         process_frame_parallel(raw_dir, out_dir, frame, split_1s=args.split_1s)
-    print("🎯 Done →", out_dir.resolve())
+    print("[DONE]", out_dir.resolve())
 
 
 if __name__ == "__main__":
+    from bot_trade.config.encoding import force_utf8
+
+    force_utf8()
     main()

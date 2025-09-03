@@ -38,6 +38,7 @@ from bot_trade.tools.evaluate_model import evaluate_for_run
 from bot_trade.tools.eval_run import evaluate_run
 from bot_trade.tools.kb_writer import kb_append
 from bot_trade.tools.monitor_launch import spawn_monitor_manager
+from bot_trade.env.action_space import detect_action_space
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -605,6 +606,21 @@ def train_one_file(args, data_file: str) -> bool:
     paths_obj.ensure()
     paths = paths_obj.as_dict()
     ensure_contract(paths)
+    if getattr(args, "mlflow", False):
+        try:
+            import mlflow  # type: ignore
+
+            mlflow.log_param("config_path", str(paths_obj.summary_json_path))
+        except Exception:
+            print("[EXPERIMENT] mlflow unavailable")
+    if getattr(args, "wandb", False):
+        try:
+            import wandb  # type: ignore
+
+            wandb.init(project="bot_trade", config={"run_id": run_id})
+            wandb.log({"config_path": str(paths_obj.summary_json_path)})
+        except Exception:
+            print("[EXPERIMENT] wandb unavailable")
     log_queue, listener, _ = create_loggers(
         paths["results"],
         args.frame,
@@ -881,8 +897,8 @@ def train_one_file(args, data_file: str) -> bool:
     paths_obj.write_run_meta({"vecnorm_applied": vecnorm_applied})
 
     # 7) Action space detection
-    action_space, is_discrete = detect_action_space(vec_env)
-    logging.info("[ENV] action_space=%s | is_discrete=%s", action_space, is_discrete)
+    info = detect_action_space(vec_env)
+    logging.info("[ENV] action_space=%s | is_discrete=%s", info.dims, info.is_discrete)
 
     # 8) Batch clamping
     n_envsn_steps = int(args.n_envs) * int(args.n_steps)
@@ -950,6 +966,10 @@ def train_one_file(args, data_file: str) -> bool:
         elif os.path.exists(paths["model_best_zip"]):
             resume_path = paths["model_best_zip"]
     if resume_path:
+        print(f"[RESUME] found checkpoint={resume_path}")
+    else:
+        print("[RESUME] none")
+    if resume_path:
         from stable_baselines3 import PPO as _PPO, SAC as _SAC
 
         Loader = _SAC if algo == "SAC" else _PPO
@@ -1005,7 +1025,7 @@ def train_one_file(args, data_file: str) -> bool:
             logging.info(
                 "[PPO] Built new model (device=%s, use_sde=%s)",
                 args.device_str,
-                bool(args.sde and not is_discrete),
+                bool(args.sde and not info.is_discrete),
             )
         elif algo == "SAC":
             logging.info("[SAC] Built new model (device=%s)", args.device_str)
@@ -1336,7 +1356,7 @@ def main():
     if getattr(args, "layer_norm", False):
         args.policy_kwargs["layer_norm"] = True
     _apply_risk_cfg(args)
-    global build_env_fns, make_vec_env, detect_action_space, build_algorithm, build_callbacks
+    global build_env_fns, make_vec_env, build_algorithm, build_callbacks
     global build_paths, ensure_state_files
     global Writers, create_loggers, setup_worker_logging, UpdateManager, CompositeCallback, get_config
     global EvalCallback, EvalSaveCallback, load_run_state, save_run_state, MemoryManager
@@ -1347,13 +1367,7 @@ def main():
 
     import math, psutil, numpy as np, pandas as pd, subprocess, shutil
 
-    from bot_trade.config.rl_builders import (
-        build_env_fns,
-        make_vec_env,
-        detect_action_space,
-        build_algorithm,
-        build_callbacks,
-    )
+    from bot_trade.config.rl_builders import build_env_fns, make_vec_env, build_algorithm, build_callbacks
     from bot_trade.config.rl_paths import build_paths, ensure_state_files
     from bot_trade.config.rl_writers import Writers  # Writers bundle (train/eval/...)
     from bot_trade.config.log_setup import create_loggers, setup_worker_logging
@@ -1609,5 +1623,8 @@ def main():
 
 if __name__ == "__main__":
     import multiprocessing as mp
+    from bot_trade.config.encoding import force_utf8
+
+    force_utf8()
     mp.freeze_support()
     main()

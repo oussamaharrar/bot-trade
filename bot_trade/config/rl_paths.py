@@ -160,15 +160,20 @@ def latest_agent(symbol: str, frame: str, algo: str | None = None, run_id: str |
     return last_agent(symbol, frame, algo, run_id)
 
 
-def vecnorm_path(symbol: str, frame: str) -> Path:
-    """Return path to VecNormalize statistics with legacy fallback."""
+_VECNORM_WARNED = False
 
-    path = agents_dir(symbol, frame) / "vecnorm.pkl"
-    if not path.exists():
-        legacy = _legacy_agents_dir(symbol, frame) / "vecnorm.pkl"
-        if legacy.exists():
-            return legacy
-    return path
+
+def vecnorm_path(symbol: str, frame: str, algo: str | None = None, run_id: str | None = None) -> Path:
+    """Return path to VecNormalize statistics scoped by algorithm/run."""
+
+    global _VECNORM_WARNED
+    if algo is None:
+        if not _VECNORM_WARNED:
+            print("[DEPRECATION] vecnorm_path without algorithm is deprecated; using PPO")
+            _VECNORM_WARNED = True
+        algo = "PPO"
+    rp = RunPaths(symbol, frame, run_id or "latest", algo)
+    return rp.features.vecnorm
 
 
 def _legacy_results_dir(symbol: str, frame: str) -> Path:
@@ -263,6 +268,12 @@ class RunPaths:
         self.results = algo_scoped(Path(DEFAULT_RESULTS_DIR), self.algo, self.symbol, self.frame, self.run_id)
         self.reports = algo_scoped(Path(DEFAULT_REPORTS_DIR), self.algo, self.symbol, self.frame, self.run_id)
         self.agents = algo_scoped(Path(DEFAULT_AGENTS_DIR), self.algo, self.symbol, self.frame, self.run_id)
+        features_dir = self.reports / "features"
+        features_dir.mkdir(parents=True, exist_ok=True)
+        self.features = type("Features", (), {
+            "__init__": lambda self, base: setattr(self, "base", base),
+            "vecnorm": property(lambda self: self.base / "vecnorm.pkl"),
+        })(features_dir)
 
         for d in (self.logs, self.results, self.reports):
             d.mkdir(parents=True, exist_ok=True)
@@ -287,7 +298,7 @@ class RunPaths:
     # ------------------------------------------------------------------
     @property
     def vecnorm_path(self) -> Path:
-        return self.agents / "vecnorm.pkl"
+        return self.features.vecnorm
 
     @property
     def vecnorm(self) -> Path:

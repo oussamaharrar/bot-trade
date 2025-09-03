@@ -164,6 +164,7 @@ def parse_args():
     ap.add_argument("--net-arch", type=str, default="pi=[1024,1024];vf=[1024,1024]")
     ap.add_argument("--activation", type=str, default="relu")
     ap.add_argument("--ortho-init", action="store_true")
+    ap.add_argument("--policy-kwargs", type=str, default=None, help="JSON dict for policy kwargs")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--checkpoint-every", type=int, default=200_000)
     ap.add_argument("--resume-auto", action="store_true")
@@ -278,6 +279,8 @@ def parse_args():
         action="store_true",
         help="Generate synthetic demo signals",
     )
+    ap.add_argument("--mlflow", action="store_true", help="Enable MLflow logging")
+    ap.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging")
     ap.add_argument("--preset", action="append", default=[], help="Apply presets like training=name or net=name")
     defaults = vars(ap.parse_args([]))
     args = ap.parse_args()
