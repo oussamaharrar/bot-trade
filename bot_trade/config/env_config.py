@@ -13,26 +13,35 @@ except Exception:  # pragma: no cover - optional dependency
 load_dotenv()
 
 _HERE = Path(__file__).resolve().parent
+_PRINTED = False
 
 
 def _load_config(path: str | Path | None = None) -> dict:
     """Load configuration from ``path`` with fallbacks."""
 
-    candidates = []
+    global _PRINTED
+    candidates: list[tuple[str, Path]] = []
     if path:
-        candidates.append(Path(path))
+        candidates.append(("cli", Path(path)))
     env = os.getenv("BOT_CONFIG")
     if env:
-        candidates.append(Path(env))
-    candidates.append(_HERE / "config.yaml")
-    candidates.append(_HERE / "config.default.yaml")
-    for p in candidates:
+        candidates.append(("env", Path(env)))
+    candidates.append(("user", _HERE / "config.yaml"))
+    candidates.append(("default", _HERE / "config.default.yaml"))
+    for source, p in candidates:
         try:
-            if p and p.exists():
+            if p.exists():
                 with p.open("r", encoding="utf-8") as f:
-                    return yaml.safe_load(f) or {}
+                    data = yaml.safe_load(f) or {}
+                if not _PRINTED:
+                    print(f"[CONFIG] source={source} path={p}")
+                    _PRINTED = True
+                return data
         except Exception:
             continue
+    if not _PRINTED:
+        print("[CONFIG] source=none path=None")
+        _PRINTED = True
     return {}
 
 

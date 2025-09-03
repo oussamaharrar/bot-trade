@@ -308,7 +308,7 @@ def main():
 
 
 if __name__ == "__main__":
-    from bot_trade.config.encoding import force_utf8
+    from bot_trade.tools.encoding import force_utf8
     import multiprocessing as mp
 
     force_utf8()

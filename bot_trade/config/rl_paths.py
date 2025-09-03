@@ -164,18 +164,36 @@ _VECNORM_WARNED = False
 
 
 def vecnorm_path(symbol: str, frame: str, algo: str | None = None, run_id: str | None = None) -> Path:
-    """Return path to VecNormalize statistics with legacy fallback."""
+    """Return path to VecNormalize statistics with legacy shim.
+
+    When ``algo`` and ``run_id`` are provided the canonical path under
+    ``RunPaths.features.vecnorm`` is returned.  If the canonical file does not
+    exist but a legacy ``results/<SYMBOL>/<FRAME>/vecnorm.pkl`` does, the file
+    is migrated and the canonical path returned.  Calls without ``algo``/``run_id``
+    fall back to the legacy location and emit a deprecation warning once.
+    """
 
     global _VECNORM_WARNED
     if algo and run_id:
         rp = RunPaths(symbol, frame, run_id, algo)
-        return rp.features.vecnorm
+        path = rp.features.vecnorm
+        legacy = _legacy_results_dir(symbol, frame) / "vecnorm.pkl"
+        if not path.exists() and legacy.exists():
+            if not _VECNORM_WARNED:
+                print("[DEPRECATION] migrating vecnorm.pkl to RunPaths.features.vecnorm")
+                _VECNORM_WARNED = True
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(legacy), path)
+            except Exception:
+                return legacy
+        return path
     if not _VECNORM_WARNED:
-        print("[DEPRECATION] vecnorm_path legacy lookup; use RunPaths.features_dir")
+        print("[DEPRECATION] vecnorm_path legacy lookup; use RunPaths.features.vecnorm")
         _VECNORM_WARNED = True
-    legacy = _legacy_results_dir(symbol, frame)
-    legacy.mkdir(parents=True, exist_ok=True)
-    return legacy / "vecnorm.pkl"
+    legacy_dir = _legacy_results_dir(symbol, frame)
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    return legacy_dir / "vecnorm.pkl"
 
 
 def _legacy_results_dir(symbol: str, frame: str) -> Path:

@@ -99,7 +99,7 @@ def main(argv: List[str] | None = None) -> int:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    from bot_trade.config.encoding import force_utf8
+    from bot_trade.tools.encoding import force_utf8
 
     force_utf8()
     raise SystemExit(main())

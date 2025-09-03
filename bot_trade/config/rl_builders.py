@@ -311,7 +311,7 @@ def _condense_policy_kwargs(pk: dict) -> dict:
 
 def _require_box(env, name: str) -> None:
     info = detect_action_space(env)
-    if info["is_discrete"] or not info["low"]:
+    if info["kind"] != "box" or not info["low"]:
         print(
             f"[ALGO_GUARD] algorithm={name} requires continuous Box action space; got {type(getattr(env, 'action_space', None)).__name__}. Aborting.",
             flush=True,
@@ -325,8 +325,8 @@ def build_ppo(env, args, seed):
     pk, pk_keys = _policy_kwargs_from_args(args)
     bs = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", 64)), env)
     info = detect_action_space(env)
-    use_sde = bool(getattr(args, "sde", False) and not info["is_discrete"])
-    if getattr(args, "sde", False) and info["is_discrete"]:
+    use_sde = bool(getattr(args, "sde", False) and info["kind"] != "discrete")
+    if getattr(args, "sde", False) and info["kind"] == "discrete":
         logging.warning("[PPO] gSDE disabled automatically for Discrete action space.")
     ent_coef = float(args.ent_coef) if isinstance(args.ent_coef, str) else args.ent_coef
     model = PPO(

@@ -246,3 +246,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: outdated scripts may still rely on old paths; ensure deprecation notice is monitored.
 - Migration steps: adopt `RunPaths.features.vecnorm` and regenerate configs as needed.
 - Next actions: expand migration guide with future breaking changes.
+
+## Developer Notes — 2025-09-03T06:27:43Z
+- What: consolidated UTF-8 helper under tools, added action-space kind detection, config source trace line and vecnorm legacy migration.
+- Why: centralize encoding logic, clarify configuration precedence and harden path handling.
+- Risks: external imports from `config.encoding` rely on shim; migrating large legacy vecnorm files may be slow.
+- Migration: import `force_utf8` from `bot_trade.tools.encoding`; watch for `[DEPRECATION]` notices during vecnorm migration.
+- Next actions: extend action-space guards to TD3/TQC builders and broaden data store checks.
