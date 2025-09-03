@@ -1,6 +1,7 @@
 # rl_builders.py
 """
 Constructors for vectorized RL environments (SB3) with Windows-safe subprocessing.
+# mypy: ignore-errors
 
 Key points:
 - Use DummyVecEnv when n_envs == 1 (no IPC, safer on Windows).
@@ -10,12 +11,17 @@ Key points:
 """
 
 from __future__ import annotations
-from typing import Callable, List, Optional
-import os, logging, json, hashlib
-from pathlib import Path
 
-from .rl_paths import best_agent, last_agent, get_root
+import hashlib
+import json
+import logging
+import os
+from pathlib import Path
+from typing import Any, Callable, List, Optional
+
 from bot_trade.env.space_detect import ActionSpaceInfo, detect_action_space
+
+from .rl_paths import best_agent, get_root, last_agent
 
 _ARGS_WARNED = False
 _GLOBAL_IGNORE = {
@@ -310,10 +316,19 @@ def _condense_policy_kwargs(pk: dict) -> dict:
 
 
 def _require_box(info: ActionSpaceInfo, name: str) -> None:
-    low = info.low
-    if info.is_discrete or getattr(low, "size", 0) == 0:
+    if info.is_discrete or info.low is None or info.high is None:
         print(
             f"[ALGO_GUARD] algorithm={name} requires continuous Box action space; got discrete",
+            flush=True,
+        )
+        raise SystemExit(1)
+
+
+def _validate_continuous_env(info: ActionSpaceInfo, args: Any, name: str) -> None:
+    flag = bool(getattr(args, "continuous_env", False))
+    if flag != (not info.is_discrete):
+        print(
+            f"[ALGO_GUARD] algorithm={name} continuous_env={flag} space={'Box' if not info.is_discrete else 'Discrete'} mismatch",
             flush=True,
         )
         raise SystemExit(1)
@@ -325,6 +340,7 @@ def build_ppo(env, args, seed):
     pk, pk_keys = _policy_kwargs_from_args(args)
     bs = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", 64)), env)
     info = detect_action_space(env)
+    _validate_continuous_env(info, args, "PPO")
     use_sde = bool(getattr(args, "sde", False) and not info.is_discrete)
     if getattr(args, "sde", False) and info.is_discrete:
         logging.warning("[PPO] gSDE disabled automatically for Discrete action space.")
@@ -380,6 +396,7 @@ def build_ppo(env, args, seed):
 def build_sac(env, args, seed):
     from stable_baselines3 import SAC
     info = detect_action_space(env)
+    _validate_continuous_env(info, args, "SAC")
     _require_box(info, "SAC")
     pk, pk_keys = _policy_kwargs_from_args(args)
     pk = pk.copy()
@@ -460,6 +477,7 @@ def build_sac(env, args, seed):
 def build_td3(env, args, seed):
     from stable_baselines3 import TD3
     info = detect_action_space(env)
+    _validate_continuous_env(info, args, "TD3")
     _require_box(info, "TD3")
     pk, pk_keys = _policy_kwargs_from_args(args)
     pk = pk.copy()
@@ -519,6 +537,7 @@ def build_td3(env, args, seed):
 
 def build_tqc(env, args, seed):
     info = detect_action_space(env)
+    _validate_continuous_env(info, args, "TQC")
     _require_box(info, "TQC")
     try:
         from sb3_contrib import TQC
@@ -608,8 +627,9 @@ def build_callbacks(
     dataset_info=None,
     vecnorm_ref=None,
 ):
-    from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
-    from .rl_callbacks import StepsAndRewardCallback, BestCheckpointCallback
+    from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
+
+    from .rl_callbacks import BestCheckpointCallback, StepsAndRewardCallback
     ckpt_cb = CheckpointCallback(
         save_freq=max(1, int(getattr(args, "checkpoint_every", 50_000))),
         save_path=paths["agents"],

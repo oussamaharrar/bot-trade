@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 train_rl.py — Orchestrator for SB3 PPO with unified config/ modules.
 - Central logging via config.log_setup
@@ -17,29 +16,42 @@ Notes:
 """
 
 from __future__ import annotations
-import os, sys, time, json, logging, datetime as dt, math, threading, pathlib, zipfile
-from typing import Any, Dict, Optional
+
+import datetime as dt
+import json
+import logging
+import math
+import os
+import pathlib
+import sys
+import threading
+import zipfile
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-from bot_trade.config.rl_paths import (
-    dataset_path,
-    RunPaths,
-    ensure_contract,
-    DEFAULT_KB_FILE,
-)
-from bot_trade.config.device import normalize_device, maybe_print_device_report
-from bot_trade.config.rl_callbacks import _save_vecnorm, AdaptiveRegimeCallback, StrategyFailureCallback
-from bot_trade.config.rl_args import validate_args, clamp_batch, auto_shape_resources
+from bot_trade.config.device import maybe_print_device_report, normalize_device
 from bot_trade.config.log_setup import drain_log_queue
+from bot_trade.config.rl_args import auto_shape_resources, validate_args
+from bot_trade.config.rl_callbacks import (
+    AdaptiveRegimeCallback,
+    StrategyFailureCallback,
+    _save_vecnorm,
+)
+from bot_trade.config.rl_paths import (
+    DEFAULT_KB_FILE,
+    RunPaths,
+    dataset_path,
+    ensure_contract,
+)
+from bot_trade.env.space_detect import detect_action_space
 from bot_trade.tools import export_charts
-from bot_trade.tools.evaluate_model import evaluate_for_run
 from bot_trade.tools.eval_run import evaluate_run
+from bot_trade.tools.evaluate_model import evaluate_for_run
+from bot_trade.tools.force_utf8 import force_utf8
 from bot_trade.tools.kb_writer import kb_append
 from bot_trade.tools.monitor_launch import spawn_monitor_manager
-from bot_trade.tools.force_utf8 import force_utf8
-from bot_trade.env.space_detect import detect_action_space
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -138,37 +150,25 @@ def _apply_risk_cfg(args) -> None:
         print(
             f"[RISK_CFG] slippage={sm} fees_bps={fees} latency_ms={lat} partial_fills={pf}"
         )
-from bot_trade.tools.run_state import (
-    update_portfolio_state,
-    write_run_state_files,
-)
-from bot_trade.tools._headless import ensure_headless_once
-
+import matplotlib
+import yaml
 
 from bot_trade.strat.adaptive_controller import AdaptiveController
 from bot_trade.strat.rewards_registry import load_reward_spec
-import yaml
+from bot_trade.tools._headless import ensure_headless_once
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
 # imported inside `main` to keep import-time side effects minimal and to
 # allow `python -m bot_trade.train_rl --help` to run without them.
-
-
-
-
-
-
-
-
-
-
-
-
-
 from bot_trade.tools.atomic_io import write_png
-import matplotlib
+from bot_trade.tools.run_state import (
+    update_portfolio_state,
+    write_run_state_files,
+)
+
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
+
 
 def _write_regime_chart(charts_dir, dist):
     fig, ax = plt.subplots()
@@ -415,9 +415,13 @@ def _manage_models(paths: Dict[str, str], summary: Dict[str, Any], run_id: str) 
 
     Returns the absolute path to the current best model if available.
     """
-    import json, shutil, csv, datetime as dt
+    import csv
+    import datetime as dt
+    import json
+    import shutil
+
+    from bot_trade.config.rl_paths import _atomic_replace, memory_dir, stamp_name
     from bot_trade.tools.memory_manager import atomic_json, load_memory
-    from bot_trade.config.rl_paths import memory_dir, _atomic_replace, stamp_name
 
     best_model = pathlib.Path(paths["best_model"])
     last_model = pathlib.Path(paths["last_model"])
@@ -545,7 +549,7 @@ def train_one_file(args, data_file: str) -> bool:
     adaptive_cfg: Dict[str, Any] = {}
     if getattr(args, "adaptive_spec", None):
         try:
-            with open(args.adaptive_spec, "r", encoding="utf-8") as fh:
+            with open(args.adaptive_spec, encoding="utf-8") as fh:
                 adaptive_cfg = yaml.safe_load(fh) or {}
         except Exception:
             adaptive_cfg = {}
@@ -642,7 +646,7 @@ def train_one_file(args, data_file: str) -> bool:
 
     # Pre-load knowledge base if present
     try:
-        with open(args.kb_file, "r", encoding="utf-8") as fh:
+        with open(args.kb_file, encoding="utf-8") as fh:
             kb_data = json.load(fh)
         kb_size = len(kb_data) if isinstance(kb_data, list) else len(kb_data.keys())
         logging.info("[KB] loaded %d entries", kb_size)
@@ -756,8 +760,8 @@ def train_one_file(args, data_file: str) -> bool:
 
     ai_sources: set[str] = set()
     if getattr(args, "ai_core", False):
-        from bot_trade.ai_core.signal_engine import run_pipeline
         from bot_trade.ai_core.bridges.ai_to_strat_bridge import write_signals
+        from bot_trade.ai_core.signal_engine import run_pipeline
         from bot_trade.strat.strategy_features import read_exogenous_signals
 
         records, ai_sources = run_pipeline(
@@ -852,7 +856,9 @@ def train_one_file(args, data_file: str) -> bool:
         except Exception:
             pass
         try:
-            import numpy as np, random
+            import random
+
+            import numpy as np
             np_state = env_state.get("rng_numpy")
             if np_state is not None:
                 np.random.set_state(tuple(np_state))
@@ -971,7 +977,8 @@ def train_one_file(args, data_file: str) -> bool:
     else:
         print("[RESUME] none")
     if resume_path:
-        from stable_baselines3 import PPO as _PPO, SAC as _SAC
+        from stable_baselines3 import PPO as _PPO
+        from stable_baselines3 import SAC as _SAC
 
         Loader = _SAC if algo == "SAC" else _PPO
         best_path = Path(paths.get("model_best_zip", ""))
@@ -1138,7 +1145,7 @@ def train_one_file(args, data_file: str) -> bool:
     status = "finished"
     best_path: Optional[str] = None
     try:
-        logging.info("[🚀] Training for total_steps=%s .", args.total_steps)
+        logging.info("[TRAIN] Training for total_steps=%s .", args.total_steps)
         model.learn(total_timesteps=int(args.total_steps), callback=cb, progress_bar=args.progress)
     except KeyboardInterrupt:
         status = "interrupted"
@@ -1268,7 +1275,10 @@ def train_one_file(args, data_file: str) -> bool:
 
     if cfg.get("self_learning", {}).get("enable", False):
         try:
-            from bot_trade.ai_core.self_improver import propose_config_updates, apply_updates_to_config
+            from bot_trade.ai_core.self_improver import (
+                apply_updates_to_config,
+                propose_config_updates,
+            )
             updates = propose_config_updates()
             if cfg["self_learning"].get("writeback_config", False):
                 apply_updates_to_config(updates)
@@ -1321,7 +1331,7 @@ def train_one_file(args, data_file: str) -> bool:
 def main():
     force_utf8()
     ensure_headless_once("train_rl")
-    from bot_trade.config.rl_args import parse_args, finalize_args, build_policy_kwargs
+    from bot_trade.config.rl_args import build_policy_kwargs, finalize_args, parse_args
     global torch, np, pd, psutil, subprocess, shutil
 
     args = parse_args()
@@ -1366,35 +1376,60 @@ def main():
     global discover_files, read_one, LoadOptions, load_dataset, add_strategy_features, _HAS_READ_ONE
     global CallbackList, BenchmarkCallback, StrictDataSanityCallback, PeriodicSnapshotsCallback
 
-    import math, psutil, numpy as np, pandas as pd, subprocess, shutil
+    import shutil
+    import subprocess
 
-    from bot_trade.config.rl_builders import build_env_fns, make_vec_env, build_algorithm, build_callbacks
-    from bot_trade.config.rl_paths import build_paths, ensure_state_files
-    from bot_trade.config.rl_writers import Writers  # Writers bundle (train/eval/...)
-    from bot_trade.config.log_setup import create_loggers, setup_worker_logging
-    from bot_trade.config.update_manager import UpdateManager
-    from bot_trade.config.rl_callbacks import CompositeCallback, PeriodicSnapshotsCallback
-    from bot_trade.config.env_config import get_config
+    import numpy as np
+    import pandas as pd
+    import psutil
     from stable_baselines3.common.callbacks import EvalCallback
     from stable_baselines3.common.vec_env import VecEnvWrapper, sync_envs_normalization
-    from bot_trade.tools.run_state import load_state as load_run_state, save_state as save_run_state
-    from bot_trade.tools.memory_manager import (
-        MemoryManager,
-        load_memory,
-        commit_snapshot,
-        resume_from_snapshot,
-    )
-    from bot_trade.tools.runctx import new_run_id
+
     from bot_trade.ai_core.portfolio import (
         load_state as load_portfolio_state,
-        save_state as save_portfolio_state,
+    )
+    from bot_trade.ai_core.portfolio import (
         reset_with_balance,
     )
+    from bot_trade.ai_core.portfolio import (
+        save_state as save_portfolio_state,
+    )
+    from bot_trade.config.env_config import get_config
+    from bot_trade.config.log_setup import create_loggers, setup_worker_logging
+    from bot_trade.config.rl_builders import (
+        build_algorithm,
+        build_callbacks,
+        build_env_fns,
+        make_vec_env,
+    )
+    from bot_trade.config.rl_callbacks import (
+        CompositeCallback,
+        PeriodicSnapshotsCallback,
+    )
+    from bot_trade.config.rl_paths import build_paths, ensure_state_files
+    from bot_trade.config.rl_writers import Writers  # Writers bundle (train/eval/...)
+    from bot_trade.config.update_manager import UpdateManager
+    from bot_trade.tools.memory_manager import (
+        MemoryManager,
+        commit_snapshot,
+        load_memory,
+        resume_from_snapshot,
+    )
+    from bot_trade.tools.run_state import load_state as load_run_state
+    from bot_trade.tools.run_state import save_state as save_run_state
+    from bot_trade.tools.runctx import new_run_id
     try:
-        from bot_trade.config.loader import discover_files, read_one, LoadOptions  # preferred
+        from bot_trade.config.loader import (  # preferred
+            LoadOptions,
+            discover_files,
+            read_one,
+        )
         _HAS_READ_ONE = True
     except Exception:
-        from bot_trade.config.loader import discover_files, load_dataset  # fallback signature
+        from bot_trade.config.loader import (  # fallback signature
+            discover_files,
+            load_dataset,
+        )
         _HAS_READ_ONE = False
     try:
         from bot_trade.config.strategy_features import add_strategy_features
@@ -1402,7 +1437,12 @@ def main():
         add_strategy_features = None  # pragma: no cover
     try:
         from stable_baselines3.common.callbacks import CallbackList
-        from bot_trade.config.rl_callbacks import BenchmarkCallback, StrictDataSanityCallback, PeriodicSnapshotsCallback
+
+        from bot_trade.config.rl_callbacks import (
+            BenchmarkCallback,
+            PeriodicSnapshotsCallback,
+            StrictDataSanityCallback,
+        )
     except Exception:  # pragma: no cover
         BenchmarkCallback = None
         StrictDataSanityCallback = None
@@ -1563,7 +1603,7 @@ def main():
     # Playlist mode — sequential in one process
     if args.playlist and os.path.exists(args.playlist):
         import yaml
-        with open(args.playlist, "r", encoding="utf-8") as f:
+        with open(args.playlist, encoding="utf-8") as f:
             jobs = yaml.safe_load(f) or []
         for j in jobs:
             class _NS: ...
