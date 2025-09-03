@@ -33,11 +33,11 @@ def log_error(context: str, err: Exception):
     msg = f"[{datetime.now()}] {context}: {err}\n"
     with open(ERROR_LOG, 'a') as f:
         f.write(msg)
-    logging.info(f"❌ {context}: {err}")
+    logging.info(f"[ERROR] {context}: {err}")
 
 
 def run_step(name: str, cmd: list[str]):
-    logging.info(f"▶ {name}")
+    logging.info(f"[START] {name}")
     try:
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode != 0:
@@ -45,7 +45,7 @@ def run_step(name: str, cmd: list[str]):
         else:
             if CONFIG.get('debug_mode', False):
                 logging.info(res.stdout)
-            logging.info(f"✅ {name} done\n")
+            logging.info(f"[DONE] {name}\n")
     except Exception as e:
         log_error(name, e)
 
@@ -73,7 +73,7 @@ def maybe_retrain():
         clean_eval_log()
         run_step('Evaluating model', ['python', 'evaluate_model.py'])
     else:
-        logging.info(f"ℹ️ Trades logged: {trade_count()}. Retrain at {MAX_TRADES} trades")
+        logging.info(f"[INFO] Trades logged: {trade_count()}. Retrain at {MAX_TRADES} trades")
 
 
 def _spawn_monitors():
@@ -104,7 +104,7 @@ def main(args):
         _spawn_monitors()
 
     if not LIVE_TRADING:
-        logging.info('⚠️  LIVE_TRADING disabled - running in simulation mode')
+        logging.info('[WARN] LIVE_TRADING disabled - running in simulation mode')
     try:
         if STRATEGY == 'ml':
             script = 'bot_loop_ml.py'
@@ -127,10 +127,13 @@ def main(args):
                 pass
     except Exception as e:
         log_error('main', e)
-    logging.info('✅ Run complete. Check reports/ and models/')
+    logging.info('[DONE] Run complete. Check reports/ and models/')
 
 
 if __name__ == '__main__':
+    from bot_trade.config.encoding import force_utf8
+
+    force_utf8()
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--spawn-monitors",

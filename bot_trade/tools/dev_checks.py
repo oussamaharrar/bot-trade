@@ -40,6 +40,10 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("--run-id", default="latest")
     args = ap.parse_args(argv)
 
+    parquet_store = Path("data_store") / "parquet"
+    if not parquet_store.exists():
+        print("[DATA_WARN] parquet store not initialized")
+
     rid_arg = None if str(args.run_id).lower() in {"latest", "last"} else args.run_id
     run_id, kb_entry = _load_kb_entry(rid_arg)
     if not run_id or not kb_entry:
@@ -102,5 +106,8 @@ def main(argv: List[str] | None = None) -> int:
 
 
 if __name__ == "__main__":  # pragma: no cover
+    from bot_trade.config.encoding import force_utf8
+
+    force_utf8()
     raise SystemExit(main())
 

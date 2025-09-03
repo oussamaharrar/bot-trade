@@ -433,3 +433,12 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Risks: duplicate writes are minimal
 - Migration steps: none
 - Next actions: monitor index usage
+
+## Developer Notes — 2025-09-03 04:55:53 UTC
+- Fixed vecnorm to be algo/run_id scoped via RunPaths
+- Added config.default.yaml + tools/make_config.py (validated, UTF-8)
+- Enforced UTF-8 logging (Windows-safe); removed emoji from critical prints
+- Centralized action-space detection; SAC/TD3/TQC Box guards unchanged
+- Generalized overrides tracking to all builders; KB stores only user overrides
+- Unified RunPaths usage for tensorboard/CSV/checkpoints/resume with helper paths_doctor
+- Added platform skeletons and smoke tests (UTF-8, action detection, vecnorm paths)

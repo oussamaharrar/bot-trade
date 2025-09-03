@@ -15,6 +15,45 @@ import os, logging, json
 from pathlib import Path
 
 from .rl_paths import best_agent, last_agent, get_root
+from bot_trade.env.action_space import detect_action_space
+
+_ARGS_WARNED = False
+_GLOBAL_IGNORE = {
+    "symbol",
+    "frame",
+    "device",
+    "n_envs",
+    "total_steps",
+    "headless",
+    "allow_synth",
+    "data_dir",
+    "no_monitor",
+    "algorithm",
+    "continuous_env",
+    "policy",
+    "policy_kwargs",
+    "preset",
+    "kb_file",
+    "run_id",
+    "seed",
+    "device_str",
+    "log_level",
+}
+
+
+def collect_overrides(args, valid: set[str]) -> dict:
+    defaults = getattr(args, "_defaults", {})
+    specified = getattr(args, "_specified", set())
+    overrides = {}
+    for k in valid:
+        if k in specified and getattr(args, k) != defaults.get(k):
+            overrides[k] = getattr(args, k)
+    unused = specified - valid - _GLOBAL_IGNORE
+    global _ARGS_WARNED
+    if unused and not _ARGS_WARNED:
+        print(f"[ARGS_WARN] unused={','.join(sorted(unused))}")
+        _ARGS_WARNED = True
+    return overrides
 
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
@@ -179,17 +218,6 @@ def _adjust_batch_size_for_envs(batch_size: int, vec_env) -> int:
     return int(new_bs)
 
 
-def detect_action_space(vec_env):
-    """Safely detect action space and whether it's discrete."""
-    try:
-        action_space = getattr(vec_env, "single_action_space", None)
-        if action_space is None:
-            action_space = getattr(vec_env, "action_space", None)
-        from gymnasium import spaces as gym_spaces
-        is_discrete = isinstance(action_space, gym_spaces.Discrete)
-        return action_space, is_discrete
-    except Exception:
-        return None, False
 
 
 def _resolve_ppo_warmstart(args) -> Path | None:
@@ -275,12 +303,12 @@ def _condense_policy_kwargs(pk: dict) -> dict:
 
 
 def _require_box(env, name: str) -> None:
-    action_space, _ = detect_action_space(env)
+    info = detect_action_space(env)
     from gymnasium import spaces as gym_spaces
 
-    if not isinstance(action_space, gym_spaces.Box):
+    if not info.is_box:
         print(
-            f"[ALGO_GUARD] algorithm={name} requires continuous Box action space; got {type(action_space).__name__}. Aborting.",
+            f"[ALGO_GUARD] algorithm={name} requires continuous Box action space; got {type(getattr(env, 'action_space', None)).__name__}. Aborting.",
             flush=True,
         )
         raise SystemExit(1)
@@ -291,9 +319,9 @@ def build_ppo(env, args, seed):
 
     pk, pk_keys = _policy_kwargs_from_args(args)
     bs = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", 64)), env)
-    action_space, is_discrete = detect_action_space(env)
-    use_sde = bool(getattr(args, "sde", False) and not is_discrete)
-    if getattr(args, "sde", False) and is_discrete:
+    info = detect_action_space(env)
+    use_sde = bool(getattr(args, "sde", False) and not info.is_discrete)
+    if getattr(args, "sde", False) and info.is_discrete:
         logging.warning("[PPO] gSDE disabled automatically for Discrete action space.")
     ent_coef = float(args.ent_coef) if isinstance(args.ent_coef, str) else args.ent_coef
     model = PPO(
@@ -318,12 +346,27 @@ def build_ppo(env, args, seed):
         tensorboard_log=getattr(args, "tensorboard_log", None),
     )
     _warn_unused_policy_kwargs(pk_keys, model.policy_kwargs)
+    valid = {
+        "learning_rate",
+        "n_steps",
+        "batch_size",
+        "epochs",
+        "gamma",
+        "gae_lambda",
+        "clip_range",
+        "ent_coef",
+        "vf_coef",
+        "max_grad_norm",
+        "sde",
+    }
+    overrides = collect_overrides(args, valid)
     meta = {
         "lr": args.learning_rate,
         "batch_size": bs,
         "buffer_size": None,
         "gamma": args.gamma,
         "policy_kwargs": _condense_policy_kwargs(pk),
+        "overrides": overrides,
     }
     return model, meta
 
@@ -428,12 +471,26 @@ def build_td3(env, args, seed):
         tensorboard_log=getattr(args, "tensorboard_log", None),
     )
     _warn_unused_policy_kwargs(pk_keys, model.policy_kwargs)
+    valid = {
+        "learning_rate",
+        "buffer_size",
+        "learning_starts",
+        "batch_size",
+        "train_freq",
+        "gradient_steps",
+        "tau",
+        "ent_coef",
+        "gamma",
+        "target_entropy",
+    }
+    overrides = collect_overrides(args, valid)
     meta = {
         "lr": getattr(args, "learning_rate", 3e-4),
         "batch_size": batch_size,
         "buffer_size": buffer_size,
         "gamma": gamma,
         "policy_kwargs": _condense_policy_kwargs(pk),
+        "overrides": overrides,
     }
     return model, meta
 
@@ -480,12 +537,24 @@ def build_tqc(env, args, seed):
         tensorboard_log=getattr(args, "tensorboard_log", None),
     )
     _warn_unused_policy_kwargs(pk_keys, model.policy_kwargs)
+    valid = {
+        "learning_rate",
+        "buffer_size",
+        "learning_starts",
+        "batch_size",
+        "gamma",
+        "tau",
+        "gradient_steps",
+        "ent_coef",
+    }
+    overrides = collect_overrides(args, valid)
     meta = {
         "lr": getattr(args, "learning_rate", 3e-4),
         "batch_size": batch_size,
         "buffer_size": buffer_size,
         "gamma": gamma,
         "policy_kwargs": _condense_policy_kwargs(pk),
+        "overrides": overrides,
     }
     return model, meta
 

@@ -179,10 +179,10 @@ def main():
     else:
         threads_per_job = args.threads_per_job if args.threads_per_job > 0 else threads_auto
 
-    print(f"[ℹ] CPU cores={total_cores}, jobs={jobs_count}, threads_per_job={threads_per_job}")
+    print(f"[INFO] CPU cores={total_cores}, jobs={jobs_count}, threads_per_job={threads_per_job}")
 
     if args.sequential:
-        print("[ℹ] Running in sequential mode (job by job).")
+        print("[INFO] Running in sequential mode (job by job).")
         for idx, job in enumerate(playlist):
             sym = str(job.get("symbol", "SYMBOL"))
             frame = str(job.get("frame", "FRAME"))
@@ -202,13 +202,13 @@ def main():
             log_path = os.path.join(log_dir, f"run-{name}.log")
 
             with open(log_path, "w", buffering=1, encoding="utf-8") as log_file:
-                print(f"[▶] Launching {name} CMD: {' '.join(cmd)} LOG: {log_path}")
+                print(f"[LAUNCH] Launching {name} CMD: {' '.join(cmd)} LOG: {log_path}")
                 if args.dry_run:
                     log_file.write("DRY RUN")
                     continue
                 popen = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT, env=env)
                 code = popen.wait()
-                print(f"[✓] {name} finished with exit_code={code}")
+                print(f"[DONE] {name} finished with exit_code={code}")
     else:
         # Parallel mode (original)
         procs: List[Tuple[subprocess.Popen, Optional[Any], str]] = []
@@ -237,13 +237,13 @@ def main():
                 if args.new_windows and os.name == 'nt':
                     cmd = ["cmd", "/k"] + cmd
                 target = "NEW CONSOLE" if (args.new_windows and os.name == 'nt') else "CURRENT CONSOLE"
-                print(f"[▶] Launching {name} CMD: {' '.join(cmd)} OUTPUT: {target}")
+                print(f"[LAUNCH] Launching {name} CMD: {' '.join(cmd)} OUTPUT: {target}")
                 popen = subprocess.Popen(cmd, env=env, creationflags=creationflags)
             else:
                 log_dir = ensure_dir(os.path.join("logs", "launcher", sym, frame))
                 log_path = os.path.join(log_dir, f"run-{name}.log")
                 log_file = open(log_path, "w", buffering=1, encoding="utf-8")
-                print(f"[▶] Launching {name} CMD: {' '.join(cmd)} LOG: {log_path}")
+                print(f"[LAUNCH] Launching {name} CMD: {' '.join(cmd)} LOG: {log_path}")
                 if args.dry_run:
                     log_file.write("DRY RUN")
                     log_file.close()
@@ -253,7 +253,7 @@ def main():
             procs.append((popen, log_file, name))
             time.sleep(max(0, args.stagger_sec))
 
-        print(f"[ℹ] Running {len(procs)} jobs. Press Ctrl+C to stop all.")
+        print(f"[INFO] Running {len(procs)} jobs. Press Ctrl+C to stop all.")
 
         try:
             exit_codes = []
@@ -288,7 +288,7 @@ def main():
                     popen.kill()
                 except Exception:
                     pass
-            print("[✓] All jobs terminated.")
+            print("[DONE] All jobs terminated.")
 
     # optional post-training knowledge sync
     if args.post_analyze:
@@ -308,6 +308,9 @@ def main():
 
 
 if __name__ == "__main__":
+    from bot_trade.config.encoding import force_utf8
     import multiprocessing as mp
+
+    force_utf8()
     mp.freeze_support()
     main()

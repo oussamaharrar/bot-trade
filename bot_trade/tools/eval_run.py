@@ -208,7 +208,7 @@ def main(argv: list[str] | None = None) -> int:
         "rows_risk": rows.get("risk", 0),
         "rows_callbacks": rows.get("callbacks", 0),
         "rows_signals": rows.get("signals", 0),
-        "vecnorm_applied": rp.vecnorm_path.exists(),
+        "vecnorm_applied": rp.features.vecnorm.exists(),
         "eval": {
             "sharpe": summary.get("sharpe"),
             "sortino": summary.get("sortino"),
