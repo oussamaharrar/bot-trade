@@ -20,6 +20,7 @@ KB_DEFAULTS = {
     "symbol": "",
     "frame": "",
     "algorithm": None,
+    "algo_meta": {},
     "ts": None,
     "images": 0,
     "images_list": [],
