@@ -239,3 +239,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: deprecated vecnorm_path may hide legacy layouts; minimal data store offers limited validation.
 - Migration steps: use `RunPaths.features.vecnorm` for new paths, regenerate configs via `tools.make_config`, run `paths_doctor`/`data_doctor` for diagnostics.
 - Next actions: flesh out data store backends and expand config schema.
+
+## Developer Notes — 2025-09-03T06:09:32Z
+- Documented vecnorm path migration and configuration precedence in new `MIGRATION.md`.
+- Rationale: clarify algorithm/run-scoped vecnorm files and config source order for users.
+- Risks: outdated scripts may still rely on old paths; ensure deprecation notice is monitored.
+- Migration steps: adopt `RunPaths.features.vecnorm` and regenerate configs as needed.
+- Next actions: expand migration guide with future breaking changes.
