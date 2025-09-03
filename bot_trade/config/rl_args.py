@@ -249,7 +249,11 @@ def parse_args():
         default="PPO",
         help="Choose RL algorithm (TD3/TQC stubs; default PPO unless config overrides)",
     )
-    ap.add_argument("--continuous-env", action="store_true", help="Use continuous trading environment")
+    ap.add_argument(
+        "--continuous-env",
+        action="store_true",
+        help="Use Box(-1,1) action space; enables SAC/TD3/TQC (backward compatible).",
+    )
     ap.add_argument("--buffer-size", type=int)
     ap.add_argument("--learning-starts", type=int)
     ap.add_argument("--train-freq", type=int)

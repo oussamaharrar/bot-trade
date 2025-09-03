@@ -3,6 +3,8 @@ import numpy as np
 from gymnasium import spaces
 from bot_trade.config.env_trading import TradingEnv
 
+_env_notice_printed = False
+
 class TradingEnvContinuous(TradingEnv):
     """Continuous-action variant of TradingEnv.
 
@@ -13,7 +15,10 @@ class TradingEnvContinuous(TradingEnv):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
-        print("[ENV] action_space=Box(-1.0,1.0) dims=1")
+        global _env_notice_printed
+        if not _env_notice_printed:
+            print("[ENV] action_space=Box(-1.0,1.0) dims=1")
+            _env_notice_printed = True
 
     def step(self, action):
         import numpy as _np

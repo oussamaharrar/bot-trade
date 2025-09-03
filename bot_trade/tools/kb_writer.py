@@ -13,6 +13,7 @@ from typing import Any, Mapping, Optional
 
 from bot_trade.config.rl_paths import DEFAULT_KB_FILE
 from bot_trade.tools.atomic_io import append_jsonl
+from bot_trade.config.rl_builders import _condense_policy_kwargs
 
 
 KB_DEFAULTS = {
@@ -83,9 +84,13 @@ def kb_append(run_paths: Any, payload: dict, kb_file: Optional[str] = None) -> N
     path = _resolve_kb_path(run_paths, kb_file)
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    algo_meta = payload.get("algo_meta") or {}
+    if isinstance(algo_meta, dict) and "policy_kwargs" in algo_meta:
+        algo_meta["policy_kwargs"] = _condense_policy_kwargs(algo_meta.get("policy_kwargs") or {})
     entry = {
         **KB_DEFAULTS,
-        **{k: v for k, v in payload.items() if k not in {"eval", "portfolio"}},
+        **{k: v for k, v in payload.items() if k not in {"eval", "portfolio", "algo_meta"}},
+        "algo_meta": algo_meta,
     }
     entry["eval"] = {**KB_DEFAULTS["eval"], **payload.get("eval", {})}
     entry["portfolio"] = {**KB_DEFAULTS["portfolio"], **payload.get("portfolio", {})}
@@ -93,11 +98,18 @@ def kb_append(run_paths: Any, payload: dict, kb_file: Optional[str] = None) -> N
     # prevent duplicate run_id appends
     if path.exists():
         try:
-            with path.open("rb") as fh:
+            with path.open("rb+") as fh:
                 fh.seek(0, 2)
                 size = fh.tell()
-                fh.seek(max(size - 4096, 0))
-                data = fh.read()
+                if size:
+                    fh.seek(-1, 1)
+                    if fh.read(1) != b"\n":
+                        fh.seek(0, 2)
+                        fh.write(b"\n")
+                    fh.seek(max(size - 4096, 0))
+                    data = fh.read()
+                else:
+                    data = b""
             last_line = data.splitlines()[-1] if data else b""
             last = json.loads(last_line.decode("utf-8")) if last_line else {}
             if last.get("run_id") == entry.get("run_id"):

@@ -316,6 +316,12 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Risks**: base path overrides may diverge from `BOT_REPORTS_DIR`.
 - **Test Steps**: `python -m py_compile $(git ls-files '*.py')`; synthetic run `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --algorithm PPO --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 32 --batch-size 32 --total-steps 64 --headless --allow-synth --data-dir data_ready`; missing-run guards `python -m bot_trade.tools.monitor_manager --symbol FAKE --frame 1m --run-id latest; test $? -eq 2 && echo EXIT_CODE_2`; same for `export_charts` and `eval_run`; evaluation `python -m bot_trade.tools.eval_run --symbol BTCUSDT --frame 1m --run-id latest`.
 
+## 2025-10-07
+- **Files**: `bot_trade/env/trading_env_continuous.py`, `bot_trade/config/rl_args.py`, `bot_trade/config/rl_builders.py`, `bot_trade/tools/kb_writer.py`, `DEV_NOTES.md`, `CHANGE_NOTES.md`
+- **Rationale**: single `[ENV]` notice for continuous env, pass-through `policy_kwargs` with JSON parsing and unused-key warnings, standardized TQC guard, KB newline assurance and condensed `policy_kwargs`, and updated `--continuous-env` help.
+- **Risks**: unused key detection is shallow; KB newline fix may touch large files.
+- **Test Steps**: `python -m py_compile bot_trade/env/trading_env_continuous.py bot_trade/config/rl_args.py bot_trade/config/rl_builders.py bot_trade/tools/kb_writer.py`; discrete guard `python -m bot_trade.train_rl --algorithm SAC --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 32 --batch-size 64 --total-steps 64 --headless --allow-synth --data-dir data_ready --no-monitor`; continuous smoke `python -m bot_trade.train_rl --algorithm SAC --continuous-env --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 64 --batch-size 64 --total-steps 256 --headless --allow-synth --data-dir data_ready --no-monitor`; policy_kwargs big nets snippet; TQC dependency guard snippet.
+
 ## Developer Notes — 2025-09-02 22:30:40 UTC
 - headless notice confined to module `main` ensuring a single `[HEADLESS] backend=Agg` line per CLI.
 - strict `[LATEST] none` guard (exit code 2) retained across export/monitor/eval tools.
