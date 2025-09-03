@@ -384,3 +384,10 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Risks: if exporters are skipped, regimes chart generation might lack explicit notice.
 - Migration: none; workflows already call `export_charts` for chart diagnostics.
 - Next Actions: watch for future consolidation of adaptive outputs across CLIs.
+
+## Developer Notes — 2025-09-03 02:14:59 UTC
+- What: Added ai_core skeleton (collectors, normalizers, enrichers, signal engine, bridge), exogenous signal reader, CLI flags, KB updates, and dev checks.
+- Why: Enable optional ai_core pipeline generating external signals and safe ingestion without altering policy.
+- Risks: Minimal signal set; future collectors may need concurrency handling; dry-run skips feature injection.
+- Migration: Use --ai-core to enable pipeline; consume new ai_core section in KB; optional dummy signals via --emit-dummy-signals.
+- Next Actions: Expand collectors, refine feature mapping, and connect signals to policy components.

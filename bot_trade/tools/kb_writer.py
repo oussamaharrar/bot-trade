@@ -57,6 +57,7 @@ KB_DEFAULTS = {
     },
     "regime": {"active": "", "distribution": {}},
     "notes": "",
+    "ai_core": {"signals_count": 0, "sources": []},
 }
 
 
@@ -98,6 +99,7 @@ def kb_append(run_paths: Any, payload: dict, kb_file: Optional[str] = None) -> N
     entry["eval"] = {**KB_DEFAULTS["eval"], **payload.get("eval", {})}
     entry["portfolio"] = {**KB_DEFAULTS["portfolio"], **payload.get("portfolio", {})}
     entry["logs"] = {**KB_DEFAULTS["logs"], **payload.get("logs", {})}
+    entry["ai_core"] = {**KB_DEFAULTS["ai_core"], **payload.get("ai_core", {})}
 
     # prevent duplicate run_id appends
     if path.exists():

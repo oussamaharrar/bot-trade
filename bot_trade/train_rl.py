@@ -252,6 +252,7 @@ def _postrun_summary(paths, meta):
             "adaptive_log_lines": meta.get("adaptive_log_lines", 0),
             "safety": meta.get("safety"),
             "notes": str(meta.get("notes", "")),
+            "ai_core": meta.get("ai_core", {}),
         }
         kb_append(rp, kb_entry)
     except Exception as e:
@@ -637,6 +638,35 @@ def train_one_file(args, data_file: str) -> bool:
             start_q = float(cur_cfg.get("start_quantile", 0.3))
             thr = series.quantile(start_q)
             df = df.loc[series <= thr]
+
+    ai_sources: set[str] = set()
+    if getattr(args, "ai_core", False):
+        from bot_trade.ai_core.signal_engine import run_pipeline
+        from bot_trade.ai_core.bridges.ai_to_strat_bridge import write_signals
+        from bot_trade.strat.strategy_features import read_exogenous_signals
+
+        records, ai_sources = run_pipeline(
+            df,
+            symbol=args.symbol,
+            frame=args.frame,
+            emit_dummy=getattr(args, "emit_dummy_signals", False),
+        )
+        if records:
+            if getattr(args, "dry_run", False):
+                print(f"[AI_CORE] dry_run skip_write count={len(records)}")
+            else:
+                write_signals(records, dry_run=False)
+            extra = read_exogenous_signals(paths_obj)
+            for name, arr in extra.items():
+                if len(arr) < len(df):
+                    import numpy as np
+                    pad = len(df) - len(arr)
+                    arr = np.pad(arr, (pad, 0))
+                df[name] = arr[: len(df)]
+            run_meta["ai_core"] = {
+                "signals_count": len(records),
+                "sources": sorted(ai_sources),
+            }
 
     # 4) Build env constructors
     env_fns = build_env_fns(
