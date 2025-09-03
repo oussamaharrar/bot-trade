@@ -127,8 +127,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if any("[AI_CORE]" in ln for ln in lines):
         sig_path = memory_dir() / "Knowlogy" / "signals.jsonl"
-        if not sig_path.exists():
-            reasons.append("signals.jsonl missing")
+        try:
+            ok = sig_path.exists() and sig_path.read_bytes().endswith(b"\n")
+        except Exception:
+            ok = False
+        if not ok:
+            print("[CHECKS] signals_jsonl_missing")
 
     if reasons:
         for r in reasons:

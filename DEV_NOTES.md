@@ -211,3 +211,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: downstream parsers may expect previous metric order or tearsheet prints from callers.
 - Migration Steps: adjust scripts to new `[EVAL]` metric order and rely on `eval.tearsheet.generate_tearsheet` for its notice.
 - Next Actions: extend metrics and regime analytics across evaluation utilities.
+
+## Developer Notes — 2025-09-03 02:32:43 UTC (ai_core dummy signals)
+- What changed: Implemented ai_core pipeline generating MACD/RSI/RV dummy signals and atomic bridge writes.
+- Why: provide deterministic exogenous signals for strategy features and knowledge base records.
+- Risks: signal file may grow quickly; normalization assumes finite inputs.
+- Migration steps: enable with --ai-core and optional --emit-dummy-signals; consume via strategy_features.read_exogenous_signals.
+- Next actions: hook real collectors and broaden feature set.

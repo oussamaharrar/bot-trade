@@ -3,10 +3,9 @@ import pandas as pd
 
 
 def derive_features(market: pd.DataFrame, news: pd.DataFrame | None = None) -> dict[str, pd.Series]:
-    """Derive simple features from collector outputs."""
+    """Pass through market features; news ignored for dummy signals."""
     feats: dict[str, pd.Series] = {}
-    if market is not None and 'returns' in market:
-        feats['momentum'] = market['returns'].rolling(3).mean()
-    if news is not None and 'sentiment' in news:
-        feats['sentiment'] = news['sentiment']
+    if market is not None:
+        for col in market.columns:
+            feats[col] = market[col]
     return feats

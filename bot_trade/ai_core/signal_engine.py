@@ -2,84 +2,71 @@ from __future__ import annotations
 import math
 from typing import List, Tuple
 import pandas as pd
-from datetime import datetime, timezone
+from datetime import timezone
 
 from .collectors.market_collector import collect_market
-from .collectors.news_collector import collect_news
 from .normalizers.scalers import z_score
 from .enrichers.features import derive_features
 
 
-def run_pipeline(df: pd.DataFrame, symbol: str, frame: str, emit_dummy: bool = False) -> Tuple[List[dict], set[str]]:
+def run_pipeline(
+    df: pd.DataFrame, symbol: str, frame: str, emit_dummy: bool = False
+) -> Tuple[List[dict], set[str]]:
     """Run collectors → normalizers → enrichers and assemble signal records."""
+    if df is None or not emit_dummy:
+        return [], set()
     market = collect_market(df)
-    news = collect_news(df)
-    feats = derive_features(market, news)
+    feats = derive_features(market)
     records: List[dict] = []
     sources: set[str] = set()
-    ts_index = df.index
+    ts_index = df.get("datetime", df.index)
+    limit = min(len(ts_index), 2048)
+    ts_index = ts_index[-limit:]
+    dropped = 0
+    seen = set()
     for name, series in feats.items():
         series = z_score(series)
         if series is None:
             continue
-        collector = 'news' if name == 'sentiment' else 'market'
-        sources.add(collector)
+        series = series.tail(limit)
+        sources.add("market")
         for ts, val in zip(ts_index, series):
             try:
                 val_f = float(val)
             except Exception:
+                dropped += 1
                 continue
             if not math.isfinite(val_f):
+                dropped += 1
                 continue
+            key = (ts, symbol, name)
+            if key in seen:
+                continue
+            seen.add(key)
             ts_iso = (
-                ts if isinstance(ts, str)
-                else pd.Timestamp(ts).to_pydatetime().astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+                ts
+                if isinstance(ts, str)
+                else pd.Timestamp(ts)
+                .to_pydatetime()
+                .astimezone(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z")
             )
-            records.append({
-                'ts': ts_iso,
-                'symbol': symbol,
-                'frame': frame,
-                'source': 'ai_core',
-                'signal': name,
-                'value': val_f,
-                'confidence': 0.5 if collector == 'news' else 1.0,
-                'provenance': {
-                    'collector': collector,
-                    'features': [name],
-                    'notes': None,
-                },
-            })
-    if emit_dummy:
-        ts_iso = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-        records.append({
-            'ts': ts_iso,
-            'symbol': symbol,
-            'frame': frame,
-            'source': 'ai_core',
-            'signal': 'dummy_signal',
-            'value': 0.0,
-            'confidence': 1.0,
-            'provenance': {
-                'collector': 'market',
-                'features': ['dummy_signal'],
-                'notes': 'synthetic',
-            },
-        })
-        sources.add('market')
-    # drop invalid and dedupe
-    seen = set()
-    valid: List[dict] = []
-    dropped = 0
-    for rec in records:
-        key = (rec['ts'], rec['symbol'], rec['signal'])
-        if key in seen:
-            continue
-        seen.add(key)
-        val_f = rec.get('value')
-        if not math.isfinite(float(val_f)):
-            dropped += 1
-            continue
-        valid.append(rec)
+            records.append(
+                {
+                    "ts": ts_iso,
+                    "symbol": symbol,
+                    "frame": frame,
+                    "source": "ai_core",
+                    "signal": name,
+                    "value": val_f,
+                    "confidence": 1.0,
+                    "provenance": {
+                        "collector": "market",
+                        "features": ["MACD", "RSI", "RV"],
+                    },
+                }
+            )
     if dropped:
         print(f"[AI_CORE] dropped_invalid count={dropped}")
-    return valid, sources
+    return records, sources

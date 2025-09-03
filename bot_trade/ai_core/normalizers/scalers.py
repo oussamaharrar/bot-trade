@@ -4,15 +4,17 @@ import numpy as np
 import pandas as pd
 
 
-def z_score(s: pd.Series) -> pd.Series | None:
-    """Return z-score normalized series with NaN safeguards."""
+def z_score(s: pd.Series, eps: float = 1e-8) -> pd.Series | None:
+    """Return z-score normalized series with clamping."""
     if s is None or len(s) == 0:
         return None
     mu = float(np.nanmean(s))
     sigma = float(np.nanstd(s))
-    if not math.isfinite(mu) or not math.isfinite(sigma) or sigma == 0:
+    if not math.isfinite(mu) or not math.isfinite(sigma):
         return None
-    return (s - mu) / sigma
+    sigma = sigma if sigma > eps else eps
+    z = (s - mu) / sigma
+    return z.clip(-8, 8)
 
 
 def min_max(s: pd.Series) -> pd.Series | None:
