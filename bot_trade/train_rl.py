@@ -152,6 +152,10 @@ def _postrun_summary(paths, meta):
     rows_safety = row_counts.get("safety", 0)
     rows_callbacks = row_counts.get("callbacks", 0)
     rows_signals = row_counts.get("signals", 0)
+    meta["logs"] = {
+        "regime_log_count": _count_lines(rp.performance_dir / "regime_log.jsonl"),
+        "adaptive_log_count": _count_lines(rp.performance_dir / "adaptive_log.jsonl"),
+    }
     meta["regime_log_lines"] = _count_lines(rp.performance_dir / "regime_log.jsonl")
     meta["adaptive_log_lines"] = _count_lines(rp.performance_dir / "adaptive_log.jsonl")
     print(
@@ -242,6 +246,8 @@ def _postrun_summary(paths, meta):
             "eval": eval_entry,
             "portfolio": portfolio_entry,
             "regime": meta.get("regime"),
+            "logs": meta.get("logs", {}),
+
             "regime_log_lines": meta.get("regime_log_lines", 0),
             "adaptive_log_lines": meta.get("adaptive_log_lines", 0),
             "safety": meta.get("safety"),

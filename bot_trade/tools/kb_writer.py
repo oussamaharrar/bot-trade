@@ -36,6 +36,7 @@ KB_DEFAULTS = {
     "best": False,
     "last": False,
     "best_model_path": "",
+    "logs": {"regime_log_count": 0, "adaptive_log_count": 0},
     "regime_log_lines": 0,
     "adaptive_log_lines": 0,
     "eval": {
@@ -91,11 +92,12 @@ def kb_append(run_paths: Any, payload: dict, kb_file: Optional[str] = None) -> N
         algo_meta["policy_kwargs"] = _condense_policy_kwargs(algo_meta.get("policy_kwargs") or {})
     entry = {
         **KB_DEFAULTS,
-        **{k: v for k, v in payload.items() if k not in {"eval", "portfolio", "algo_meta"}},
+        **{k: v for k, v in payload.items() if k not in {"eval", "portfolio", "algo_meta", "logs"}},
         "algo_meta": algo_meta,
     }
     entry["eval"] = {**KB_DEFAULTS["eval"], **payload.get("eval", {})}
     entry["portfolio"] = {**KB_DEFAULTS["portfolio"], **payload.get("portfolio", {})}
+    entry["logs"] = {**KB_DEFAULTS["logs"], **payload.get("logs", {})}
 
     # prevent duplicate run_id appends
     if path.exists():

@@ -91,6 +91,7 @@ def evaluate_terms(obs, action, info: Mapping[str, Any], state: Mapping[str, Any
             val = fn(obs, action, info, state)
         except Exception:
             val = None
+        val = _safe(val)
         if val is not None:
             out[name] = float(val)
     return out
@@ -104,6 +105,9 @@ def compute_reward(
 ) -> float:
     total = 0.0
     for name, weight in weights.items():
+        val = _safe(terms.get(name, 0.0))
+        if val is None:
+            val = 0.0
         val = terms.get(name, 0.0)
         if name in clamps:
             lo = clamps[name].get("min", float("-inf"))
@@ -113,4 +117,5 @@ def compute_reward(
     lo = global_clamp.get("min", float("-inf"))
     hi = global_clamp.get("max", float("inf"))
     total = max(lo, min(total, hi))
+    total = _safe(total) or 0.0
     return float(total)

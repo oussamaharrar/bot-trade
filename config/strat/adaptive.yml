@@ -1,3 +1,5 @@
+detector:
+  seed: 0
 regime_rules:
   vol_high:
     reward_delta: { base_pnl: 0.1, risk_drawdown: -0.2 }

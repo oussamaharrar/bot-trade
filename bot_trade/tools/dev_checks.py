@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Tuple
 
+from PIL import Image
+
 from bot_trade.config.rl_paths import (
     DEFAULT_KB_FILE,
     DEFAULT_LOGS_DIR,
@@ -86,6 +88,21 @@ def main(argv: list[str] | None = None) -> int:
         else:
             if not (charts_dir / "risk_flags.png").exists():
                 reasons.append("risk_flags.png missing")
+            rg = charts_dir / "regimes.png"
+            if not rg.exists():
+                reasons.append("regimes.png missing")
+            else:
+                size = rg.stat().st_size
+                dpi = 0
+                try:
+                    with Image.open(rg) as im:
+                        info = im.info.get("dpi") or (0, 0)
+                        dpi = int(round(info[0] if isinstance(info, tuple) else info))
+                except Exception:
+                    dpi = 0
+                if size < 1024 or dpi < 120:
+                    print("[CHECKS] regimes_png_too_small")
+                    reasons.append("regimes.png too small")
             if not (charts_dir / "regimes.png").exists():
                 reasons.append("regimes.png missing")
             for p in pngs:

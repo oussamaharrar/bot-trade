@@ -22,9 +22,15 @@ class AdaptiveController:
         self.cfg = cfg or {}
         self.env = env
         self.log_path = Path(log_path) if log_path else None
+        det_cfg = self.cfg.get("detector", {})
+        self.detector = RegimeDetector(det_cfg, regime_log_path, seed=det_cfg.get("seed"))
         self.detector = RegimeDetector(self.cfg.get("detector", {}), regime_log_path)
         self.last_regime = "unknown"
         self.dist: Counter[str] = Counter()
+        self._last_key: tuple[str, int] | None = None
+
+        self.w_clamp = self.cfg.get("clamps", {}).get("reward_weight_delta", {})
+        self.b_clamp = self.cfg.get("clamps", {}).get("risk_bound_delta", {})
 
         self.w_clamp = self.cfg.get("clamps", {}).get("reward_weight_delta", {})
         self.b_clamp = self.cfg.get("clamps", {}).get("risk_bound_delta", {})
@@ -42,8 +48,36 @@ class AdaptiveController:
     def update(self, df_slice: Any) -> None:
         info = self.detector.update(df_slice)
         regime = info.get("name", "unknown")
+        wid = int(info.get("window_id", 0))
         self.last_regime = regime
         self.dist[regime] += 1
+        key = (regime, wid)
+        if regime != getattr(self, "_last_print_regime", None) and key != self._last_key:
+            mapping = (self.cfg.get("regime_rules") or {}).get(regime, {})
+            d_w = self._apply_reward_delta(mapping.get("reward_delta", {}))
+            d_r = self._apply_risk_delta(mapping.get("risk_clamp_delta", {}))
+            print(f"[ADAPT] regime={regime} dW={list(d_w.keys())} dRisk={list(d_r.keys())}")
+            if self.log_path:
+                rec = {
+                    "ts": dt.datetime.utcnow().isoformat(),
+                    "regime": regime,
+                    "window_id": wid,
+                    "dW": d_w,
+                    "dRisk": d_r,
+                }
+                try:
+                    append_jsonl(self.log_path, rec)
+                except Exception:
+                    pass
+            self._last_key = key
+            self._last_print_regime = regime
+
+    def _clamp(self, value: float, clamp: Dict[str, float]) -> float:
+        lo = float(clamp.get("min", float("-inf")))
+        hi = float(clamp.get("max", float("inf")))
+        return max(lo, min(value, hi))
+
+
         mapping = (self.cfg.get("regime_rules") or {}).get(regime, {})
         d_w = self._apply_reward_delta(mapping.get("reward_delta", {}))
         d_r = self._apply_risk_delta(mapping.get("risk_clamp_delta", {}))
