@@ -209,6 +209,7 @@ def _postrun_summary(paths, meta):
             "symbol": sym,
             "frame": frm,
             "algorithm": algo,
+            "algo_meta": meta.get("algo_meta"),
             "ts": dt.datetime.utcnow().isoformat(),
             "images": img_count,
             "images_list": images_list,
@@ -605,6 +606,7 @@ def train_one_file(args, data_file: str) -> bool:
         writers=writers,
         safe=args.safe,
         decisions_jsonl=None,
+        continuous=bool(getattr(args, "continuous_env", False)),
     )
 
     # 5) VecEnv (DummyVecEnv if n_envs==1 else SubprocVecEnv)
@@ -731,6 +733,7 @@ def train_one_file(args, data_file: str) -> bool:
         writers=None,
         safe=args.safe,
         decisions_jsonl=None,
+        continuous=bool(getattr(args, "continuous_env", False)),
     )
     eval_env = make_vec_env(
         eval_env_fns,
@@ -823,7 +826,8 @@ def train_one_file(args, data_file: str) -> bool:
                     return 0.5 * base_lr * (1 + math.cos(math.pi * pct))
 
                 args.learning_rate = lr_schedule
-        model = build_algorithm(algo, vec_env, args, args.policy_kwargs)
+        model, algo_meta = build_algorithm(algo, vec_env, args, seed=getattr(args, "seed", 0))
+        run_meta["algo_meta"] = algo_meta
         if algo == "PPO":
             logging.info(
                 "[PPO] Built new model (device=%s, use_sde=%s)",
@@ -1316,7 +1320,7 @@ def main():
 
     args = auto_shape_resources(args)
     args = validate_args(args)
-    args = finalize_args(args, is_continuous=None)  # allow builders to decide SDE later
+    args = finalize_args(args, is_continuous=bool(getattr(args, "continuous_env", False)))
 
     # Resolve dataset root (CLI > config.yaml > default)
     cfg = get_config()

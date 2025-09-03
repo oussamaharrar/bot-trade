@@ -52,6 +52,12 @@ Template:
 - **Risks**: synthetic evaluation is simplistic; chart placeholders may hide data issues.
 - **Test Steps**: `python -m py_compile bot_trade/config/*.py bot_trade/tools/*.py bot_trade/train_rl.py`; run smoke `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`, `python -m bot_trade.train_rl --symbol BTCUSDT --frame 1m --policy MlpPolicy --device cpu --n-envs 2 --n-steps 512 --batch-size 1024 --total-steps 2048 --net-arch "1024,512,256" --activation silu --vecnorm --headless --allow-synth --kb-file Knowlogy/kb.jsonl --data-dir data_ready`, then `python -m bot_trade.tools.monitor_manager --symbol BTCUSDT --frame 1m --run-id latest --debug-export`.
 
+## 2025-09-03
+- **Files**: `bot_trade/env/trading_env_continuous.py`, `bot_trade/config/rl_builders.py`, `bot_trade/config/rl_args.py`, `bot_trade/train_rl.py`, `bot_trade/tools/kb_writer.py`, `CHANGE_NOTES.md`
+- **Rationale**: introduce optional continuous trading environment and lazy registry supporting SAC/TD3/TQC with robust policy kwargs.
+- **Risks**: off-policy algorithms depend on correct Box spaces and sb3-contrib; new env may expose untested edge cases.
+- **Test Steps**: `python -m py_compile bot_trade/**/*.py bot_trade/*.py`; `python -m bot_trade.train_rl --help | grep -E "algorithm|PPO|SAC|TD3|TQC|continuous-env"`; discrete guard `python -m bot_trade.train_rl --algorithm SAC --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 32 --batch-size 64 --total-steps 64 --headless --allow-synth --data-dir data_ready --no-monitor`; continuous smoke `python -m bot_trade.train_rl --algorithm SAC --continuous-env --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 64 --batch-size 64 --total-steps 256 --headless --allow-synth --data-dir data_ready --no-monitor`.
+
 ## 2025-09-20
 - **Files**: `bot_trade/tools/kb_writer.py`, `bot_trade/train_rl.py`, `CHANGE_NOTES.md`
 - **Rationale**: centralize knowledge base writes with canonical path and richer run metadata.
@@ -345,3 +351,10 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - KB enrichment: metrics+images, duplicate run_id guard
 - Placeholders for sparse data; all outputs atomic
 - Migration notes for older scripts parsing POSTRUN
+
+## Developer Notes — 2025-09-03 00:22:39 UTC
+- Added continuous trading environment behind --continuous-env (Box action space)
+- Implemented lazy registry for PPO/SAC/TD3/TQC with strict Box guard and TQC dependency guard
+- Enabled PPO→SAC warm-start (encoder-only, shape-checked) with single-line status
+- Fixed policy_kwargs passthrough; support dict or JSON string; recorded condensed policy_kwargs in algo_meta
+- Kept logging contracts, latest guard, and Evaluation Suite behavior unchanged; all outputs atomic

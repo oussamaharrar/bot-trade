@@ -33,6 +33,7 @@ def make_env_ctor(
     writers=None,
     safe: bool = True,
     decisions_jsonl: Optional[str] = None,
+    continuous: bool = False,
 ) -> Callable[[], TradingEnv]:
     """
     Top-level factory that returns a picklable _init() for SB3 VecEnvs.
@@ -41,16 +42,30 @@ def make_env_ctor(
       - When using DummyVecEnv (n_envs=1), you may pass writers to enable main-process logging.
     """
     def _init():
-        env = TradingEnv(
-            data=df,
-            frame=frame,
-            symbol=symbol,
-            use_indicators=use_indicators,
-            config=config,
-            writers=writers,
-            decisions_jsonl=decisions_jsonl,
-            safe=safe,
-        )
+        if continuous:
+            from bot_trade.env.trading_env_continuous import TradingEnvContinuous
+
+            env = TradingEnvContinuous(
+                data=df,
+                frame=frame,
+                symbol=symbol,
+                use_indicators=use_indicators,
+                config=config,
+                writers=writers,
+                decisions_jsonl=decisions_jsonl,
+                safe=safe,
+            )
+        else:
+            env = TradingEnv(
+                data=df,
+                frame=frame,
+                symbol=symbol,
+                use_indicators=use_indicators,
+                config=config,
+                writers=writers,
+                decisions_jsonl=decisions_jsonl,
+                safe=safe,
+            )
         return env
     return _init
 
@@ -66,6 +81,7 @@ def build_env_fns(
     safe: bool = True,
     decisions_jsonl: Optional[str] = None,
     pass_writers_when_single: bool = True,
+    continuous: bool = False,
 ) -> List[Callable[[], TradingEnv]]:
     """
     Build a list of environment constructors. For n_envs > 1 we DO NOT pass writers to subprocs.
@@ -83,6 +99,7 @@ def build_env_fns(
             writers=writers_for_this,
             safe=safe,
             decisions_jsonl=decisions_jsonl,
+            continuous=continuous,
         )
         env_fns.append(ctor)
     return env_fns
@@ -196,18 +213,74 @@ def _resolve_ppo_warmstart(args) -> Path | None:
             return c
     return None
 
+def _policy_kwargs_from_args(args) -> dict:
+    pk = getattr(args, "policy_kwargs", {}) or {}
+    if isinstance(pk, str):
+        try:
+            import json
 
-def build_ppo(env, args, policy_kwargs):
+            pk = json.loads(pk)
+        except Exception:
+            pk = {}
+    if not isinstance(pk, dict):
+        pk = {}
+    act = pk.get("activation_fn")
+    if isinstance(act, str):
+        try:
+            from torch import nn
+
+            mapping = {
+                "relu": nn.ReLU,
+                "tanh": nn.Tanh,
+                "silu": nn.SiLU,
+                "elu": nn.ELU,
+                "gelu": nn.GELU,
+            }
+            pk["activation_fn"] = mapping.get(act.lower(), nn.ReLU)
+        except Exception:
+            pk.pop("activation_fn", None)
+    return pk
+
+
+def _condense_policy_kwargs(pk: dict) -> dict:
+    out: dict = {}
+    for k, v in pk.items():
+        if hasattr(v, "__name__"):
+            out[k] = v.__name__
+        elif isinstance(v, (list, tuple)):
+            if len(v) > 4:
+                out[k] = list(v[:3]) + ["..."]
+            else:
+                out[k] = list(v)
+        elif isinstance(v, dict):
+            out[k] = {sk: (len(sv) if isinstance(sv, (list, tuple)) else sv) for sk, sv in v.items()}
+        else:
+            out[k] = v
+    return out
+
+
+def _require_box(env, name: str) -> None:
+    action_space, _ = detect_action_space(env)
+    from gymnasium import spaces as gym_spaces
+
+    if not isinstance(action_space, gym_spaces.Box):
+        print(
+            f"[ALGO_GUARD] algorithm={name} requires continuous Box action space; got {type(action_space).__name__}. Aborting.",
+            flush=True,
+        )
+        raise SystemExit(1)
+
+
+def build_ppo(env, args, seed):
     from stable_baselines3 import PPO
 
-    action_space, is_discrete = detect_action_space(env)
-    use_sde = bool(args.sde and (not is_discrete))
-    if args.sde and is_discrete:
-        logging.warning("[PPO] gSDE disabled automatically for Discrete action space.")
-
+    pk = _policy_kwargs_from_args(args)
     bs = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", 64)), env)
+    action_space, is_discrete = detect_action_space(env)
+    use_sde = bool(getattr(args, "sde", False) and not is_discrete)
+    if getattr(args, "sde", False) and is_discrete:
+        logging.warning("[PPO] gSDE disabled automatically for Discrete action space.")
     ent_coef = float(args.ent_coef) if isinstance(args.ent_coef, str) else args.ent_coef
-
     model = PPO(
         "MlpPolicy",
         env,
@@ -221,143 +294,196 @@ def build_ppo(env, args, policy_kwargs):
         ent_coef=ent_coef,
         vf_coef=args.vf_coef,
         max_grad_norm=args.max_grad_norm,
-        policy_kwargs=policy_kwargs,
+        policy_kwargs=pk,
         use_sde=use_sde,
         sde_sample_freq=4 if use_sde else -1,
-        seed=args.seed,
+        seed=seed,
         device=args.device_str,
         verbose=getattr(args, "sb3_verbose", 1),
         tensorboard_log=getattr(args, "tensorboard_log", None),
     )
-    return model
+    meta = {
+        "lr": args.learning_rate,
+        "batch_size": bs,
+        "buffer_size": None,
+        "gamma": args.gamma,
+        "policy_kwargs": _condense_policy_kwargs(pk),
+    }
+    return model, meta
 
 
-def build_sac(env, args, policy_kwargs):
-    """Return a configured SAC model (from stable_baselines3)."""
+def build_sac(env, args, seed):
     from stable_baselines3 import SAC
-    from .env_config import get_config
-    action_space, _ = detect_action_space(env)
-    from gymnasium import spaces as gym_spaces
-
-    if not isinstance(action_space, gym_spaces.Box):
-        msg = f"[ALGO] SAC requires a continuous (Box) action space, got {type(action_space).__name__}"
-        logging.getLogger(__name__).error(msg)
-        print(msg, flush=True)
-        raise SystemExit(1)
-
-    cfg = get_config()
-    rl_cfg = cfg.get("rl", {}) if isinstance(cfg, dict) else {}
-    sac_cfg = rl_cfg.get("sac", {}) if isinstance(rl_cfg, dict) else {}
-
-    overrides: dict[str, object] = {}
-    defaults = getattr(args, "_defaults", {})
-    specified = getattr(args, "_specified", set())
-
-    def _get(name, default):
-        val = getattr(args, name, None)
-        if name in specified and val is not None:
-            overrides[name] = val
-            return val
-        if val is not None and val != defaults.get(name):
-            return val
-        return sac_cfg.get(name, rl_cfg.get(name, default))
-
-    buffer_size = int(_get("buffer_size", 2_000_000))
-    learning_starts = int(_get("learning_starts", 20_000))
-    train_freq = int(_get("train_freq", 1))
-    gradient_steps = int(_get("gradient_steps", 1))
-    tau = float(_get("tau", 0.005))
-    ent_coef = _get("ent_coef", "auto")
-    try:
-        ent_coef = float(ent_coef)
-    except (TypeError, ValueError):
-        pass
-    gamma = _get("sac_gamma", None)
-    if gamma is None:
-        gamma = _get("gamma", 0.99)
-    learning_rate = _get("learning_rate", 3e-4)
-
-    bs_default = int(_get("batch_size", 512))
-    bs = _adjust_batch_size_for_envs(bs_default, env)
-
-    if overrides:
-        msg = ", ".join(f"{k}={v}" for k, v in overrides.items())
-        print(f"[ALGO] SAC overrides: {msg}")
-
+    _require_box(env, "SAC")
+    pk = _policy_kwargs_from_args(args)
+    pk = pk.copy()
+    pk.pop("ortho_init", None)
+    if isinstance(pk.get("net_arch"), dict):
+        pk["net_arch"] = pk["net_arch"].get("pi")
+    buffer_size = int(getattr(args, "buffer_size", None) or 100_000)
+    learning_starts = int(getattr(args, "learning_starts", None) or 1_000)
+    batch_size = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", None) or 256), env)
+    gamma = float(getattr(args, "gamma", None) or 0.99)
+    tau = float(getattr(args, "tau", None) or 0.005)
+    ent_coef = getattr(args, "ent_coef", "auto")
     model = SAC(
         "MlpPolicy",
         env,
-        learning_rate=learning_rate,
+        learning_rate=getattr(args, "learning_rate", 3e-4),
         buffer_size=buffer_size,
         learning_starts=learning_starts,
-        train_freq=train_freq,
-        gradient_steps=gradient_steps,
-        batch_size=bs,
+        batch_size=batch_size,
+        gamma=gamma,
         tau=tau,
         ent_coef=ent_coef,
-        gamma=gamma,
-        policy_kwargs=policy_kwargs,
-        seed=args.seed,
+        target_entropy="auto",
+        train_freq=(1, "step"),
+        gradient_steps=int(getattr(args, "gradient_steps", None) or 1),
+        use_sde=True,
+        sde_sample_freq=4,
+        policy_kwargs=pk,
+        seed=seed,
         device=args.device_str,
         verbose=getattr(args, "sb3_verbose", 1),
         tensorboard_log=getattr(args, "tensorboard_log", None),
     )
+    ppo_path = _resolve_ppo_warmstart(args)
+    if ppo_path:
+        try:
+            from stable_baselines3 import PPO as _PPO
 
-    if getattr(args, "sac_warmstart_from_ppo", False) or getattr(args, "warmstart_from_ppo", None):
-        ppo_path = _resolve_ppo_warmstart(args)
-        if ppo_path:
-            try:
-                from stable_baselines3 import PPO as _PPO
-
-                _ppo = _PPO.load(str(ppo_path), device=args.device_str)
-                model.policy.features_extractor.load_state_dict(
-                    _ppo.policy.features_extractor.state_dict(), strict=False
+            _ppo = _PPO.load(str(ppo_path), device=args.device_str)
+            src = _ppo.policy.features_extractor.state_dict()
+            dst = model.policy.features_extractor.state_dict()
+            if all(k in dst and v.shape == dst[k].shape for k, v in src.items()):
+                dst.update({k: v for k, v in src.items() if k in dst and v.shape == dst[k].shape})
+                model.policy.features_extractor.load_state_dict(dst, strict=False)
+                print(
+                    f"[WARM_START] source=PPO checkpoint={ppo_path} layers={len(dst)} status=applied"
                 )
-                logging.getLogger(__name__).info(
-                    "[ALGO] warm-started SAC feature extractor from %s", ppo_path
-                )
-            except Exception as e:
-                logging.getLogger(__name__).warning("[ALGO] warm-start skipped: %s", e)
-        else:
-            msg = "[ALGO] warm-start skipped: compatible PPO checkpoint not found"
-            print(msg)
-            logging.getLogger(__name__).info(msg)
-
-    return model
-
-
-def _require_box(env, name: str) -> None:
-    action_space, _ = detect_action_space(env)
-    from gymnasium import spaces as gym_spaces
-    if not isinstance(action_space, gym_spaces.Box):
-        msg = f"[ALGO] {name} requires a continuous (Box) action space, got {type(action_space).__name__}"
-        logging.getLogger(__name__).error(msg)
-        print(msg, flush=True)
-        raise SystemExit(1)
+            else:
+                print("[WARM_START] source=PPO status=skipped reason=mismatch")
+        except Exception:
+            print("[WARM_START] source=PPO status=skipped reason=mismatch")
+    else:
+        print("[WARM_START] source=PPO status=skipped reason=not_found")
+    meta = {
+        "lr": getattr(args, "learning_rate", 3e-4),
+        "batch_size": batch_size,
+        "buffer_size": buffer_size,
+        "gamma": gamma,
+        "policy_kwargs": _condense_policy_kwargs(pk),
+    }
+    return model, meta
 
 
-def build_td3_stub(env, args, policy_kwargs):  # noqa: ARG001
+def build_td3(env, args, seed):
+    from stable_baselines3 import TD3
     _require_box(env, "TD3")
-    print("[ALGO] TD3 not implemented yet", flush=True)
-    raise SystemExit(2)
+    pk = _policy_kwargs_from_args(args)
+    pk = pk.copy()
+    pk.pop("ortho_init", None)
+    if isinstance(pk.get("net_arch"), dict):
+        pk["net_arch"] = pk["net_arch"].get("pi")
+    buffer_size = int(getattr(args, "buffer_size", None) or 100_000)
+    learning_starts = int(getattr(args, "learning_starts", None) or 1_000)
+    batch_size = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", None) or 256), env)
+    gamma = float(getattr(args, "gamma", None) or 0.99)
+    tau = float(getattr(args, "tau", None) or 0.005)
+    model = TD3(
+        "MlpPolicy",
+        env,
+        learning_rate=getattr(args, "learning_rate", 3e-4),
+        buffer_size=buffer_size,
+        learning_starts=learning_starts,
+        batch_size=batch_size,
+        gamma=gamma,
+        tau=tau,
+        train_freq=(1, "step"),
+        gradient_steps=int(getattr(args, "gradient_steps", None) or 1),
+        policy_delay=2,
+        target_policy_noise=0.2,
+        target_noise_clip=0.5,
+        policy_kwargs=pk,
+        seed=seed,
+        device=args.device_str,
+        verbose=getattr(args, "sb3_verbose", 1),
+        tensorboard_log=getattr(args, "tensorboard_log", None),
+    )
+    meta = {
+        "lr": getattr(args, "learning_rate", 3e-4),
+        "batch_size": batch_size,
+        "buffer_size": buffer_size,
+        "gamma": gamma,
+        "policy_kwargs": _condense_policy_kwargs(pk),
+    }
+    return model, meta
 
 
-def build_tqc_stub(env, args, policy_kwargs):  # noqa: ARG001
+def build_tqc(env, args, seed):
     _require_box(env, "TQC")
-    print("[ALGO] TQC not implemented yet", flush=True)
-    raise SystemExit(2)
+    try:
+        from sb3_contrib import TQC
+    except Exception:
+        print("[ALGO_GUARD] algorithm=TQC requires sb3-contrib; please install. Aborting.")
+        raise SystemExit(1)
+    pk = _policy_kwargs_from_args(args)
+    pk = pk.copy()
+    pk.pop("ortho_init", None)
+    if isinstance(pk.get("net_arch"), dict):
+        pk["net_arch"] = pk["net_arch"].get("pi")
+    buffer_size = int(getattr(args, "buffer_size", None) or 100_000)
+    learning_starts = int(getattr(args, "learning_starts", None) or 1_000)
+    batch_size = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", None) or 256), env)
+    gamma = float(getattr(args, "gamma", None) or 0.99)
+    tau = float(getattr(args, "tau", None) or 0.005)
+    model = TQC(
+        "MlpPolicy",
+        env,
+        learning_rate=getattr(args, "learning_rate", 3e-4),
+        buffer_size=buffer_size,
+        learning_starts=learning_starts,
+        batch_size=batch_size,
+        gamma=gamma,
+        tau=tau,
+        ent_coef=getattr(args, "ent_coef", "auto"),
+        target_entropy="auto",
+        train_freq=(1, "step"),
+        gradient_steps=int(getattr(args, "gradient_steps", None) or 1),
+        use_sde=True,
+        sde_sample_freq=4,
+        n_critics=5,
+        n_quantiles=25,
+        top_quantiles_to_drop_per_net=2,
+        policy_kwargs=pk,
+        seed=seed,
+        device=args.device_str,
+        verbose=getattr(args, "sb3_verbose", 1),
+        tensorboard_log=getattr(args, "tensorboard_log", None),
+    )
+    meta = {
+        "lr": getattr(args, "learning_rate", 3e-4),
+        "batch_size": batch_size,
+        "buffer_size": buffer_size,
+        "gamma": gamma,
+        "policy_kwargs": _condense_policy_kwargs(pk),
+    }
+    return model, meta
 
 
 REGISTRY = {
     "PPO": build_ppo,
     "SAC": build_sac,
-    "TD3": build_td3_stub,
-    "TQC": build_tqc_stub,
+    "TD3": build_td3,
+    "TQC": build_tqc,
 }
 
 
-def build_algorithm(name: str, env, args, policy_kwargs):
-    return REGISTRY[name.upper()](env, args, policy_kwargs)
+def build_algorithm(name: str, env, args, seed: int):
+    fn = REGISTRY.get(name.upper())
+    if not fn:
+        raise ValueError(f"Unknown algorithm: {name}")
+    return fn(env, args, seed)
 
 
 def build_callbacks(
