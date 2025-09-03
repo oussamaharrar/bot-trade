@@ -168,9 +168,6 @@ def _postrun_summary(paths, meta):
         )
     )
     print(f"[CHARTS] dir={charts_dir.resolve()} images={img_count}")
-    rg = charts_dir / "regimes.png"
-    if rg.exists():
-        print(f"[ADAPT_CHARTS] regimes_png={rg.resolve()}")
     if rows_risk == 0 and rows_safety == 0:
         print("[RISK_DIAG] no_flags_fired (smoke run)")
 

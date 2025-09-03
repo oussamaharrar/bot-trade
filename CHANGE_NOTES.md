@@ -378,3 +378,9 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Risks: adaptive deltas skipped if controller invoked repeatedly within same window; dev checks now fail on low-DPI regime charts.
 - Migration: consumers must read `logs.regime_log_count`/`logs.adaptive_log_count` instead of old flat fields.
 - Next Actions: monitor regime transitions in extended runs and refine detector thresholds.
+## Developer Notes — 2025-09-03 02:02:13 UTC
+- What: Removed redundant `[ADAPT_CHARTS]` print from `train_rl.py` to keep regimes chart notice centralized in exporters.
+- Why: avoid duplicate adaptive chart logs and maintain single-source diagnostics.
+- Risks: if exporters are skipped, regimes chart generation might lack explicit notice.
+- Migration: none; workflows already call `export_charts` for chart diagnostics.
+- Next Actions: watch for future consolidation of adaptive outputs across CLIs.
