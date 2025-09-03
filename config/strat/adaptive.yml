@@ -1,0 +1,10 @@
+regime_rules:
+  vol_high:
+    reward_delta: { base_pnl: 0.1, risk_drawdown: -0.2 }
+    risk_clamp_delta: { max_position: -0.2, max_leverage: -0.5 }
+  trend_up:
+    reward_delta: { base_pnl: 0.2 }
+    risk_clamp_delta: { trailing_dd_limit: 0.1 }
+clamps:
+  reward_weight_delta: {min: -0.5, max: 0.5}
+  risk_bound_delta: {min: -1.0, max: 1.0}

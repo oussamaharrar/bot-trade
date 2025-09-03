@@ -46,6 +46,8 @@ from bot_trade.tools._headless import ensure_headless_once
 
 
 from bot_trade.strat.adaptive_controller import AdaptiveController
+from bot_trade.strat.rewards_registry import load_reward_spec
+import yaml
 
 # Heavy dependencies (torch, numpy, pandas, stable_baselines3, etc.) are
 # imported inside `main` to keep import-time side effects minimal and to
@@ -80,6 +82,14 @@ def _write_regime_chart(charts_dir, dist):
         ax.set_axis_off()
     write_png(Path(charts_dir) / "regimes.png", fig, dpi=120)
     plt.close(fig)
+
+
+def _count_lines(p: Path) -> int:
+    try:
+        with Path(p).open("r", encoding="utf-8") as fh:
+            return sum(1 for _ in fh)
+    except Exception:
+        return 0
 
 def _postrun_summary(paths, meta):
     logger = logging.getLogger()
@@ -142,6 +152,8 @@ def _postrun_summary(paths, meta):
     rows_safety = row_counts.get("safety", 0)
     rows_callbacks = row_counts.get("callbacks", 0)
     rows_signals = row_counts.get("signals", 0)
+    meta["regime_log_lines"] = _count_lines(rp.performance_dir / "regime_log.jsonl")
+    meta["adaptive_log_lines"] = _count_lines(rp.performance_dir / "adaptive_log.jsonl")
     print(
         "[DEBUG_EXPORT] reward_rows=%d step_rows=%d train_rows=%d risk_rows=%d callbacks_rows=%d signals_rows=%d"
         % (
@@ -154,6 +166,9 @@ def _postrun_summary(paths, meta):
         )
     )
     print(f"[CHARTS] dir={charts_dir.resolve()} images={img_count}")
+    rg = charts_dir / "regimes.png"
+    if rg.exists():
+        print(f"[ADAPT_CHARTS] regimes_png={rg.resolve()}")
     if rows_risk == 0 and rows_safety == 0:
         print("[RISK_DIAG] no_flags_fired (smoke run)")
 
@@ -227,6 +242,8 @@ def _postrun_summary(paths, meta):
             "eval": eval_entry,
             "portfolio": portfolio_entry,
             "regime": meta.get("regime"),
+            "regime_log_lines": meta.get("regime_log_lines", 0),
+            "adaptive_log_lines": meta.get("adaptive_log_lines", 0),
             "safety": meta.get("safety"),
             "notes": str(meta.get("notes", "")),
         }
@@ -405,6 +422,26 @@ def train_one_file(args, data_file: str) -> bool:
         run_id = getattr(args, "run_id", None) or new_run_id(args.symbol, args.frame)
     args.run_id = run_id
     cfg = get_config()
+    reward_spec_path = getattr(args, "reward_spec", None)
+    if reward_spec_path is None:
+        default_rspec = Path("config/rewards/default.yml")
+        if default_rspec.exists():
+            reward_spec_path = default_rspec
+    reward_spec = load_reward_spec(reward_spec_path) if reward_spec_path else {"weights": {}, "clamps": {}, "global_clamp": {}}
+    rw_weights = reward_spec.get("weights", {})
+    if rw_weights:
+        rw_cfg = cfg.setdefault("reward_shaping", {})
+        rw_cfg["w_pnl"] = abs(float(rw_weights.get("base_pnl", rw_cfg.get("w_pnl", 1.0))))
+        rw_cfg["w_drawdown"] = abs(float(rw_weights.get("risk_drawdown", rw_cfg.get("w_drawdown", 0.5))))
+        rw_cfg["w_trade_cost"] = abs(float(rw_weights.get("slippage_penalty", rw_cfg.get("w_trade_cost", 0.1))))
+        rw_cfg["w_dwell"] = abs(float(rw_weights.get("inventory_penalty", rw_cfg.get("w_dwell", 0.01))))
+    adaptive_cfg: Dict[str, Any] = {}
+    if getattr(args, "adaptive_spec", None):
+        try:
+            with open(args.adaptive_spec, "r", encoding="utf-8") as fh:
+                adaptive_cfg = yaml.safe_load(fh) or {}
+        except Exception:
+            adaptive_cfg = {}
     sf_cfg = cfg.setdefault("strategy_failure", {})
     thr_cfg = sf_cfg.setdefault("thresholds", {})
     if getattr(args, "loss_streak", None) is not None:
@@ -626,9 +663,11 @@ def train_one_file(args, data_file: str) -> bool:
         base_env = vec_env.envs[0]
     except Exception:
         pass
-    if getattr(args, "regime_aware", False):
-        log_path = paths_obj.performance_dir / "adaptive_log.jsonl" if getattr(args, "regime_log", False) else None
-        controller = AdaptiveController(cfg.get("regime", {}), env=base_env, log_path=log_path)
+    if adaptive_cfg or getattr(args, "regime_aware", False):
+        regime_log = paths_obj.performance_dir / "regime_log.jsonl" if (getattr(args, "regime_log", False) or adaptive_cfg) else None
+        log_path = paths_obj.performance_dir / "adaptive_log.jsonl" if (getattr(args, "regime_log", False) or adaptive_cfg) else None
+        cfg_reg = adaptive_cfg if adaptive_cfg else cfg.get("regime", {})
+        controller = AdaptiveController(cfg_reg, env=base_env, log_path=log_path, regime_log_path=regime_log)
 
     risk_manager = None
     try:

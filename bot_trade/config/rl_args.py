@@ -236,6 +236,8 @@ def parse_args():
     ap.add_argument("--regime-aware", action="store_true", help="Enable regime-aware adjustments")
     ap.add_argument("--regime-window", type=int, default=0, help="Steps between regime checks")
     ap.add_argument("--regime-log", action=argparse.BooleanOptionalAction, default=None, help="Log adaptive regime adjustments")
+    ap.add_argument("--reward-spec", type=str, default=None, help="Reward spec YAML path")
+    ap.add_argument("--adaptive-spec", type=str, default=None, help="Adaptive controller YAML path")
     ap.add_argument("--strategy-failure", action=argparse.BooleanOptionalAction, default=None, help="Enable strategy failure policy")
     ap.add_argument("--safety-every", type=int, default=1, help="Check safety every N steps")
     ap.add_argument("--loss-streak", type=int)
@@ -277,6 +279,10 @@ def parse_args():
         name = item[2:].split("=", 1)[0].replace("-", "_")
         specified.add(name)
     args._specified = specified
+    if getattr(args, "adaptive_spec", None):
+        args.regime_aware = True
+        if args.regime_log is None:
+            args.regime_log = True
     if args.regime_log is None:
         args.regime_log = bool(args.regime_aware)
     level_name = str(getattr(args, "log_level", "INFO")).upper()

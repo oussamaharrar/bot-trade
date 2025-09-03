@@ -1,0 +1,9 @@
+weights:
+  base_pnl: 1.0
+  risk_drawdown: -0.5
+  slippage_penalty: -0.2
+clamps:
+  base_pnl: {min: -5.0, max: 5.0}
+  risk_drawdown: {min: -5.0, max: 5.0}
+  slippage_penalty: {min: -5.0, max: 5.0}
+global_clamp: {min: -10.0, max: 10.0}
