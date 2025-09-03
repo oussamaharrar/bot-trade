@@ -225,3 +225,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: sweep runs still spawn training loops; dev_checks rely on KB entries.
 - Migration Steps: use `python -m bot_trade.tools.sweep` and `python -m bot_trade.tools.dev_checks --symbol <S> --frame <F> --run-id latest`.
 - Next Actions: broaden hyper-parameter coverage and extend checks to additional artifacts.
+
+## Developer Notes — 2025-09-03 03:20:01 UTC
+- What: finalized CPU sweeper with warning thresholds and artifact checks, hardened dev_checks for fields/charts/signals, added smoke CI pipeline, and ensured newline fixes log via `[IO]`.
+- Why: provide reproducible hyperparameter sweeps and stronger validation in development and CI.
+- Risks: sweeps may be slow; dev_checks require populated knowledge base entries.
+- Migration Steps: invoke `tools.sweep` for CPU grids or random trials; run `tools.dev_checks --run-id latest` after sweeps; review smoke workflow for expected commands.
+- Next Actions: expand sweep hyper-parameters and extend dev checks to additional artifacts and metrics.
