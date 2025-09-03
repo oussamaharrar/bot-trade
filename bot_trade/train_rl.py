@@ -156,6 +156,8 @@ def _postrun_summary(paths, meta):
         "regime_log_count": _count_lines(rp.performance_dir / "regime_log.jsonl"),
         "adaptive_log_count": _count_lines(rp.performance_dir / "adaptive_log.jsonl"),
     }
+    meta["regime_log_lines"] = _count_lines(rp.performance_dir / "regime_log.jsonl")
+    meta["adaptive_log_lines"] = _count_lines(rp.performance_dir / "adaptive_log.jsonl")
     print(
         "[DEBUG_EXPORT] reward_rows=%d step_rows=%d train_rows=%d risk_rows=%d callbacks_rows=%d signals_rows=%d"
         % (
@@ -168,6 +170,9 @@ def _postrun_summary(paths, meta):
         )
     )
     print(f"[CHARTS] dir={charts_dir.resolve()} images={img_count}")
+    rg = charts_dir / "regimes.png"
+    if rg.exists():
+        print(f"[ADAPT_CHARTS] regimes_png={rg.resolve()}")
     if rows_risk == 0 and rows_safety == 0:
         print("[RISK_DIAG] no_flags_fired (smoke run)")
 
@@ -242,6 +247,9 @@ def _postrun_summary(paths, meta):
             "portfolio": portfolio_entry,
             "regime": meta.get("regime"),
             "logs": meta.get("logs", {}),
+
+            "regime_log_lines": meta.get("regime_log_lines", 0),
+            "adaptive_log_lines": meta.get("adaptive_log_lines", 0),
             "safety": meta.get("safety"),
             "notes": str(meta.get("notes", "")),
         }

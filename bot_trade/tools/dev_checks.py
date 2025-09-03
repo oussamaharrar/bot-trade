@@ -103,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
                 if size < 1024 or dpi < 120:
                     print("[CHECKS] regimes_png_too_small")
                     reasons.append("regimes.png too small")
+            if not (charts_dir / "regimes.png").exists():
+                reasons.append("regimes.png missing")
             for p in pngs:
                 if p.stat().st_size < 1024:
                     reasons.append(f"small {p.name}")

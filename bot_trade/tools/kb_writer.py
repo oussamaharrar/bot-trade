@@ -37,6 +37,8 @@ KB_DEFAULTS = {
     "last": False,
     "best_model_path": "",
     "logs": {"regime_log_count": 0, "adaptive_log_count": 0},
+    "regime_log_lines": 0,
+    "adaptive_log_lines": 0,
     "eval": {
         "win_rate": None,
         "sharpe": None,

@@ -108,6 +108,7 @@ def compute_reward(
         val = _safe(terms.get(name, 0.0))
         if val is None:
             val = 0.0
+        val = terms.get(name, 0.0)
         if name in clamps:
             lo = clamps[name].get("min", float("-inf"))
             hi = clamps[name].get("max", float("inf"))

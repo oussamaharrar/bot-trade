@@ -141,12 +141,19 @@ class RegimeDetector:
             self._wid += 1
         info["window_id"] = wid
         self._wid = wid
+    def __init__(self, cfg: Dict[str, Any] | None = None, log_path: Path | None = None) -> None:
+        self.cfg = cfg or {}
+        self.log_path = Path(log_path) if log_path else None
+
+    def update(self, df_slice: Any) -> Dict[str, Any]:
+        info = detect_regime(df_slice, cfg=self.cfg)
         if self.log_path:
             rec = {
                 "ts": info.get("ts"),
                 "regime": info.get("name"),
                 "features": info.get("scores", {}),
                 "window_id": info.get("window_id"),
+
             }
             try:
                 append_jsonl(self.log_path, rec)
