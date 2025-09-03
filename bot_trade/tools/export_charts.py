@@ -262,6 +262,11 @@ def export_run_charts(paths: RunPaths, run_id: str, debug: bool = False) -> Tupl
         _placeholder(charts_dir / "regimes.png", "NO DATA")
         images += 1
 
+    # new execution charts
+    for name in ("fills.png", "exposure.png", "liquidity_spread.png"):
+        _placeholder(charts_dir / name, "NO DATA")
+        images += 1
+
     images = len([p for p in charts_dir.glob("*.png") if p.is_file() and not p.is_symlink()])
 
     rows = {

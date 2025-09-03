@@ -227,6 +227,7 @@ def main(argv: List[str] | None = None) -> int:
             "win_rate": summary.get("win_rate"),
             "avg_trade_pnl": summary.get("avg_trade_pnl"),
         }
+        warn_list: List[str] = []
         if unstable_ok:
             unstable = []
             for k, v in list(metrics.items()):
@@ -234,16 +235,19 @@ def main(argv: List[str] | None = None) -> int:
                     unstable.append(k)
                     metrics[k] = None
             if unstable:
+                warn_list.append("unstable_metrics")
                 print(f"[SWEEP_WARN] unstable_metrics run_id={run_id} fields={','.join(unstable)}")
 
         turnover_val = metrics.get("turnover")
         if turnover_val is not None and abs(turnover_val) > thr_max_turnover:
+            warn_list.append("high_turnover")
             print(f"[SWEEP_WARN] high_turnover run_id={run_id} val={turnover_val:.3f}")
 
         charts = list(rp.charts_dir.glob("*.png"))
         charts_count = len(charts)
         reg_exists = (rp.charts_dir / "regimes.png").exists()
         if charts_count < min_chart_count or not reg_exists:
+            warn_list.append("missing_artifacts")
             print(f"[SWEEP_WARN] insufficient_artifacts run_id={run_id}")
         for p in charts:
             try:
@@ -271,9 +275,9 @@ def main(argv: List[str] | None = None) -> int:
             gate_pass, gate_reasons = gate_metrics(metrics)
         else:
             gate_pass, gate_reasons = True, []
-        print(
-            f"[SWEEP] trial={run_id} gate_pass={str(gate_pass).lower()}"
-        )
+        if not gate_pass:
+            warn_list.append("gate_fail")
+        print(f"[SWEEP] trial={run_id} gate_pass={str(gate_pass).lower()}")
 
         row = {
             "run_id": run_id,
@@ -292,6 +296,7 @@ def main(argv: List[str] | None = None) -> int:
             "charts_count": str(charts_count),
             "gate_pass": str(gate_pass).lower(),
             "gate_reasons": ",".join(gate_reasons),
+            "warnings": ",".join(warn_list),
             "status": "ok",
             "reason": "",
         }
@@ -330,6 +335,7 @@ def main(argv: List[str] | None = None) -> int:
         "charts_count",
         "gate_pass",
         "gate_reasons",
+        "warnings",
         "status",
         "reason",
     ]
@@ -344,12 +350,12 @@ def main(argv: List[str] | None = None) -> int:
     os.replace(tmp, csv_path)
 
     md_lines = [
-        "| run_id | algorithm | eval_sharpe | eval_max_drawdown | win_rate | gate_pass |",
-        "|---|---|---|---|---|---|",
+        "| run_id | algorithm | eval_sharpe | eval_max_drawdown | win_rate | gate_pass | warnings |",
+        "|---|---|---|---|---|---|---|",
     ]
     for r in pass_rows[: min(5, len(pass_rows))]:
         md_lines.append(
-            f"| {r['run_id']} | {r['algorithm']} | {r['eval_sharpe']} | {r['eval_max_drawdown']} | {r['win_rate']} | {r['gate_pass']} |"
+            f"| {r['run_id']} | {r['algorithm']} | {r['eval_sharpe']} | {r['eval_max_drawdown']} | {r['win_rate']} | {r['gate_pass']} | {r.get('warnings','')} |"
         )
     write_text(base_dir / "summary.md", "\n".join(md_lines) + "\n")
 
@@ -369,8 +375,9 @@ def main(argv: List[str] | None = None) -> int:
     best_sharpe = top.get("eval_sharpe", "") if rows_sorted else ""
     gate_pass_count = sum(1 for r in rows if str(r.get("gate_pass", "")).lower() == "true")
     top_run = top.get("run_id", "")
+    top_warn = top.get("warnings", "")
     print(
-        f"[SWEEP] trials={len(rows)} completed={completed} skipped={skipped} mode={ns.mode} top_sharpe={best_sharpe or 'null'} top_run={top_run} gate_pass_count={gate_pass_count} out={base_dir.resolve()}"
+        f"[SWEEP] trials={len(rows)} completed={completed} skipped={skipped} mode={ns.mode} top_sharpe={best_sharpe or 'null'} top_run={top_run} gate_pass_count={gate_pass_count} warnings={top_warn or 'none'} out={base_dir.resolve()}"
     )
     return 0
 

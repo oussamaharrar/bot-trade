@@ -58,6 +58,13 @@ KB_DEFAULTS = {
     "regime": {"active": "", "distribution": {}},
     "notes": "",
     "ai_core": {"signals_count": 0, "sources": []},
+    "execution": {
+        "mode": "",
+        "slippage": "",
+        "fees": {"maker_bps": None, "taker_bps": None},
+        "latency_ms": None,
+    },
+    "risk": {"flags_count": 0},
     "gate_pass": None,
     "gate_details": [],
 }
@@ -102,6 +109,8 @@ def kb_append(run_paths: Any, payload: dict, kb_file: Optional[str] = None) -> N
     entry["portfolio"] = {**KB_DEFAULTS["portfolio"], **payload.get("portfolio", {})}
     entry["logs"] = {**KB_DEFAULTS["logs"], **payload.get("logs", {})}
     entry["ai_core"] = {**KB_DEFAULTS["ai_core"], **payload.get("ai_core", {})}
+    entry["execution"] = {**KB_DEFAULTS["execution"], **payload.get("execution", {})}
+    entry["risk"] = {**KB_DEFAULTS["risk"], **payload.get("risk", {})}
 
     # prevent duplicate run_id appends
     if path.exists():

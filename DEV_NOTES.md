@@ -280,3 +280,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Next actions: widen typing coverage and phase out deprecated shim.
 - py.typed location: `bot_trade/py.typed`.
 - Tests/lint/type: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `ruff check bot_trade --fix-only`; `mypy --strict bot_trade/env/space_detect.py bot_trade/env/action_space.py bot_trade/config/rl_builders.py bot_trade/tools/force_utf8.py`; `PYTHONPATH=. pytest -q -k 'smoke and (action_detect or utf8)'`; PPO/SAC smoke training commands above.
+
+## Developer Notes — 2025-09-03T22:33:23Z (Execution bridge & risk stubs)
+- What: added unified execution core (order simulator, portfolio tracker, bridge), ccxt gateway stub, basic risk manager with kill switch, sweep warnings, config schema/KB extensions, and placeholder charts.
+- Why: groundwork for consistent backtest/paper/live semantics and risk visibility.
+- Risks: features largely stubbed; further wiring required before live trading; new config fields may surprise callers.
+- Migration Steps: regenerate configs via tools.make_config, update KB parsers for execution/risk fields, and handle [RISK_KILL]/[GATEWAY] lines.
+- Next Actions: wire bridge into environments, flesh out adapter and risk checks, implement real charts and kill-switch logic.
