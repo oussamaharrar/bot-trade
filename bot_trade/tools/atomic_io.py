@@ -24,6 +24,7 @@ def append_jsonl(path: str | Path, data: Any) -> None:
     tmp = p.with_suffix(p.suffix + ".tmp")
     p.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(data, ensure_ascii=False) + "\n"
+    fixed_newline = False
     if p.exists():
         with p.open("rb") as src:
             existing = src.read()
@@ -31,11 +32,14 @@ def append_jsonl(path: str | Path, data: Any) -> None:
             dst.write(existing)
             if existing and not existing.endswith(b"\n"):
                 dst.write(b"\n")
+                fixed_newline = True
             dst.write(line.encode("utf-8"))
     else:
         with tmp.open("wb") as dst:
             dst.write(line.encode("utf-8"))
     os.replace(tmp, p)
+    if fixed_newline:
+        print(f"[IO] fixed_trailing_newline file={p}")
 
 
 def write_png(path: str | Path, fig, dpi: int = 120) -> None:
