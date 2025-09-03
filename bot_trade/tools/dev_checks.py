@@ -96,8 +96,11 @@ def main(argv: List[str] | None = None) -> int:
         except Exception:
             details.append("signals_jsonl_missing")
 
-    if not kb_entry.get("gate", {}).get("status"):
+    if kb_entry.get("gate_pass") is None:
         details.append("missing_gate")
+
+    if rp.vecnorm.parent != rp.features.base:
+        details.append("vecnorm_split")
 
     status = "ok" if not details else "warnings"
     size_part = " ".join(f"{k}_size={v}" for k, v in sizes.items())
@@ -108,7 +111,7 @@ def main(argv: List[str] | None = None) -> int:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    from bot_trade.tools.encoding import force_utf8
+    from bot_trade.tools.force_utf8 import force_utf8
 
     force_utf8()
     raise SystemExit(main())

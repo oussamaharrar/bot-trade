@@ -1,4 +1,4 @@
-from bot_trade.tools.encoding import force_utf8
+from bot_trade.tools.force_utf8 import force_utf8
 import os
 
 

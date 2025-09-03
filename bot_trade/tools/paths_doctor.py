@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from bot_trade.config.rl_paths import DEFAULT_REPORTS_DIR, RunPaths
-from bot_trade.tools.encoding import force_utf8
+from bot_trade.tools.force_utf8 import force_utf8
 
 
 def main(argv: list[str] | None = None) -> int:

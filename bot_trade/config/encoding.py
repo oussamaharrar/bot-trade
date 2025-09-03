@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bot_trade.tools.encoding import force_utf8
+from bot_trade.tools.force_utf8 import force_utf8
 
 __all__ = ["force_utf8"]
 

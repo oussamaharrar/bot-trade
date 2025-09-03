@@ -309,11 +309,11 @@ def _condense_policy_kwargs(pk: dict) -> dict:
     return out
 
 
-def _require_box(env, name: str) -> None:
-    info = detect_action_space(env)
-    if info["kind"] != "box" or not info["low"]:
+def _require_box(info: dict, name: str) -> None:
+    low = info.get("low")
+    if info.get("is_discrete") or low is None or getattr(low, "size", 0) == 0:
         print(
-            f"[ALGO_GUARD] algorithm={name} requires continuous Box action space; got {type(getattr(env, 'action_space', None)).__name__}. Aborting.",
+            f"[ALGO_GUARD] algorithm={name} requires continuous Box action space; got discrete",
             flush=True,
         )
         raise SystemExit(1)
@@ -325,8 +325,8 @@ def build_ppo(env, args, seed):
     pk, pk_keys = _policy_kwargs_from_args(args)
     bs = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", 64)), env)
     info = detect_action_space(env)
-    use_sde = bool(getattr(args, "sde", False) and info["kind"] != "discrete")
-    if getattr(args, "sde", False) and info["kind"] == "discrete":
+    use_sde = bool(getattr(args, "sde", False) and not info["is_discrete"])
+    if getattr(args, "sde", False) and info["is_discrete"]:
         logging.warning("[PPO] gSDE disabled automatically for Discrete action space.")
     ent_coef = float(args.ent_coef) if isinstance(args.ent_coef, str) else args.ent_coef
     model = PPO(
@@ -379,7 +379,8 @@ def build_ppo(env, args, seed):
 
 def build_sac(env, args, seed):
     from stable_baselines3 import SAC
-    _require_box(env, "SAC")
+    info = detect_action_space(env)
+    _require_box(info, "SAC")
     pk, pk_keys = _policy_kwargs_from_args(args)
     pk = pk.copy()
     pk.pop("ortho_init", None)
@@ -433,19 +434,33 @@ def build_sac(env, args, seed):
     else:
         print("[WARM_START] source=PPO status=skipped reason=not_found")
     _warn_unused_policy_kwargs(pk_keys, model.policy_kwargs)
+    valid = {
+        "learning_rate",
+        "buffer_size",
+        "learning_starts",
+        "batch_size",
+        "tau",
+        "gamma",
+        "ent_coef",
+        "gradient_steps",
+    }
+    overrides = collect_overrides(args, valid)
     meta = {
         "lr": getattr(args, "learning_rate", 3e-4),
         "batch_size": batch_size,
         "buffer_size": buffer_size,
         "gamma": gamma,
         "policy_kwargs": _condense_policy_kwargs(pk),
+        "overrides": overrides,
+        "overrides_hash": _hash_overrides(overrides),
     }
     return model, meta
 
 
 def build_td3(env, args, seed):
     from stable_baselines3 import TD3
-    _require_box(env, "TD3")
+    info = detect_action_space(env)
+    _require_box(info, "TD3")
     pk, pk_keys = _policy_kwargs_from_args(args)
     pk = pk.copy()
     pk.pop("ortho_init", None)
@@ -503,7 +518,8 @@ def build_td3(env, args, seed):
 
 
 def build_tqc(env, args, seed):
-    _require_box(env, "TQC")
+    info = detect_action_space(env)
+    _require_box(info, "TQC")
     try:
         from sb3_contrib import TQC
     except Exception:

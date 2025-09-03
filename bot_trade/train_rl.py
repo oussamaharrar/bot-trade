@@ -898,7 +898,7 @@ def train_one_file(args, data_file: str) -> bool:
 
     # 7) Action space detection
     info = detect_action_space(vec_env)
-    logging.info("[ENV] action_space=%s | kind=%s", info["shape"], info["kind"])
+    logging.info("[ENV] action_space=%s is_discrete=%s", info["shape"], info["is_discrete"])
 
     # 8) Batch clamping
     n_envsn_steps = int(args.n_envs) * int(args.n_steps)
@@ -1025,7 +1025,7 @@ def train_one_file(args, data_file: str) -> bool:
             logging.info(
                 "[PPO] Built new model (device=%s, use_sde=%s)",
                 args.device_str,
-                bool(args.sde and info["kind"] != "discrete"),
+                bool(args.sde and not info["is_discrete"]),
             )
         elif algo == "SAC":
             logging.info("[SAC] Built new model (device=%s)", args.device_str)

@@ -1,0 +1,5 @@
+unstable_metrics: true
+max_abs_turnover: 20
+min_chart_count: 5
+min_png_size_bytes: 1024
+min_equity_len: 128

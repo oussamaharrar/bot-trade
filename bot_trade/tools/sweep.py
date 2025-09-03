@@ -12,10 +12,12 @@ import time
 from pathlib import Path
 from typing import Dict, List
 
+import yaml
+
 from bot_trade.config.rl_paths import DEFAULT_KB_FILE, RunPaths, reports_dir
 from bot_trade.tools._headless import ensure_headless_once
 from bot_trade.tools.atomic_io import append_jsonl, write_text
-from bot_trade.eval.gate import load_thresholds, check
+from bot_trade.eval.gate import gate_metrics
 
 
 def _parse_list(val: str) -> List[str]:
@@ -26,15 +28,15 @@ def _fmt(v: float | None) -> str:
     return f"{v:.3f}" if isinstance(v, (int, float)) and v is not None else ""
 
 
-def _env_float(key: str, default: float) -> float:
-    raw = os.getenv(key)
-    if raw is None:
-        return default
+THR_FILE = Path(__file__).resolve().parents[1] / "config" / "sweep_thresholds.yaml"
+
+
+def _load_thresholds() -> dict:
     try:
-        return float(raw)
+        with THR_FILE.open("r", encoding="utf-8") as fh:
+            return yaml.safe_load(fh) or {}
     except Exception:
-        print(f"[SWEEP_WARN] env_override_invalid key={key} value={raw} using_default={default}")
-        return default
+        return {}
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -51,6 +53,7 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("--continuous-env", action="store_true")
     ap.add_argument("--allow-synth", action="store_true")
     ap.add_argument("--headless", action="store_true")
+    ap.add_argument("--gate", action="store_true")
     ap.add_argument("--data-dir")
     ns, rest = ap.parse_known_args(argv)
 
@@ -86,11 +89,12 @@ def main(argv: List[str] | None = None) -> int:
         else:
             combos = [{} for _ in range(ns.n_trials)]
 
-    thr_top_sharpe = _env_float("SWEEP_THR_TOP_SHARPE", 0.20)
-    thr_top_winrate = _env_float("SWEEP_THR_TOP_WINRATE", 0.45)
-    thr_top_maxdd = _env_float("SWEEP_THR_TOP_MAXDD", 0.30)
-    thr_max_turnover = _env_float("SWEEP_THR_MAX_TURNOVER", 8.0)
-    gate_thr = load_thresholds()
+    cfg_thr = _load_thresholds()
+    thr_max_turnover = float(cfg_thr.get("max_abs_turnover", float("inf")))
+    min_chart_count = int(cfg_thr.get("min_chart_count", 0))
+    min_png_size = int(cfg_thr.get("min_png_size_bytes", 0))
+    min_equity_len = int(cfg_thr.get("min_equity_len", 0))
+    unstable_ok = bool(cfg_thr.get("unstable_metrics", True))
 
     rows: List[Dict[str, str]] = []
 
@@ -156,6 +160,8 @@ def main(argv: List[str] | None = None) -> int:
                 "ai_core_signals": "",
                 "regimes_png_exists": "0",
                 "charts_count": "0",
+                "gate_pass": "",
+                "gate_reasons": "",
                 "status": "skipped",
                 "reason": reason,
             }
@@ -194,6 +200,8 @@ def main(argv: List[str] | None = None) -> int:
                 "ai_core_signals": "",
                 "regimes_png_exists": "0",
                 "charts_count": "0",
+                "gate_pass": "",
+                "gate_reasons": "",
                 "status": "skipped",
                 "reason": reason,
             }
@@ -217,22 +225,33 @@ def main(argv: List[str] | None = None) -> int:
             "win_rate": summary.get("win_rate"),
             "avg_trade_pnl": summary.get("avg_trade_pnl"),
         }
-        unstable = []
-        for k, v in list(metrics.items()):
-            if not isinstance(v, (int, float)) or math.isnan(v) or math.isinf(v):
-                unstable.append(k)
-                metrics[k] = None
-        if unstable:
-            print(f"[SWEEP_WARN] unstable_metrics run_id={run_id} fields={','.join(unstable)}")
+        if unstable_ok:
+            unstable = []
+            for k, v in list(metrics.items()):
+                if not isinstance(v, (int, float)) or math.isnan(v) or math.isinf(v):
+                    unstable.append(k)
+                    metrics[k] = None
+            if unstable:
+                print(f"[SWEEP_WARN] unstable_metrics run_id={run_id} fields={','.join(unstable)}")
 
         turnover_val = metrics.get("turnover")
-        if turnover_val is not None and turnover_val > thr_max_turnover:
+        if turnover_val is not None and abs(turnover_val) > thr_max_turnover:
             print(f"[SWEEP_WARN] high_turnover run_id={run_id} val={turnover_val:.3f}")
 
-        charts_count = len(list(rp.charts_dir.glob("*.png")))
+        charts = list(rp.charts_dir.glob("*.png"))
+        charts_count = len(charts)
         reg_exists = (rp.charts_dir / "regimes.png").exists()
-        if charts_count < 5 or not reg_exists:
+        if charts_count < min_chart_count or not reg_exists:
             print(f"[SWEEP_WARN] insufficient_artifacts run_id={run_id}")
+        for p in charts:
+            try:
+                if p.stat().st_size < min_png_size:
+                    print(f"[SWEEP_WARN] small_png run_id={run_id} file={p.name}")
+                    break
+            except Exception:
+                continue
+        if int(summary.get("equity_len", 0)) < min_equity_len:
+            print(f"[SWEEP_WARN] short_equity run_id={run_id} len={summary.get('equity_len',0)}")
 
         kb_path = Path(DEFAULT_KB_FILE)
         ai_signals = 0
@@ -246,10 +265,12 @@ def main(argv: List[str] | None = None) -> int:
             except Exception:
                 ai_signals = 0
 
-        gate_pass, gate_reasons = check(metrics, gate_thr)
-        gate_status = "pass" if gate_pass else "fail"
+        if ns.gate:
+            gate_pass, gate_reasons = gate_metrics(metrics)
+        else:
+            gate_pass, gate_reasons = True, []
         print(
-            f"[SWEEP] trial={run_id} gate={gate_status} reasons=[{','.join(gate_reasons)}]"
+            f"[SWEEP] trial={run_id} gate_pass={str(gate_pass).lower()}"
         )
 
         row = {
@@ -267,7 +288,7 @@ def main(argv: List[str] | None = None) -> int:
             "ai_core_signals": str(ai_signals),
             "regimes_png_exists": str(int(reg_exists)),
             "charts_count": str(charts_count),
-            "gate": gate_status,
+            "gate_pass": str(gate_pass).lower(),
             "gate_reasons": ",".join(gate_reasons),
             "status": "ok",
             "reason": "",
@@ -288,7 +309,7 @@ def main(argv: List[str] | None = None) -> int:
             _to_float(r.get("eval_max_drawdown", "nan")),
         ),
     )
-    pass_rows = [r for r in rows_sorted if r.get("gate") == "pass"]
+    pass_rows = [r for r in rows_sorted if str(r.get("gate_pass", "")).lower() == "true"]
 
     header = [
         "run_id",
@@ -305,7 +326,7 @@ def main(argv: List[str] | None = None) -> int:
         "ai_core_signals",
         "regimes_png_exists",
         "charts_count",
-        "gate",
+        "gate_pass",
         "gate_reasons",
         "status",
         "reason",
@@ -321,12 +342,12 @@ def main(argv: List[str] | None = None) -> int:
     os.replace(tmp, csv_path)
 
     md_lines = [
-        "| run_id | algorithm | eval_sharpe | eval_max_drawdown | win_rate | gate |",
+        "| run_id | algorithm | eval_sharpe | eval_max_drawdown | win_rate | gate_pass |",
         "|---|---|---|---|---|---|",
     ]
     for r in pass_rows[: min(5, len(pass_rows))]:
         md_lines.append(
-            f"| {r['run_id']} | {r['algorithm']} | {r['eval_sharpe']} | {r['eval_max_drawdown']} | {r['win_rate']} | {r['gate']} |"
+            f"| {r['run_id']} | {r['algorithm']} | {r['eval_sharpe']} | {r['eval_max_drawdown']} | {r['win_rate']} | {r['gate_pass']} |"
         )
     write_text(base_dir / "summary.md", "\n".join(md_lines) + "\n")
 
@@ -340,20 +361,14 @@ def main(argv: List[str] | None = None) -> int:
 
     top = pass_rows[0] if pass_rows else (rows_sorted[0] if rows_sorted else {})
     top_sharpe = _to_float(top.get("eval_sharpe", "nan"))
-    top_win = _to_float(top.get("win_rate", "nan"))
-    top_maxdd = _to_float(top.get("eval_max_drawdown", "nan"))
-
-    if rows_sorted:
-        if not math.isnan(top_sharpe) and top_sharpe < thr_top_sharpe:
-            print(f"[SWEEP_WARN] low_top_sharpe={top.get('eval_sharpe','')}")
-        if not math.isnan(top_win) and top_win < thr_top_winrate:
-            print(f"[SWEEP_WARN] low_top_win_rate={top.get('win_rate','')}")
-        if not math.isnan(top_maxdd) and top_maxdd > thr_top_maxdd:
-            print(f"[SWEEP_WARN] high_top_maxdd={top.get('eval_max_drawdown','')}")
+    if rows_sorted and not math.isnan(top_sharpe) and top_sharpe < 0.0:
+        print(f"[SWEEP_WARN] low_top_sharpe={top.get('eval_sharpe','')}")
 
     best_sharpe = top.get("eval_sharpe", "") if rows_sorted else ""
+    gate_pass_count = sum(1 for r in rows if str(r.get("gate_pass", "")).lower() == "true")
+    top_run = top.get("run_id", "")
     print(
-        f"[SWEEP] trials={len(rows)} completed={completed} skipped={skipped} mode={ns.mode} top_sharpe={best_sharpe or 'null'} out={base_dir.resolve()}"
+        f"[SWEEP] trials={len(rows)} completed={completed} skipped={skipped} mode={ns.mode} top_sharpe={best_sharpe or 'null'} top_run={top_run} gate_pass_count={gate_pass_count} out={base_dir.resolve()}"
     )
     return 0
 

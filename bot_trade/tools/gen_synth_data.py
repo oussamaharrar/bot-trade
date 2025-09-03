@@ -8,7 +8,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from bot_trade.data.store_parquet import write_ohlcv
+from bot_trade.data.store_parquet import write_parquet_atomic
+from bot_trade.data.validators import detect_gaps, detect_duplicates
 
 
 def generate(symbol: str, frame: str, out_dir: Path) -> Path:
@@ -21,20 +22,22 @@ def generate(symbol: str, frame: str, out_dir: Path) -> Path:
     price = 100 + np.cumsum(rng.normal(0, 0.5, periods))
     df = pd.DataFrame({
         "ts": idx.view("int64"),
-        "symbol": symbol,
-        "frame": frame,
         "open": price.astype("float32"),
         "high": (price + rng.random(periods)).astype("float32"),
         "low": (price - rng.random(periods)).astype("float32"),
         "close": (price + rng.normal(0, 0.2, periods)).astype("float32"),
         "volume": (rng.random(periods) * 10).astype("float32"),
-        "trade_count": rng.integers(1, 5, periods, dtype="int32"),
+        "symbol": symbol,
+        "frame": frame,
     })
     out_dir.mkdir(parents=True, exist_ok=True)
     sub = out_dir / frame
     sub.mkdir(parents=True, exist_ok=True)
     dest = sub / f"{symbol}-{frame}-synth.parquet"
-    write_ohlcv(df, dest)
+    write_parquet_atomic(dest, df)
+    gaps = detect_gaps(df, frame)
+    dups = detect_duplicates(df)
+    print(f"[DATA] file={dest} rows={len(df)} gaps={gaps} dups={dups}")
     return dest
 
 
@@ -54,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    from bot_trade.tools.encoding import force_utf8
+    from bot_trade.tools.force_utf8 import force_utf8
 
     force_utf8()
     raise SystemExit(main())
