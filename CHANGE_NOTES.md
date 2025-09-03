@@ -419,3 +419,17 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - Implemented tools/train_long_run.py with periodic eval/tearsheet & checkpoints
 - Added optional risk config flags with clamps and [RISK_CFG]/[RISK_CLAMP] one-liners
 - Preserved sweeper thresholds & warns; no behavior changes to existing CLIs
+
+## Developer Notes — 2025-09-03 04:08:10 UTC
+- What changed: release prep docs (RELEASE, QUICKSTART), Makefile wrappers, version module and printer, artifacts index helper, Dockerfile.smoke, CI version step
+- Why: streamline release packaging and provide quickstart guidance
+- Risks: artifacts index path assumptions; wrappers depend on existing CLIs
+- Migration steps: none; new tools optional
+- Next actions: tag v0.1.0 and extend automation
+
+## Developer Notes — 2025-09-03 04:16:54 UTC
+- What changed: artifacts index now mirrors to legacy report path
+- Why: ensure discovery via simple glob
+- Risks: duplicate writes are minimal
+- Migration steps: none
+- Next actions: monitor index usage
