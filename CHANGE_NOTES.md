@@ -448,3 +448,9 @@ Risks/Migration: callers importing from old locations must switch to canonical m
 - **Rationale**: harden path and encoding contracts, restore default config flow, centralize action-space detection, and lay groundwork for data platform.
 - **Risks**: deprecated vecnorm_path may mask legacy layouts; action-space API change may break external extensions; data store remains stub.
 - **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `python -m bot_trade.tools.make_config --out config_new.yaml --preset training=sac_cont_cpu_smoke --preset net=tiny`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --algorithm PPO --symbol BTCUSDT --frame 1m --total-steps 128 --headless --allow-synth --data-dir data_ready --no-monitor`; `python -m bot_trade.train_rl --algorithm SAC --continuous-env --symbol BTCUSDT --frame 1m --total-steps 128 --headless --allow-synth --data-dir data_ready --no-monitor --policy-kwargs '{"net_arch":[256,256],"activation_fn":"ReLU"}'`; `python -m bot_trade.tools.paths_doctor --symbol BTCUSDT --frame 1m --run-id latest`; `python -m bot_trade.tools.data_doctor`; `python -m bot_trade.tools.dev_checks --symbol BTCUSDT --frame 1m --run-id latest`
+
+## 2025-09-03
+- **Files**: MIGRATION.md, DEV_NOTES.md, CHANGE_NOTES.md
+- **Rationale**: add migration guide covering vecnorm path change and configuration precedence; record developer notes.
+- **Risks**: documentation may become outdated if paths or config flow change again.
+- **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; smoke training and tests below.
