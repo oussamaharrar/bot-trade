@@ -548,3 +548,9 @@ PY`
 - **Rationale**: Phase D wiring: introduce data-mode router, enforce ai_core pipeline, add strategy registry, orchestrator stub and safety guards.
 - **Risks**: live collectors remain thin; incomplete resume paths may require future alignment.
 - **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `python -m bot_trade.train_rl --help | head -n 20`
+
+## 2025-10-24 Panel v3
+- **Files**: bot_trade/tools/ui_panel.py, bot_trade/tools/panel_gui.py, bot_trade/tools/commands_registry.py, bot_trade/tools/commands_registry.yaml, bot_trade/tools/runctx.py, bot_trade/tools/results_watcher.py, bot_trade/config/device.py, bot_trade/tools/device_select.py, bot_trade/tools/paths.py, docs/ui_panel.md, tests/ui/test_registry.py, tests/ui/test_jobs.py, tests/ui/test_results_events.py, tests/ui/test_device_selector.py
+- **Rationale**: introduce YAML-based commands registry, device enumeration API, UI panel entrypoint and runner wrappers with event parsing.
+- **Risks**: YAML templates may omit flags; GPU enumeration relies on torch availability.
+- **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `PYTHONPATH=$PWD pytest -q`

@@ -1,13 +1,11 @@
 from __future__ import annotations
-"""Safe command templates for the panel.
-
-Exposes ``REGISTRY`` and ``build_command`` for constructing commands from
-whitelisted templates with strict placeholder substitution.
-"""
+"""Command registry loaded from YAML templates."""
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Mapping, Sequence
 import shlex
+import yaml
 
 
 @dataclass
@@ -15,157 +13,24 @@ class CommandTemplate:
     template: Sequence[str]
     allowed_flags: Sequence[str] | None = None
     defaults: Mapping[str, str] | None = None
+    forbidden_flags: Sequence[str] | None = None
 
 
-REGISTRY: Dict[str, CommandTemplate] = {
-    "train": CommandTemplate(
-        template=[
-            "python",
-            "-m",
-            "bot_trade.train_rl",
-            "--symbol",
-            "{symbol}",
-            "--frame",
-            "{frame}",
-            "--total-steps",
-            "{total_steps}",
-            "--n-envs",
-            "{n_envs}",
-            "--device",
-            "{device}",
-            "--headless",
-            "--data-dir",
-            "{data_dir}",
-            "{allow_synth}",
-            "{resume_auto}",
-            "{vecnorm}",
-        ],
-        allowed_flags=[
-            "--policy",
-            "--net-arch",
-            "--epochs",
-            "--batch-size",
-            "--sb3-verbose",
-            "--log-level",
-            "--checkpoint-every",
-            "--eval-every-steps",
-            "--eval-episodes",
-        ],
-        defaults={
-            "allow_synth": "--allow-synth",
-            "resume_auto": "--resume-auto",
-            "vecnorm": "--vecnorm",
-        },
-    ),
-    "eval_run": CommandTemplate(
-        template=[
-            "python",
-            "-m",
-            "bot_trade.tools.eval_run",
-            "--symbol",
-            "{symbol}",
-            "--frame",
-            "{frame}",
-            "--run-id",
-            "{run_id}",
-            "--tearsheet",
-        ]
-    ),
-    "export_charts": CommandTemplate(
-        template=[
-            "python",
-            "-m",
-            "bot_trade.tools.monitor_manager",
-            "--symbol",
-            "{symbol}",
-            "--frame",
-            "{frame}",
-            "--run-id",
-            "{run_id}",
-            "--no-wait",
-            "--headless",
-        ]
-    ),
-    "wfa_gate": CommandTemplate(
-        template=[
-            "python",
-            "-m",
-            "bot_trade.eval.wfa_gate",
-            "--config",
-            "{wfa_cfg}",
-            "--symbol",
-            "{symbol}",
-            "--frame",
-            "{frame}",
-            "--windows",
-            "{windows}",
-            "--embargo",
-            "{embargo}",
-            "--profile",
-            "{profile}",
-        ]
-    ),
-    "bayes_sweeps": CommandTemplate(
-        template=[
-            "python",
-            "-m",
-            "bot_trade.tools.sweep",
-            "--symbol",
-            "{symbol}",
-            "--frame",
-            "{frame}",
-            "--grid",
-            "{grid_or_yaml}",
-        ]
-    ),
-    "live_dry_run": CommandTemplate(
-        template=[
-            "python",
-            "-m",
-            "bot_trade.runners.live_dry_run",
-            "--exchange",
-            "{exchange}",
-            "--symbol",
-            "{symbol}",
-            "--frame",
-            "{frame}",
-            "--gateway",
-            "paper",
-            "--duration",
-            "{duration}",
-            "--model-optional",
-            "--bootstrap-price",
-            "{bootstrap_price}",
-        ]
-    ),
-    "paths_doctor": CommandTemplate(
-        template=[
-            "python",
-            "-m",
-            "bot_trade.tools.paths_doctor",
-            "--symbol",
-            "{symbol}",
-            "--frame",
-            "{frame}",
-            "--strict",
-        ]
-    ),
-    "gen_synth_data": CommandTemplate(
-        template=[
-            "python",
-            "-m",
-            "bot_trade.tools.gen_synth_data",
-            "--symbol",
-            "{symbol}",
-            "--frame",
-            "{frame}",
-            "--days",
-            "{days}",
-            "--out",
-            "{out_dir}",
-        ]
-    ),
-}
+def _load_registry() -> Dict[str, CommandTemplate]:
+    path = Path(__file__).with_name("commands_registry.yaml")
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    reg: Dict[str, CommandTemplate] = {}
+    for name, entry in data.items():
+        reg[name] = CommandTemplate(
+            template=entry.get("template", []),
+            allowed_flags=entry.get("allowed_flags"),
+            defaults=entry.get("defaults"),
+            forbidden_flags=entry.get("forbidden_flags"),
+        )
+    return reg
+
+
+REGISTRY: Dict[str, CommandTemplate] = _load_registry()
 
 
 def _validate_value(name: str, value: object) -> str:
@@ -177,7 +42,11 @@ def _validate_value(name: str, value: object) -> str:
     return s
 
 
-def build_command(name: str, params: Mapping[str, object], extra_flags: Sequence[str] | None = None) -> List[str]:
+def build_command(
+    name: str,
+    params: Mapping[str, object],
+    extra_flags: Sequence[str] | None = None,
+) -> List[str]:
     if name not in REGISTRY:
         raise KeyError(name)
     ct = REGISTRY[name]
@@ -203,11 +72,15 @@ def build_command(name: str, params: Mapping[str, object], extra_flags: Sequence
     flags: List[str] = []
     if extra_flags:
         allowed = set(ct.allowed_flags or [])
+        forbidden = set(ct.forbidden_flags or [])
         for flg in extra_flags:
             parts = shlex.split(flg)
             for part in parts:
-                if part and part.split('=')[0] not in allowed:
-                    raise ValueError(f"flag {part} not allowed")
+                base = part.split('=')[0]
+                if base in forbidden:
+                    raise ValueError(f"flag {base} forbidden")
+                if allowed and base not in allowed:
+                    raise ValueError(f"flag {base} not allowed")
             flags.extend(parts)
     return [tok for tok in result if tok] + flags
 

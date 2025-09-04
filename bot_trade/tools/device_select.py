@@ -3,20 +3,14 @@ from __future__ import annotations
 
 from typing import List, Dict
 
+from bot_trade.config.device import list_devices
+
 
 def get_devices() -> List[Dict[str, str]]:
-    devices = [{"label": "CPU", "value": "cpu"}]
-    try:  # torch optional
-        import torch
-
-        if torch.cuda.is_available():
-            for idx in range(torch.cuda.device_count()):
-                props = torch.cuda.get_device_properties(idx)
-                vram_gb = props.total_memory / (1024 ** 3)
-                label = f"GPU {idx} (VRAM {vram_gb:.1f} GB)"
-                devices.append({"label": label, "value": f"cuda:{idx}"})
-    except Exception:  # pragma: no cover - torch may be missing
-        pass
+    """Compatibility wrapper around :func:`config.device.list_devices`."""
+    devices = []
+    for d in list_devices():
+        devices.append({"label": d["label"], "value": d["id"]})
     return devices
 
 

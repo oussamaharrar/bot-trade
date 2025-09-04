@@ -59,3 +59,26 @@ def lockfile(path: Path):
                 import fcntl
 
                 fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+# Runner convenience wrappers -------------------------------------------------
+from . import runner as _runner
+
+
+def start(cmd: list[str], **kwargs):
+    """Start a command using :mod:`bot_trade.tools.runner`."""
+    return _runner.start_command(cmd, **kwargs)
+
+
+def stop(job_id: str) -> int:
+    """Stop a running job by ``job_id``."""
+    return _runner.stop_job(job_id)
+
+
+def list_jobs() -> list[dict[str, object]]:
+    """List active and recently finished jobs."""
+    return _runner.list_jobs()
+
+
+def tail(job_id: str, n: int = 200) -> str:
+    """Return the last ``n`` lines from the job's tee log."""
+    return _runner.tail(job_id, n)

@@ -1,6 +1,6 @@
 """Device normalization utilities."""
 from __future__ import annotations
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 def normalize_device(arg: str | None, env: Dict[str, str]) -> str | None:
     """Normalize device input to 'cpu', 'cuda:<idx>' or None for auto.
@@ -60,3 +60,36 @@ def maybe_print_device_report(args) -> None:
     except Exception:
         pass
     print("===================================")
+
+
+def list_devices() -> List[Dict[str, object]]:
+    """Return available devices with basic memory info."""
+    devices: List[Dict[str, object]] = [{"id": "cpu", "label": "CPU"}]
+    try:
+        import torch  # type: ignore
+
+        if torch.cuda.is_available():
+            for i in range(torch.cuda.device_count()):
+                name = torch.cuda.get_device_name(i)
+                total_gb = free_gb = 0.0
+                try:
+                    props = torch.cuda.get_device_properties(i)
+                    total_gb = getattr(props, "total_memory", 0) / (1024 ** 3)
+                    torch.cuda.set_device(i)
+                    free, total = torch.cuda.mem_get_info()  # type: ignore[attr-defined]
+                    free_gb = free / (1024 ** 3)
+                except Exception:
+                    pass
+                label = f"CUDA:{i} {name} ({int(total_gb)}GB)"
+                devices.append(
+                    {
+                        "id": f"cuda:{i}",
+                        "label": label,
+                        "total_mem": total_gb,
+                        "free_mem": free_gb,
+                    }
+                )
+    except Exception:
+        pass
+    return devices
+

@@ -15,6 +15,8 @@ import re
 _DEBUG_RE = re.compile(r"^\[DEBUG_EXPORT\] (.*)")
 _CHARTS_RE = re.compile(r"^\[CHARTS\] dir=(?P<dir>\S+) images=(?P<img>\d+)")
 _POSTRUN_RE = re.compile(r"^\[POSTRUN\] (.*)")
+_EVAL_RE = re.compile(r"^\[EVAL\] (.*)")
+_LATEST_RE = re.compile(r"^\[LATEST\] (.*)")
 
 
 class ResultsWatcher:
@@ -121,6 +123,18 @@ def parse_log_line(line: str) -> Optional[Dict[str, object]]:
     if m:
         kv = _parse_kv(m.group(1))
         kv["event"] = "postrun"
+        return kv
+    m = _EVAL_RE.match(line)
+    if m:
+        kv = _parse_kv(m.group(1))
+        kv["event"] = "eval"
+        return kv
+    m = _LATEST_RE.match(line)
+    if m:
+        if m.group(1).strip() == "none":
+            return {"event": "latest_none"}
+        kv = _parse_kv(m.group(1))
+        kv["event"] = "latest"
         return kv
     return None
 
