@@ -23,6 +23,7 @@ def threshold_gate(
     thresholds: Mapping[str, float],
     promote_if: bool = False,
     promotion_path: Path | None = None,
+    fail_hard: bool = False,
 ) -> GateResult:
     """Evaluate ``metrics`` against ``thresholds``.
 
@@ -61,7 +62,12 @@ def threshold_gate(
     passed = not reasons
     pass_ratio = passes / checks if checks else 1.0
 
-    result = GateResult(passed=passed, reasons=reasons, pass_ratio=pass_ratio, promote_if=promote_if and passed)
+    result = GateResult(
+        passed=passed,
+        reasons=reasons,
+        pass_ratio=pass_ratio,
+        promote_if=promote_if and passed,
+    )
 
     if result.promote_if and promotion_path is not None:
         record = {"ts": time.time(), "metrics": dict(metrics)}
@@ -69,8 +75,15 @@ def threshold_gate(
             promotion_path.parent.mkdir(parents=True, exist_ok=True)
             with promotion_path.open("w", encoding="utf-8") as fh:
                 json.dump(record, fh)
+            kb_path = Path("memory/Knowlogy/kb.jsonl")
+            if kb_path.exists():
+                with kb_path.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(record) + "\n")
         except OSError:
             pass  # best effort
+
+    if fail_hard and result.pass_ratio < 1.0:
+        raise SystemExit(1)
 
     return result
 

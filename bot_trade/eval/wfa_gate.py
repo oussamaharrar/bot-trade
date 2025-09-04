@@ -1,13 +1,12 @@
-from __future__ import annotations
 """Walk-forward analysis gate."""
+
+from __future__ import annotations
 
 import argparse
 import csv
-import json
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
 
 import matplotlib.pyplot as plt
 import yaml
@@ -24,7 +23,7 @@ class Metrics:
     winrate: float
 
 
-def run_windows(n: int) -> List[Metrics]:
+def run_windows(n: int) -> list[Metrics]:
     return [Metrics(random.random(), random.random(), random.random(), random.random()) for _ in range(n)]
 
 
@@ -35,10 +34,10 @@ def main() -> None:
     ap.add_argument("--symbol", required=True)
     ap.add_argument("--frame", required=True)
     ap.add_argument("--windows", type=int, default=3)
-    ap.add_argument("--step", type=float, default=0.5)
+    ap.add_argument("--embargo", type=float, default=0.0)
     args = ap.parse_args()
 
-    with open(args.config, "r", encoding="utf-8") as fh:
+    with open(args.config, encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh)
     metrics = run_windows(args.windows)
     rows = []

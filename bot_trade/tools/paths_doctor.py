@@ -1,48 +1,52 @@
+"""Check run directory structure and symlinks."""
 from __future__ import annotations
 
-"""Verify path consistency for latest run."""
-
 import argparse
-import os
 from pathlib import Path
 
-from bot_trade.config.rl_paths import DEFAULT_REPORTS_DIR, RunPaths
 from bot_trade.tools.force_utf8 import force_utf8
+
+REQUIRED_FILES = {"metrics.csv", "summary.json", "risk_flags.jsonl"}
+REQUIRED_DIRS = {"logs", "charts", "artifacts"}
+
+
+def _check_run(run: Path) -> bool:
+    ok = True
+    for name in REQUIRED_FILES:
+        if not (run / name).exists():
+            print(f"[PATHS] missing {name} in {run}")
+            ok = False
+    for name in REQUIRED_DIRS:
+        if not (run / name).exists():
+            print(f"[PATHS] missing {name}/ in {run}")
+            ok = False
+    return ok
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Check run paths")
-    ap.add_argument("--symbol", required=True)
-    ap.add_argument("--frame", required=True)
-    ap.add_argument("--run-id", default="latest")
-    ap.add_argument("--algorithm", default=None)
+    ap = argparse.ArgumentParser(description="Validate results layout")
+    ap.add_argument("--strict", action="store_true")
     ns = ap.parse_args(argv)
 
-    algo = ns.algorithm
-    reports_root = Path(DEFAULT_REPORTS_DIR)
-    base = reports_root
-    if not algo:
-        for cand in reports_root.iterdir():
-            p = cand / ns.symbol.upper() / ns.frame / ns.run_id
-            if p.exists():
-                algo = cand.name
-                break
-    if not algo:
-        print("[PATHS] none")
+    root = Path("results")
+    if not root.exists():
+        print("[PATHS] no results directory")
         return 1
-    run_id = ns.run_id
-    link = reports_root / algo / ns.symbol.upper() / ns.frame / ns.run_id
-    if ns.run_id == "latest" and link.is_symlink():
-        run_id = os.readlink(link)
-    rp = RunPaths(ns.symbol, ns.frame, run_id, algo)
-    vec_ok = "OK" if rp.vecnorm.parent == rp.features.base else "MISMATCH"
-    features_dir = rp.features.base
-    snapshots = rp.agents
-    tb = rp.logs / "events"
-    print(
-        f"[PATHS] vecnorm split={vec_ok} features_dir={features_dir} snapshots={snapshots} tensorboard={tb}"
-    )
-    return 0
+
+    ok = True
+    for sym in root.iterdir():
+        for frame in sym.iterdir():
+            latest = frame / "latest"
+            if latest.exists():
+                run_dir = latest.resolve()
+                if not _check_run(run_dir):
+                    ok = False
+            for run in frame.iterdir():
+                if run.is_dir() and run.name != "latest":
+                    _check_run(run)
+
+    print(f"[PATHS] strict={ns.strict} ok={ok}")
+    return 0 if ok or not ns.strict else 1
 
 
 if __name__ == "__main__":  # pragma: no cover

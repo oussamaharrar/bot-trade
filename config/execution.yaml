@@ -1,12 +1,13 @@
 mode: backtest
-model: fixed_bp
-params:
-  bp: 0
+slippage:
+  model: fixed_bps
+  bps: 0
 latency_ms: 0
 allow_partial: true
 fees:
-  maker: 0.0
-  taker: 0.0
+  maker_bps: 0.0
+  taker_bps: 0.0
+  min_fee: 0.0
 lot: 0.0
 min_notional: 0.0
 max_spread_bp: 0.0
