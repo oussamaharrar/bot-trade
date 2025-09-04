@@ -1,0 +1,4 @@
+gen_synth_data: ["python", "-m", "bot_trade.tools.gen_synth_data", "--symbol", "{symbol}", "--frame", "{frame}", "--days", "{days}", "--out", "{out}"]
+paths_doctor: ["python", "-m", "bot_trade.tools.paths_doctor", "--symbol", "{symbol}", "--frame", "{frame}", "--strict"]
+check_sandbox: ["python", "-m", "bot_trade.tools.check_sandbox", "--exchange", "{exchange}", "--symbol", "{symbol}"]
+bayes_sweeps: ["python", "-m", "bot_trade.tools.bayes_sweeps", "--config", "config/sweeps.yaml", "--symbol", "{symbol}", "--frame", "{frame}", "--study-name", "{study}", "--dry"]
