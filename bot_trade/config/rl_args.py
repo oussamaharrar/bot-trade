@@ -155,6 +155,8 @@ def parse_args():
     ap.add_argument("--exec-config", type=str, default=None, help="Execution YAML config")
     ap.add_argument("--risk-config", type=str, default=None, help="Risk YAML config")
     ap.add_argument("--gateway", type=str, default="paper", help="Execution gateway (paper|sandbox|ccxt)")
+    ap.add_argument("--data-mode", choices=["raw", "live"], default="raw")
+    ap.add_argument("--raw-dir", type=str, default="data/ready")
     ap.add_argument(
         "--data-source",
         choices=["csvparquet", "ccxt-rest", "ccxt-ws"],
@@ -171,6 +173,7 @@ def parse_args():
     )
     ap.add_argument("--start", type=str, help="Start datetime (UTC) for data fetch")
     ap.add_argument("--end", type=str, help="End datetime (UTC) for data fetch")
+    ap.add_argument("--cache-dir", type=str, default="data/cache")
     ap.add_argument(
         "--mode",
         choices=["train", "paper", "sandbox"],
@@ -327,6 +330,10 @@ def parse_args():
         action="store_true",
         help="Generate synthetic demo signals",
     )
+    ap.add_argument("--strategies", type=str, default="")
+    ap.add_argument("--strategy-params", type=str, default="{}")
+    ap.add_argument("--continue", dest="continue_training", action="store_true")
+    ap.add_argument("--from-run", type=str, default=None)
     ap.add_argument("--mlflow", action="store_true", help="Enable MLflow logging")
     ap.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging")
     ap.add_argument("--preset", action="append", default=[], help="Apply presets like training=name or net=name")

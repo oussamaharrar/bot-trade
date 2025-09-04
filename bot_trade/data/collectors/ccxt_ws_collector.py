@@ -22,7 +22,7 @@ class CCXTWSCollector(MarketCollector):
         try:
             import ccxtpro  # type: ignore
         except Exception:
-            print("[DATA] ccxt.pro not available; falling back to REST polling")
+            print("[DATA] ccxt.pro not found; falling back to REST polling")
             rest = CCXTRestCollector(self.exchange)
             return rest.load(cfg)
         # Simple fallback to REST as full websocket support is out of scope

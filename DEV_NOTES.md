@@ -335,3 +335,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - RISKS: minimal UI coverage; pending job persistence.
 - MIGRATION: use `bot_trade.tools.panel_gui` and import runners from `bot_trade.tools`.
 - NEXT: flesh out remaining tabs and queue limits.
+
+## Developer Notes — 2025-10-23 (Phase D wiring)
+- What changed: added data router with live/raw modes, minimal ai_core pipeline, strategy registry, orchestrator stub, CLI flags and Box guards.
+- Why: begin production wiring for phase D enabling data/source selection and strategy composition.
+- Risks: replay buffer resume incomplete; live collectors basic.
+- Migration steps: invoke training with `--data-mode` and `--strategies`; ensure ccxt installed for live modes.
+- Next actions: flesh out resume logic, expand orchestrator concurrency and integrate strategies into env loop.

@@ -1,0 +1,55 @@
+data:
+  mode: raw
+  raw_dir: data/ready
+  source: csvparquet
+  exchange: binance
+  ccxt_symbol: "BTC/USDT"
+  start: "2024-01-01T00:00:00Z"
+  end: null
+  cache_dir: data/cache
+
+aio_core:
+  enforce: true
+  signals_spec: config/signals.yml
+
+signals:
+  pipeline:
+    - macd: {fast:12, slow:26, signal:9}
+    - rsi: {period:14}
+    - atr: {period:14}
+    - realized_vol: {window:60}
+    - spread_bp: {window:10}
+    - depth_top: {window:5}
+  post:
+    - zscore: {on:"returns", window:100}
+
+strategies:
+  enabled: ["trend_following","mean_revert"]
+  params:
+    trend_following: {fast:12, slow:26}
+    mean_revert: {lookback:50, z:1.0}
+
+train:
+  algorithms: ["PPO","SAC"]
+  total_steps: 3000000
+  continue: false
+  preset: null
+  net_arch_preset: mlp_m
+  save_replay_buffer_every: 20000
+
+orchestrator:
+  symbols: ["BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT","SOLUSDT","DOGEUSDT","TRXUSDT","DOTUSDT","LTCUSDT"]
+  frames: ["1m","5m","15m","1h"]
+  max_concurrent: 2
+  seed_grid: [0,1]
+
+risk:
+  spec: config/risk.yml
+  safety_every: 1
+
+live:
+  mode: paper
+  spec: config/live.yml
+
+eval:
+  tearsheet: true

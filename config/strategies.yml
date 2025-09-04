@@ -1,0 +1,6 @@
+trend_following:
+  fast: 12
+  slow: 26
+mean_revert:
+  lookback: 50
+  z: 1.0
