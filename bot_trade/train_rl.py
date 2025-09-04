@@ -164,6 +164,7 @@ import matplotlib
 import yaml
 
 from bot_trade.strat.adaptive_controller import AdaptiveController
+from bot_trade.strat.risk_registry import RiskRegistry, RiskRegistryCallback
 from bot_trade.strat.rewards_registry import load_reward_spec
 from bot_trade.tools._headless import ensure_headless_once
 
@@ -864,6 +865,11 @@ def train_one_file(args, data_file: str) -> bool:
     except Exception:
         pass
 
+    risk_registry = None
+    if getattr(args, "risk_spec", None):
+        risk_log = paths_obj.performance_dir / "risk_flags.jsonl"
+        risk_registry = RiskRegistry.from_yaml(base_env, Path(args.risk_spec), risk_log)
+
     if resume_data:
         env_state = resume_data.get("env_state", {})
         try:
@@ -1122,6 +1128,9 @@ def train_one_file(args, data_file: str) -> bool:
             log_path=safety_log,
         )
         extras.append(safety_cb)
+
+    if risk_registry is not None and risk_registry.rules:
+        extras.append(RiskRegistryCallback(risk_registry, every=max(1, int(getattr(args, "safety_every", 1)))))
 
     eval_cb: Optional[EvalCallback] = None
     if cfg.get("eval", {}).get("enable", True):

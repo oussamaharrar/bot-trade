@@ -304,3 +304,9 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: network access and placeholder metrics may limit realism; optional dependencies like websockets/optuna required.
 - Migration steps: export testnet API keys, use new `SandboxGateway` via `--gateway sandbox`, run `runners.live_dry_run`, `eval.wfa_gate` and `tools.bayes_sweeps` with provided configs.
 - Next actions: flesh out fills/risk handling and tighten metric computations.
+## Developer Notes — 2025-10-20 (TD3/TQC & adaptive/risk wiring)
+- What: hardened TD3/TQC builders with SAC-style guards/meta, expanded regime detector and adaptive controller, introduced runtime risk rule registry with JSONL logging and callback wiring.
+- Why: bring feature parity across algorithms, enable regime-aware reward/risk shaping and configurable safety checks.
+- Risks: aggressive risk rules may freeze trading early; config schema changes require updated YAMLs; thresholds are naive.
+- Migration steps: supply `config/adaptive.yml` and `config/risk.yml` as needed, ensure `--continuous-env` for TD3/TQC, and review new logs under `performance/`.
+- Next actions: refine regime features, add unit tests for risk callbacks, and tune default rule thresholds.

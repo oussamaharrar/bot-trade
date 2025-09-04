@@ -1,0 +1,22 @@
+weights_delta:
+  bull_trend:
+    base_pnl: 0.10
+    inventory_penalty: -0.02
+  bear_trend:
+    risk_drawdown: 0.15
+    slippage_penalty: 0.05
+risk_delta:
+  high_vol:
+    max_leverage: -0.10
+    trailing_dd_limit: -0.05
+  illiquid:
+    max_position: -0.20
+    max_spread_bp: -5
+clamp:
+  weight_delta:
+    min: -0.5
+    max: 0.5
+  risk_delta:
+    min: -0.5
+    max: 0.5
+detector: {}

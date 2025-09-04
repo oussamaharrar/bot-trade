@@ -489,6 +489,11 @@ def build_td3(env, args, seed):
     batch_size = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", None) or 256), env)
     gamma = float(getattr(args, "gamma", None) or 0.99)
     tau = float(getattr(args, "tau", None) or 0.005)
+    train_freq = (int(getattr(args, "train_freq", 1) or 1), "step")
+    grad_steps = int(getattr(args, "gradient_steps", None) or 1)
+    policy_delay = int(getattr(args, "policy_delay", 2))
+    target_policy_noise = float(getattr(args, "target_policy_noise", 0.2))
+    target_noise_clip = float(getattr(args, "target_noise_clip", 0.5))
     model = TD3(
         "MlpPolicy",
         env,
@@ -498,11 +503,11 @@ def build_td3(env, args, seed):
         batch_size=batch_size,
         gamma=gamma,
         tau=tau,
-        train_freq=(1, "step"),
-        gradient_steps=int(getattr(args, "gradient_steps", None) or 1),
-        policy_delay=2,
-        target_policy_noise=0.2,
-        target_noise_clip=0.5,
+        train_freq=train_freq,
+        gradient_steps=grad_steps,
+        policy_delay=policy_delay,
+        target_policy_noise=target_policy_noise,
+        target_noise_clip=target_noise_clip,
         policy_kwargs=pk,
         seed=seed,
         device=args.device_str,
@@ -515,12 +520,13 @@ def build_td3(env, args, seed):
         "buffer_size",
         "learning_starts",
         "batch_size",
+        "gamma",
+        "tau",
         "train_freq",
         "gradient_steps",
-        "tau",
-        "ent_coef",
-        "gamma",
-        "target_entropy",
+        "policy_delay",
+        "target_policy_noise",
+        "target_noise_clip",
     }
     overrides = collect_overrides(args, valid)
     meta = {
@@ -554,6 +560,13 @@ def build_tqc(env, args, seed):
     batch_size = _adjust_batch_size_for_envs(int(getattr(args, "batch_size", None) or 256), env)
     gamma = float(getattr(args, "gamma", None) or 0.99)
     tau = float(getattr(args, "tau", None) or 0.005)
+    ent_coef = getattr(args, "ent_coef", "auto")
+    target_entropy = getattr(args, "target_entropy", "auto")
+    use_sde = bool(getattr(args, "use_sde", True))
+    sde_sample_freq = int(getattr(args, "sde_sample_freq", 4))
+    top_drop = int(getattr(args, "top_quantiles_to_drop_per_net", 2))
+    train_freq = (int(getattr(args, "train_freq", 1) or 1), "step")
+    grad_steps = int(getattr(args, "gradient_steps", None) or 1)
     model = TQC(
         "MlpPolicy",
         env,
@@ -563,15 +576,13 @@ def build_tqc(env, args, seed):
         batch_size=batch_size,
         gamma=gamma,
         tau=tau,
-        ent_coef=getattr(args, "ent_coef", "auto"),
-        target_entropy="auto",
-        train_freq=(1, "step"),
-        gradient_steps=int(getattr(args, "gradient_steps", None) or 1),
-        use_sde=True,
-        sde_sample_freq=4,
-        n_critics=5,
-        n_quantiles=25,
-        top_quantiles_to_drop_per_net=2,
+        ent_coef=ent_coef,
+        target_entropy=target_entropy,
+        train_freq=train_freq,
+        gradient_steps=grad_steps,
+        use_sde=use_sde,
+        sde_sample_freq=sde_sample_freq,
+        top_quantiles_to_drop_per_net=top_drop,
         policy_kwargs=pk,
         seed=seed,
         device=args.device_str,
@@ -586,8 +597,13 @@ def build_tqc(env, args, seed):
         "batch_size",
         "gamma",
         "tau",
-        "gradient_steps",
         "ent_coef",
+        "target_entropy",
+        "top_quantiles_to_drop_per_net",
+        "use_sde",
+        "sde_sample_freq",
+        "train_freq",
+        "gradient_steps",
     }
     overrides = collect_overrides(args, valid)
     meta = {
