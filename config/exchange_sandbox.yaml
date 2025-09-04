@@ -1,0 +1,10 @@
+binance:
+  rest: https://testnet.binance.vision/api
+  ws: wss://testnet.binance.vision/ws
+  recv_window: 5000
+  weight_limit: 1200
+bybit:
+  rest: https://api-testnet.bybit.com
+  ws: wss://stream-testnet.bybit.com/realtime
+  recv_window: 5000
+  weight_limit: 100

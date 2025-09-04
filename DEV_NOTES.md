@@ -298,3 +298,9 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: gateway is non-persistent and lacks real fills or reconciliation; future integration may alter interfaces.
 - Migration steps: pass `--gateway paper` (default) when training; import gateways from `bot_trade.gateways`.
 - Next actions: hook gateway into execution bridge, add fill polling, and expand risk wiring.
+## Developer Notes — 2025-10-12 (Sandbox & analysis tools)
+- What: added sandbox gateway with Binance/Bybit testnet adapters and rate limiter, live-dry-run runner with live feed, walk-forward analysis gate, and Optuna-based Bayesian sweeper.
+- Why: enable safe exchange connectivity, production-like dry runs, formal evaluation and automated hyper-parameter search.
+- Risks: network access and placeholder metrics may limit realism; optional dependencies like websockets/optuna required.
+- Migration steps: export testnet API keys, use new `SandboxGateway` via `--gateway sandbox`, run `runners.live_dry_run`, `eval.wfa_gate` and `tools.bayes_sweeps` with provided configs.
+- Next actions: flesh out fills/risk handling and tighten metric computations.
