@@ -512,3 +512,15 @@ PY`
 - **Rationale**: add paper trading gateway stub with CLI flag and docs updates.
 - **Risks**: gateway lacks persistence and real fill handling; future integration may change interface.
 - **Test Steps**: py_compile; synth data; PPO smoke; SAC smoke with `--gateway paper`; export_charts; eval_run; sweep; dev_checks.
+## 2025-10-12
+- **Files**: bot_trade/utils/rate_limit.py, bot_trade/gateways/sandbox_gateway.py, bot_trade/gateways/exchanges/binance_testnet.py, bot_trade/gateways/exchanges/bybit_testnet.py, bot_trade/data/live_feed.py, bot_trade/runners/live_dry_run.py, bot_trade/eval/wfa_gate.py, bot_trade/tools/bayes_sweeps.py, config/exchange_sandbox.yaml, config/live_dry_run.yaml, config/wfa.yaml, config/sweeps.yaml, docs/sandbox_quickstart.md, docs/live_dry_run.md, docs/wfa_gate.md, docs/sweeps.md, tests/unit/test_rate_limit.py, tests/unit/test_sandbox_gateway.py, bot_trade/gateways/__init__.py, bot_trade/tools/check_sandbox.py
+- **Rationale**: integrate sandbox exchange gateway with rate limiting, add live-dry-run runner, walk-forward analysis gate, and Bayesian sweep tooling.
+- **Risks**: external APIs and optional dependencies may fail; placeholder metrics and simplified feeds may not reflect production behaviour.
+- **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `PYTHONPATH=. pytest tests/unit/test_rate_limit.py tests/unit/test_sandbox_gateway.py -q`
+
+## 2025-09-04
+- **Files**: bot_trade/gateways/errors.py, bot_trade/utils/rate_limit.py, bot_trade/gateways/sandbox_gateway.py, bot_trade/gateways/exchanges/binance_testnet.py, bot_trade/gateways/exchanges/bybit_testnet.py, config/exchange_sandbox.yaml, .github/workflows/smoke.yml, docs/dev_notes.md, docs/variants_summary.md, tests/unit/test_rate_limit.py, tests/unit/test_sandbox_gateway.py
+- **Rationale**: merge Variant-2/3 improvements adding structured GatewayError, stricter env-key validation, per-route rate limits, and CI lint gate.
+- **Risks**: new logging and env checks may surface hidden issues; lint failures may block CI.
+- **Test Steps**: `ruff check bot_trade`; `python -m py_compile $(git ls-files bot_trade/**/*.py bot_trade/*.py)`; `PYTHONPATH=. pytest -q tests/unit/test_rate_limit.py tests/unit/test_sandbox_gateway.py`
+

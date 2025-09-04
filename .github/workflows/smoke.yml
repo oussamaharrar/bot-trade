@@ -13,6 +13,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -e .
+      - run: ruff check bot_trade
       - run: python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')
       - run: python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready
       - run: python -m bot_trade.train_rl --algorithm PPO --symbol BTCUSDT --frame 1m --device cpu --n-envs 1 --n-steps 32 --batch-size 32 --total-steps 64 --headless --allow-synth --data-dir data_ready

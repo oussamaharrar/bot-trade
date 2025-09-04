@@ -1,0 +1,10 @@
+space:
+  lr:
+    type: float
+    low: 1e-5
+    high: 1e-3
+  batch_size:
+    type: int
+    low: 32
+    high: 128
+n_trials: 10
