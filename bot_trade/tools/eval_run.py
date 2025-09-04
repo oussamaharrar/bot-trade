@@ -22,6 +22,7 @@ from bot_trade.tools import export_charts
 from bot_trade.tools.kb_writer import kb_append
 from bot_trade.eval.gate import gate_metrics
 from bot_trade.tools.force_utf8 import force_utf8
+from bot_trade.tools._headless import ensure_headless_once
 
 
 
@@ -98,14 +99,7 @@ def evaluate_run(symbol: str, frame: str, run_id: str, algo: str = "PPO") -> Dic
 def main(argv: list[str] | None = None) -> int:
     force_utf8()
 
-    def _set_headless() -> None:
-        import matplotlib
-
-        if matplotlib.get_backend().lower() != "agg":
-            matplotlib.use("Agg")
-        print("[HEADLESS] backend=Agg")
-
-    _set_headless()
+    ensure_headless_once("tools.eval_run")
     p = argparse.ArgumentParser(
         description="Synthetic run evaluation",
         epilog=(

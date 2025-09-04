@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, Tuple, TYPE_CHECKING
 
 from bot_trade.tools.force_utf8 import force_utf8
+from bot_trade.tools._headless import ensure_headless_once
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import pandas as pd
@@ -302,14 +303,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - CLI helper
     import argparse
     from bot_trade.config.rl_paths import get_root
 
-    def _set_headless() -> None:
-        import matplotlib
-
-        if matplotlib.get_backend().lower() != "agg":
-            matplotlib.use("Agg")
-        print("[HEADLESS] backend=Agg")
-
-    _set_headless()
+    ensure_headless_once("tools.export_charts")
 
     ap = argparse.ArgumentParser(
         description="Export charts for a training run",

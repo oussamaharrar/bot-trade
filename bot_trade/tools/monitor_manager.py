@@ -9,17 +9,11 @@ from pathlib import Path
 from bot_trade.config.rl_paths import RunPaths, get_root, DEFAULT_REPORTS_DIR
 from bot_trade.tools.latest import latest_run
 from bot_trade.tools import export_charts
+from bot_trade.tools._headless import ensure_headless_once
 
 
 def main(argv: list[str] | None = None) -> int:
-    def _set_headless() -> None:
-        import matplotlib
-
-        if matplotlib.get_backend().lower() != "agg":
-            matplotlib.use("Agg")
-        print("[HEADLESS] backend=Agg")
-
-    _set_headless()
+    ensure_headless_once("tools.monitor_manager")
     ap = argparse.ArgumentParser(
         description="Generate charts for a finished training run",
         epilog=(

@@ -45,3 +45,8 @@
 - WHY: improve traceability and reliability for multi-run orchestration.
 - RISKS: stop handling may miss zombie children on exotic platforms.
 - NEXT: surface metrics charts and sandbox key validation.
+[2025-09-04 05:16:28] Developer Notes — Panel v1 Controls
+- WHAT: added PySimpleGUI panel with runner, results watcher, whitelist and defaults.
+- WHY: enable desktop orchestration with safe process handling.
+- RISKS: limited log handling; watcher polls filesystem.
+- NEXT: surface charts and queue management.

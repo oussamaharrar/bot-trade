@@ -1,36 +1,18 @@
-# UI Panel
+# UI Control Panel
 
-Minimal PySimpleGUI control panel for orchestrating training and tooling.
+Minimal PySimpleGUI interface to manage training runs and tools.
 
-## Install
+## Usage
 
-```bash
-pip install -r requirements.txt  # includes PySimpleGUI, psutil, watchdog, pyyaml
+```
+python -m bot_trade.ui.panel_gui
 ```
 
-## Launch
+The panel validates commands against a strict whitelist and spawns them
+via `ui.runner`. Results are tailed by `ui.results_watcher`.
 
-```bash
-python -m bot_trade.ui.panel
-```
+## Safety Notes
 
-## Tabs
-
-- **Run Train** – set symbol/frame/algorithm and launch trainings. Each run streams logs and can be stopped independently.
-- **Eval & WFA** – run evaluation helpers on completed results.
-- **Live (Paper/Sandbox)** – guarded entry points for paper or sandbox live modes.
-- **Data & Tools** – whitelisted maintenance scripts such as synthetic data generation.
-- **Logs & Errors** – switch between run logs and copy the last 200 lines.
-- **Config** – environment key status and latest developer-note entry.
-
-State is saved to `bot_trade/ui/panel_config.yaml` on exit so selections persist.
-
-## Sandbox notes
-
-Sandbox live trading is disabled unless testnet API keys are present and the consent box is checked.
-
-## Troubleshooting
-
-- Missing results artefacts → run a training first.
-- "⚠️" on API keys → export the required environment variables.
-- GPU not detected → panel defaults to CPU; select `cpu` explicitly if needed.
+- Only predefined commands may run.
+- Process trees are terminated on Stop.
+- Logs are written UTF-8 to the `tee` files.

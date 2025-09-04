@@ -317,3 +317,9 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: ccxt availability is optional; misconfigured specs may yield empty features.
 - Migration steps: invoke training with `--data-source csvparquet --signals-spec config/signals.yml`; install `ccxt` for live fetching.
 - Next actions: wire collectors into training loops and expand indicator coverage.
+## Developer Notes — 2025-09-04 (UI Panel foundation)
+- What: added PySimpleGUI control panel under `bot_trade.ui` with runner, results watcher, whitelist and config.
+- Why: provide desktop orchestration for training and tooling.
+- Risks: limited validation; polling watcher; stop may miss exotic child trees.
+- Migration steps: launch via `python -m bot_trade.ui.panel_gui` and ensure commands conform to whitelist.
+- Next actions: queueing, GPU slot caps and richer metrics display.
