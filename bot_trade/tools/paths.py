@@ -46,3 +46,10 @@ def report_dir(symbol: str, frame: str, run_id: str | None = None, algo: str | N
 def logs_dir(symbol: str, frame: str, run_id: str | None = None, algo: str | None = None) -> Path:
     """Return the logs directory under results."""
     return _logs_dir(symbol, frame, run_base=run_id, algo=algo)
+
+
+def launcher_log_dir(symbol: str, frame: str) -> Path:
+    """Return directory for launcher logs for ``symbol``/``frame``."""
+    path = DIR_LOGS / "launcher" / symbol / frame
+    path.mkdir(parents=True, exist_ok=True)
+    return path

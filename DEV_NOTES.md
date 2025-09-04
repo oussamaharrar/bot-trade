@@ -342,3 +342,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: replay buffer resume incomplete; live collectors basic.
 - Migration steps: invoke training with `--data-mode` and `--strategies`; ensure ccxt installed for live modes.
 - Next actions: flesh out resume logic, expand orchestrator concurrency and integrate strategies into env loop.
+
+## Developer Notes — 2025-10-24 (Panel v3)
+- What: introduced YAML commands registry with flag validation, UI panel entrypoint, GPU device enumeration and runctx wrappers.
+- Why: prepare multi-run orchestration with safe template rendering and device pinning.
+- Risks: registry may miss required flags; CUDA info requires torch.
+- Migration steps: import panel from `bot_trade.tools.ui_panel`; adjust custom commands to use registry YAML; ensure torch installed for GPU listing.
+- Next actions: implement job queue persistence and richer event wiring.

@@ -19,6 +19,17 @@ Tabs:
 - **Logs** – live tail with colour markers for `[DEBUG_EXPORT]`, `[CHARTS]`, `[POSTRUN]` and `[EVAL]`.
 - **Config** – persist last selections and preview latest developer note.
 
+## Panel v3
+
+```
+python -m bot_trade.tools.ui_panel
+```
+
+Tabs now cover Run, Jobs, Tools, Live and Config. Commands resolve via
+`commands_registry.yaml` with strict flag validation. Jobs can be listed and
+stopped, and the Live tab tails logs with structured `[CHARTS]` and `[POSTRUN]`
+events. Settings persist across sessions.
+
 ## Safety Notes
 
 - All commands are expanded from `commands_registry` templates; unknown flags are rejected.
