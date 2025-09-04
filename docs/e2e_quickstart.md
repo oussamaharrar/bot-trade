@@ -16,12 +16,15 @@
    ```bash
    python -m bot_trade.eval.wfa_gate --config config/wfa.yaml --symbol BTCUSDT --frame 1m --windows 3 --embargo 0.05 --profile smoke
    ```
-5. Optional live dry run with model fallback:
+5. Optional live dry run with model fallback and bootstrap price:
    ```bash
    python -m bot_trade.runners.live_dry_run --exchange binance --symbol BTCUSDT --frame 1m \
-     --gateway paper --model results/BTCUSDT/1m/latest/artifacts/best_model.zip --duration 90 --model-optional
+     --gateway paper --model results/BTCUSDT/1m/latest/artifacts/best_model.zip --duration 90 \
+     --bootstrap-price 27000 --model-optional
    ```
+   The feed applies EWMA smoothing and exponential backoff when network limits hit.
 6. Verify paths:
    ```bash
    python -m bot_trade.tools.paths_doctor --symbol BTCUSDT --frame 1m --strict
    ```
+   If the live run only produced HoldPolicy ticks, paths_doctor may hint about missing live charts.
