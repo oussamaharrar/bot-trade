@@ -50,3 +50,9 @@
 - WHY: enable desktop orchestration with safe process handling.
 - RISKS: limited log handling; watcher polls filesystem.
 - NEXT: surface charts and queue management.
+[2025-10-18 00:00] UI Panel v2 — Controls
+- WHAT: added commands registry, device selector, job-aware runner and results watcher events; shipped new panel_gui with config persistence.
+- WHY: enable safe orchestration of multiple runs with full observability.
+- RISKS: UI remains polling based; incomplete flag coverage may block advanced users.
+- MIGRATION: existing `bot_trade.ui.*` modules now shim to `bot_trade.tools.*`.
+- NEXT: queue management and richer log colouring.
