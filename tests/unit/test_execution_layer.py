@@ -19,6 +19,7 @@ def test_execution_layer_basic():
     assert res.fees == 1  # min fee dominates
     assert res.ts == 1.0  # latency applied
     assert res.slippage_bps == 10
+    assert res.fills and res.fills[0].min_fee_applied
 
 
 def test_maker_fee_and_min_fee():
@@ -29,3 +30,4 @@ def test_maker_fee_and_min_fee():
     assert res.status == "filled"
     # maker fee 1 bps -> 0.01% * value
     assert res.fees == max(50.0 * 2 * 0.0001, 0.5)
+    assert res.fills and res.fills[0].is_maker

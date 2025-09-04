@@ -6,3 +6,9 @@
 - Introduced eval_run wrapper, HTML tearsheet, gate fail-hard promotion, live dry-run fallbacks, paths doctor and CI workflow.
 - Risks: limited real exchange testing; paths doctor only checks basic structure.
 - Next: expand lint coverage gradually, enhance live feed resilience.
+[2025-10-12 00:00] E2E close-out — CLI unification, data smoke, WFA thresholds (smoke), paths_doctor expectations, fill logging.
+- Added unified args for wfa_gate, live_dry_run, and paths_doctor with smoke profiles and hints.
+- Ensured eval_run emits summary.json and metrics.csv; HTML tearsheet reads them and skips PDF gracefully.
+- Expanded Fill model and execution logs with maker/min-fee fields; seed persisted in meta.
+- Risks: strict path checks may flag custom layouts; random fills still simplistic.
+- Next: broaden real-exchange coverage and refine walk-forward metrics.

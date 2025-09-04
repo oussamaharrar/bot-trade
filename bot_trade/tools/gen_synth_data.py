@@ -12,11 +12,11 @@ from bot_trade.data.store_parquet import write_parquet_atomic
 from bot_trade.data.validators import detect_gaps, detect_duplicates
 
 
-def generate(symbol: str, frame: str, out_dir: Path) -> Path:
+def generate(symbol: str, frame: str, out_dir: Path, days: int = 90) -> Path:
     """Generate synthetic OHLCV data and store as Parquet."""
 
     rng = np.random.default_rng(0)
-    periods = 90 * 24 * 60  # 90 days of minutes
+    periods = days * 24 * 60  # minutes
     start = pd.Timestamp.utcnow() - pd.Timedelta(minutes=periods)
     idx = pd.date_range(start, periods=periods, freq="1min", tz="UTC")
     price = 100 + np.cumsum(rng.normal(0, 0.5, periods))
@@ -49,9 +49,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--symbol", default="BTCUSDT", help="Trading symbol")
     ap.add_argument("--frame", default="1m", help="Time frame")
     ap.add_argument("--out", default="data_ready", help="Output data directory")
+    ap.add_argument("--days", type=int, default=90, help="Number of days to simulate")
     ns = ap.parse_args(argv)
 
-    dest = generate(ns.symbol, ns.frame, Path(ns.out))
+    dest = generate(ns.symbol, ns.frame, Path(ns.out), days=int(ns.days))
     print(dest)
     return 0
 

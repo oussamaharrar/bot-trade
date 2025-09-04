@@ -7,6 +7,7 @@ Generates basic performance metrics and artifacts from existing logs.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import sys
@@ -51,6 +52,13 @@ def _evaluate_run(symbol: str, frame: str, run_id: str, algo: str) -> tuple[Dict
         "equity_len": int(len(equity)),
     }
     write_json(perf_dir / "summary.json", summary)
+    try:
+        with (perf_dir / "metrics.csv").open("w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=metrics_dict.keys())
+            w.writeheader()
+            w.writerow(metrics_dict)
+    except Exception:
+        pass
 
     step_val = int(reward_df["step"].iloc[-1]) if not reward_df.empty else 0
     eq_val = float(equity.iloc[-1]) if not equity.empty else 0.0

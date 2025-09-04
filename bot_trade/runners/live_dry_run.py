@@ -27,11 +27,21 @@ def main() -> None:
     ap.add_argument("--symbol", required=True)
     ap.add_argument("--frame", required=True)
     ap.add_argument("--gateway", default="paper")
-    ap.add_argument("--model")
-    ap.add_argument("--model-optional", action="store_true")
-    ap.add_argument("--duration", type=int, default=60)
+    ap.add_argument("--model", help="Path to model zip")
+    ap.add_argument(
+        "--model-optional",
+        action="store_true",
+        help="Allow missing model and fall back to random actions",
+    )
+    ap.add_argument(
+        "--duration",
+        type=int,
+        default=60,
+        help="Run duration in seconds",
+    )
     ap.add_argument("--config", default="config/live_dry_run.yaml")
     args = ap.parse_args()
+    args.duration = max(int(args.duration), 1)
 
     cfg = _load_config(args.config)
     ecfg = cfg[args.exchange]

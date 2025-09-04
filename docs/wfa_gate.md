@@ -6,5 +6,5 @@ metrics per window.  After running, `wfa_report.json`, `wfa_report.csv` and
 
 ```
 python -m bot_trade.eval.wfa_gate --config config/wfa.yaml --symbol BTCUSDT \
-       --frame 1m --windows 6 --step 0.5
+       --frame 1m --windows 6 --embargo 0.05 --profile default
 ```

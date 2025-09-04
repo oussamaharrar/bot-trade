@@ -7,6 +7,7 @@ logic.
 """
 
 import random
+from pathlib import Path
 from typing import Any
 
 from .models import ExecutionResult, Fill, Order
@@ -53,15 +54,17 @@ class ExecutionLayer:
             return impact * bps_per_impact * 10_000
         return 0.0
 
-    def _fee(self, price: float, qty: float, is_maker: bool) -> float:
+    def _fee(self, price: float, qty: float, is_maker: bool) -> tuple[float, bool]:
         fees_cfg = self.cfg.get("fees", {})
         key = "maker_bps" if is_maker else "taker_bps"
         bps = float(fees_cfg.get(key, 0.0))
         fee = abs(price * qty) * bps / 10_000
         min_fee = float(fees_cfg.get("min_fee", 0.0))
-        if fee > 0:
-            fee = max(fee, min_fee)
-        return fee
+        min_applied = False
+        if fee > 0 and fee < min_fee:
+            fee = min_fee
+            min_applied = True
+        return fee, min_applied
 
     # ------------------------------------------------------------------
     def apply(self, order: Order, market: dict[str, Any]) -> ExecutionResult:
@@ -82,7 +85,7 @@ class ExecutionLayer:
         filled_qty = order.qty * ratio
         status = "filled" if ratio >= 1.0 - 1e-12 else "partial"
 
-        fee = self._fee(fill_price, filled_qty, order.is_maker)
+        fee, min_applied = self._fee(fill_price, filled_qty, order.is_maker)
 
         latency_ms = int(self.cfg.get("latency_ms", 0))
         ts = order.ts + latency_ms / 1000.0
@@ -90,20 +93,26 @@ class ExecutionLayer:
         fill = Fill(
             side=order.side,
             qty=filled_qty,
-            price=fill_price,
+            px=fill_price,
             fee=fee,
+            is_maker=order.is_maker,
+            min_fee_applied=min_applied,
             slippage_bps=slippage_bps,
             latency_ms=latency_ms,
+            ts=ts,
         )
 
         print(
             "FILL",
-            f"side={order.side}",
+            f"side={order.side.upper()}",
             f"qty={filled_qty}",
             f"px={fill_price}",
             f"fee={fee}",
+            f"maker={int(order.is_maker)}",
+            f"min_fee={int(min_applied)}",
             f"slip_bps={slippage_bps}",
             f"latency_ms={latency_ms}",
+            f"ts={ts}",
         )
 
         return ExecutionResult(
@@ -116,3 +125,15 @@ class ExecutionLayer:
             order_id=order.id,
             fills=[fill],
         )
+
+    def write_meta(self, run_dir: Path) -> None:
+        """Persist execution metadata such as seed."""
+
+        if self.seed is None:
+            return
+        try:
+            from bot_trade.tools.atomic_io import write_json
+
+            write_json(Path(run_dir) / "meta.json", {"seed": self.seed})
+        except Exception:
+            pass
