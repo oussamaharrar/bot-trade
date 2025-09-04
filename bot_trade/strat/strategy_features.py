@@ -9,13 +9,124 @@ builder via :func:`get_feature_builder`.
 
 from typing import Any, Callable, Dict
 import numpy as np
+import pandas as pd
+import warnings
+from pathlib import Path
+
+try:
+    import yaml  # type: ignore
+except Exception:  # pragma: no cover - yaml is a soft dependency
+    yaml = None
+
+
+def _ema(series: pd.Series, span: int) -> pd.Series:
+    return series.ewm(span=span, adjust=False).mean()
+
+
+def _macd(close: pd.Series, fast: int, slow: int, signal: int) -> pd.DataFrame:
+    ema_fast = _ema(close, fast)
+    ema_slow = _ema(close, slow)
+    macd = ema_fast - ema_slow
+    sig = _ema(macd, signal)
+    hist = macd - sig
+    return pd.DataFrame({"macd": macd, "macd_signal": sig, "macd_hist": hist})
+
+
+def _rsi(close: pd.Series, period: int) -> pd.Series:
+    delta = close.diff()
+    gain = delta.clip(lower=0).ewm(alpha=1 / period, adjust=False).mean()
+    loss = (-delta.clip(upper=0)).ewm(alpha=1 / period, adjust=False).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
+
+
+def _atr(df: pd.DataFrame, period: int) -> pd.Series:
+    high_low = df["high"] - df["low"]
+    high_close = (df["high"] - df["close"].shift()).abs()
+    low_close = (df["low"] - df["close"].shift()).abs()
+    ranges = pd.concat([high_low, high_close, low_close], axis=1)
+    true_range = ranges.max(axis=1)
+    return true_range.rolling(window=period).mean()
+
+
+def _realized_vol(df: pd.DataFrame, window: int) -> pd.Series:
+    ret = df["close"].pct_change()
+    return ret.rolling(window).std() * (window ** 0.5)
+
+
+def _rolling(df: pd.Series, window: int) -> pd.Series:
+    return df.rolling(window).mean()
+
+
+def _zscore(series: pd.Series, window: int) -> pd.Series:
+    mean = series.rolling(window).mean()
+    std = series.rolling(window).std()
+    return (series - mean) / std
+
+
+def _apply_post(df: pd.DataFrame, post_cfg: dict) -> pd.DataFrame:
+    for item in post_cfg or []:
+        name, params = next(iter(item.items()))
+        if name == "zscore":
+            on = params.get("on")
+            win = int(params.get("window", 20))
+            if on in df:
+                df[f"zscore_{on}"] = _zscore(df[on], win)
+            else:
+                warnings.warn(f"[SIG] zscore source missing: {on}")
+    return df
 
 
 def build_features(df_like, cfg) -> Dict[str, Any]:
-    """Baseline feature builder returning an empty feature set."""
-    return {}
+    """Build feature dataframe based on signals spec.
 
-FEATURE_REGISTRY: Dict[str, Callable[[Any, Dict[str, Any]], Dict[str, Any]]] = {
+    ``cfg`` may provide ``signals_spec`` pointing to a YAML file. The YAML
+    describes a ``pipeline`` list where each item is a mapping containing the
+    indicator name and its parameters. Missing indicators emit a warning and
+    are skipped.
+    """
+    df = pd.DataFrame(df_like).copy()
+    spec_path = cfg.get("signals_spec") if isinstance(cfg, dict) else None
+    if not spec_path:
+        return {}
+    if yaml is None:
+        warnings.warn("[SIG] PyYAML not installed; skipping signals")
+        return {}
+    try:
+        spec = yaml.safe_load(Path(spec_path).read_text(encoding="utf-8")) or {}
+    except Exception as exc:  # pragma: no cover - config errors
+        warnings.warn(f"[SIG] failed to read spec: {exc}")
+        return {}
+    pipe = spec.get("pipeline", [])
+    for item in pipe:
+        name, params = next(iter(item.items()))
+        try:
+            if name == "macd":
+                params = {k: int(v) for k, v in params.items()}
+                df = df.join(_macd(df["close"], params.get("fast", 12), params.get("slow", 26), params.get("signal", 9)))
+            elif name == "rsi":
+                period = int(params.get("period", 14))
+                df["rsi"] = _rsi(df["close"], period)
+            elif name == "atr":
+                period = int(params.get("period", 14))
+                df["atr"] = _atr(df, period)
+            elif name == "realized_vol":
+                window = int(params.get("window", 60))
+                df["realized_vol"] = _realized_vol(df, window)
+            elif name == "spread_bp":
+                window = int(params.get("window", 10))
+                df["spread_bp_roll"] = _rolling(df["spread_bp"], window)
+            elif name == "depth_top":
+                window = int(params.get("window", 5))
+                df["depth_top_roll"] = _rolling(df["depth_top"], window)
+        except Exception as exc:
+            warnings.warn(f"[SIG] failed {name}: {exc}")
+    df = _apply_post(df, spec.get("post"))
+    df.ffill(limit=5, inplace=True)
+    df.dropna(how="any", inplace=True)
+    return df
+
+FEATURE_REGISTRY: Dict[str, Callable[[Any, Dict[str, Any]], Any]] = {
     "baseline": build_features,
 }
 

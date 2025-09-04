@@ -527,3 +527,9 @@ PY`
 - **Rationale**: finalized TD3/TQC builders with SAC-style guards and meta, expanded regime detection and adaptive controller, and introduced runtime risk rule registry with JSONL logging and callback wiring.
 - **Risks**: overly strict risk rules may halt trading; new YAML schemas may break old configs.
 - **Test Steps**: `python -m py_compile bot_trade/**/*.py`; `python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --out data_ready`; `python -m bot_trade.train_rl --algorithm TD3 --symbol BTCUSDT --frame 1m --total-steps 2 --headless --allow-synth --data-dir data_ready`; `python -m bot_trade.train_rl --algorithm TQC --symbol BTCUSDT --frame 1m --total-steps 2 --headless --allow-synth --data-dir data_ready`; `python -m bot_trade.train_rl --algorithm SAC --symbol BTCUSDT --frame 1m --adaptive-spec config/adaptive.yml --regime-log --total-steps 100 --headless --allow-synth --data-dir data_ready`; `python -m bot_trade.train_rl --algorithm SAC --symbol BTCUSDT --frame 1m --risk-spec config/risk.yml --safety-every 1 --total-steps 100 --headless --allow-synth --data-dir data_ready`
+
+## 2025-10-21
+- **Files**: bot_trade/data/collectors/base.py, bot_trade/data/collectors/ccxt_collector.py, bot_trade/data/collectors/csv_parquet_collector.py, bot_trade/strat/strategy_features.py, bot_trade/config/rl_args.py, bot_trade/config/rl_builders.py, config/signals.yml, DEV_NOTES.md, CHANGE_NOTES.md
+- **Rationale**: introduce pluggable market data collectors, YAML-driven signal pipeline, and expose data-source and advanced TD3/TQC CLI flags with clearer TQC dependency guidance.
+- **Risks**: ccxt dependency optional; mis-specified signal configs may lead to empty feature frames.
+- **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `python -m bot_trade.train_rl --help | head -n 60`

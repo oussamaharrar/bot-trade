@@ -155,6 +155,22 @@ def parse_args():
     ap.add_argument("--exec-config", type=str, default=None, help="Execution YAML config")
     ap.add_argument("--risk-config", type=str, default=None, help="Risk YAML config")
     ap.add_argument("--gateway", type=str, default="paper", help="Execution gateway (paper|sandbox|ccxt)")
+    ap.add_argument(
+        "--data-source",
+        choices=["csvparquet", "ccxt"],
+        default="csvparquet",
+        help="Market data source",
+    )
+    ap.add_argument("--exchange", type=str, help="ccxt exchange id, e.g., binance")
+    ap.add_argument("--ccxt-symbol", type=str, help="ccxt symbol, e.g., BTC/USDT")
+    ap.add_argument(
+        "--signals-spec",
+        type=str,
+        default="config/signals.yml",
+        help="YAML file describing signal pipeline",
+    )
+    ap.add_argument("--start", type=str, help="Start datetime (UTC) for data fetch")
+    ap.add_argument("--end", type=str, help="End datetime (UTC) for data fetch")
     ap.add_argument("--policy", type=str, default="MlpPolicy")
     ap.add_argument("--device", type=str, default=None)
     ap.add_argument("--n-envs", type=int, default=0)
@@ -274,6 +290,18 @@ def parse_args():
     ap.add_argument("--train-freq", type=int)
     ap.add_argument("--gradient-steps", type=int)
     ap.add_argument("--tau", type=float)
+    ap.add_argument("--policy-delay", type=int, help="TD3 policy delay steps")
+    ap.add_argument("--target-policy-noise", type=float, help="TD3 target policy noise")
+    ap.add_argument("--target-noise-clip", type=float, help="TD3 target noise clip")
+    ap.add_argument("--n-critics", type=int, help="TQC number of critics")
+    ap.add_argument("--n-quantiles", type=int, help="TQC quantiles per critic")
+    ap.add_argument(
+        "--top-quantiles-to-drop-per-net",
+        type=int,
+        help="TQC quantiles dropped per critic",
+    )
+    ap.add_argument("--use-sde", action="store_true", help="Use SDE policies")
+    ap.add_argument("--sde-sample-freq", type=int, help="SDE sample frequency")
     ap.add_argument("--sac-gamma", type=float, help="Override gamma for SAC only")
     ap.add_argument("--warmstart-from-ppo", type=str,
                     help="(Optional) path to PPO .zip to warm-start SAC feature extractor")
