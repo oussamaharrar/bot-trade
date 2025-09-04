@@ -1,0 +1,14 @@
+rules:
+  - rule: LossStreakHalt
+    params: { streak: 1 }
+  - rule: DrawdownStop
+    params: { dd_limit: -0.01, action: "freeze" }
+  - rule: SpreadSpike
+    params: { max_spread_bp: 0.0, reduce: 0.5 }
+  - rule: LiquidityDrop
+    params: { min_depth: 1e9, cap_position: 0.5 }
+  - rule: GapRisk
+    params: { gap_pct: 0.0, cooldown_steps: 10 }
+cadence:
+  every_steps: 1
+logging: true

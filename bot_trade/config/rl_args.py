@@ -250,6 +250,7 @@ def parse_args():
     ap.add_argument("--regime-log", action=argparse.BooleanOptionalAction, default=None, help="Log adaptive regime adjustments")
     ap.add_argument("--reward-spec", type=str, default=None, help="Reward spec YAML path")
     ap.add_argument("--adaptive-spec", type=str, default=None, help="Adaptive controller YAML path")
+    ap.add_argument("--risk-spec", type=str, default=None, help="Risk rules YAML path")
     ap.add_argument("--strategy-failure", action=argparse.BooleanOptionalAction, default=None, help="Enable strategy failure policy")
     ap.add_argument("--safety-every", type=int, default=1, help="Check safety every N steps")
     ap.add_argument("--loss-streak", type=int)
@@ -310,6 +311,12 @@ def parse_args():
             args.regime_log = True
     if args.regime_log is None:
         args.regime_log = bool(args.regime_aware)
+    if getattr(args, "risk_spec", None) is None:
+        from pathlib import Path
+
+        candidate = Path(__file__).resolve().parent.parent / "config" / "risk.yml"
+        if candidate.exists():
+            args.risk_spec = str(candidate)
     level_name = str(getattr(args, "log_level", "INFO")).upper()
     import logging
     args.log_level = getattr(logging, level_name, logging.INFO)

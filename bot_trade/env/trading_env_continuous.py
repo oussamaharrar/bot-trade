@@ -49,6 +49,12 @@ class TradingEnvContinuous(TradingEnv):
         vol_val = float(row.get("volatility", 0.0))
         depth = row.get("depth")
         spread_bp = (spread / price * 10_000.0) if price > 0 else 0.0
+        self.last_spread_bp = spread_bp
+        self.last_depth = float(depth) if depth is not None else None
+        prev_price = getattr(self, "_prev_price", price)
+        gap_pct = (price - prev_price) / prev_price if prev_price else 0.0
+        self.last_gap_pct = gap_pct
+        self._prev_price = price
         risk_flag_info = None
         if spread_bp > self.exec_sim.max_spread_bp:
             risk_flag_info = (
@@ -162,6 +168,8 @@ class TradingEnvContinuous(TradingEnv):
             "loss_streak": int(self.loss_streak),
             "term_reason": term_reason,
         }
+        info["spread_bp"] = spread_bp
+        info["depth"] = float(self.last_depth or 0.0)
         if exec_res:
             info.update({
                 "trade": {
