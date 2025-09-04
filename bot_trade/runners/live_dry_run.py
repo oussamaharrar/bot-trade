@@ -1,22 +1,22 @@
-from __future__ import annotations
 """Live dry-run runner consuming live prices and executing paper trades."""
 
+from __future__ import annotations
+
 import argparse
+import csv
 import random
 import time
 from pathlib import Path
-from typing import Callable
 
 import yaml
 
 from bot_trade.data.live_feed import LiveFeed
-from bot_trade.gateways.paper import PaperGateway
-from bot_trade.tools.atomic_io import append_jsonl, write_json
+from bot_trade.tools.atomic_io import append_jsonl, write_json, write_text
 from bot_trade.tools.force_utf8 import force_utf8
 
 
 def _load_config(path: str) -> dict:
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         return yaml.safe_load(fh)
 
 
@@ -28,6 +28,7 @@ def main() -> None:
     ap.add_argument("--frame", required=True)
     ap.add_argument("--gateway", default="paper")
     ap.add_argument("--model")
+    ap.add_argument("--model-optional", action="store_true")
     ap.add_argument("--duration", type=int, default=60)
     ap.add_argument("--config", default="config/live_dry_run.yaml")
     args = ap.parse_args()
@@ -35,7 +36,13 @@ def main() -> None:
     cfg = _load_config(args.config)
     ecfg = cfg[args.exchange]
     feed = LiveFeed(ecfg.get("ws"), ecfg["rest"] + ecfg["price_path"], interval=1.0)
-    gw = PaperGateway(args.symbol)
+
+    if args.model and Path(args.model).exists():
+        pass  # placeholder for model loading
+    elif not args.model_optional:
+        raise SystemExit("model required")
+    else:
+        print("[WARN] model missing, falling back to random policy")
 
     run_dir = Path("results") / args.symbol / args.frame / str(int(time.time()))
     metrics = []
@@ -52,13 +59,21 @@ def main() -> None:
             time.sleep(0.5)
     except KeyboardInterrupt:
         pass
-
-    summary = {"ticks": len(metrics)}
-    run_dir.mkdir(parents=True, exist_ok=True)
-    write_json(run_dir / "summary.json", summary)
-    for m in metrics:
-        append_jsonl(run_dir / "risk_flags.jsonl", m)
-    write_json(run_dir / "metrics.json", metrics)
+    finally:
+        run_dir.mkdir(parents=True, exist_ok=True)
+        summary = {"ticks": len(metrics)}
+        write_json(run_dir / "summary.json", summary)
+        for m in metrics:
+            append_jsonl(run_dir / "risk_flags.jsonl", m)
+        # metrics.csv
+        csv_path = run_dir / "metrics.csv"
+        if metrics:
+            with csv_path.open("w", newline="", encoding="utf-8") as fh:
+                w = csv.DictWriter(fh, fieldnames=metrics[0].keys())
+                w.writeheader()
+                w.writerows(metrics)
+        else:
+            write_text(csv_path, "")
 
 
 if __name__ == "__main__":

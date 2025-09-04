@@ -1,3 +1,5 @@
+import pytest
+
 from bot_trade.eval.gates import threshold_gate
 
 
@@ -13,3 +15,6 @@ def test_gate_pass_and_fail(tmp_path):
     assert not res2.passed
     assert set(res2.reasons) == {"min_sharpe", "min_sortino", "max_drawdown", "min_winrate"}
     assert res2.pass_ratio == 0.0
+
+    with pytest.raises(SystemExit):
+        threshold_gate(metrics2, thresholds, fail_hard=True)

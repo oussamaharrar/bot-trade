@@ -1,0 +1,17 @@
+name: CI
+on:
+  pull_request:
+  push:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: ruff check bot_trade/backtest bot_trade/eval bot_trade/runners bot_trade/tools --fix
+      - run: python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')
+      - run: PYTHONPATH=. pytest -q tests/unit/test_rate_limit.py tests/unit/test_sandbox_gateway.py tests/unit/test_execution_layer.py tests/unit/test_time_splits.py tests/unit/test_gates.py
+      - run: python -m bot_trade.tools.paths_doctor --strict

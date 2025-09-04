@@ -19,3 +19,13 @@ def test_execution_layer_basic():
     assert res.fees == 1  # min fee dominates
     assert res.ts == 1.0  # latency applied
     assert res.slippage_bps == 10
+
+
+def test_maker_fee_and_min_fee():
+    cfg = {"fees": {"maker_bps": 1, "taker_bps": 5, "min_fee": 0.5}}
+    layer = ExecutionLayer(cfg, seed=1)
+    order = Order(id="2", side="sell", qty=2, price=50.0, ts=0.0, is_maker=True)
+    res = layer.apply(order, {"price": 50.0})
+    assert res.status == "filled"
+    # maker fee 1 bps -> 0.01% * value
+    assert res.fees == max(50.0 * 2 * 0.0001, 0.5)

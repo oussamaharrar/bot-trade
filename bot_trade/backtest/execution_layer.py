@@ -9,7 +9,7 @@ logic.
 import random
 from typing import Any
 
-from .models import ExecutionResult, Order
+from .models import ExecutionResult, Fill, Order
 
 
 class ExecutionLayer:
@@ -31,6 +31,7 @@ class ExecutionLayer:
     def __init__(self, cfg: dict[str, Any] | None = None, seed: int | None = None) -> None:
         self.cfg = cfg or {}
         self.rng = random.Random(seed)
+        self.seed = seed
 
     # ------------------------------------------------------------------
     def _slippage_bps(self, order: Order, market: dict[str, Any]) -> float:
@@ -52,12 +53,15 @@ class ExecutionLayer:
             return impact * bps_per_impact * 10_000
         return 0.0
 
-    def _fee(self, price: float, qty: float) -> float:
+    def _fee(self, price: float, qty: float, is_maker: bool) -> float:
         fees_cfg = self.cfg.get("fees", {})
-        bps = float(fees_cfg.get("taker_bps", 0.0))
+        key = "maker_bps" if is_maker else "taker_bps"
+        bps = float(fees_cfg.get(key, 0.0))
         fee = abs(price * qty) * bps / 10_000
         min_fee = float(fees_cfg.get("min_fee", 0.0))
-        return max(fee, min_fee)
+        if fee > 0:
+            fee = max(fee, min_fee)
+        return fee
 
     # ------------------------------------------------------------------
     def apply(self, order: Order, market: dict[str, Any]) -> ExecutionResult:
@@ -78,10 +82,29 @@ class ExecutionLayer:
         filled_qty = order.qty * ratio
         status = "filled" if ratio >= 1.0 - 1e-12 else "partial"
 
-        fee = self._fee(fill_price, filled_qty)
+        fee = self._fee(fill_price, filled_qty, order.is_maker)
 
         latency_ms = int(self.cfg.get("latency_ms", 0))
         ts = order.ts + latency_ms / 1000.0
+
+        fill = Fill(
+            side=order.side,
+            qty=filled_qty,
+            price=fill_price,
+            fee=fee,
+            slippage_bps=slippage_bps,
+            latency_ms=latency_ms,
+        )
+
+        print(
+            "FILL",
+            f"side={order.side}",
+            f"qty={filled_qty}",
+            f"px={fill_price}",
+            f"fee={fee}",
+            f"slip_bps={slippage_bps}",
+            f"latency_ms={latency_ms}",
+        )
 
         return ExecutionResult(
             status=status,
@@ -91,4 +114,5 @@ class ExecutionLayer:
             ts=ts,
             slippage_bps=slippage_bps,
             order_id=order.id,
+            fills=[fill],
         )
