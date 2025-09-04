@@ -1,0 +1,13 @@
+gateway: "paper"
+paper:
+  fees_bp: 2.5
+  latency_ms: 120
+  partial_fill_prob: 0.3
+  max_slippage_bp: 12
+sandbox:
+  exchange: "binance"
+  symbol: "BTC/USDT"
+  use_testnet: true
+reconcile:
+  every_steps: 60
+  strict: false
