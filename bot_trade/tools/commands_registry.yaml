@@ -7,44 +7,49 @@ train:
     - "{symbol}"
     - --frame
     - "{frame}"
-    - --device
-    - "{device}"
-    - --n-envs
-    - "{n_envs}"
-    - --n-steps
-    - "{n_steps}"
-    - --batch-size
-    - "{batch_size}"
+    - --algorithm
+    - "{algorithm}"
     - --total-steps
     - "{total_steps}"
-    - "{vecnorm_flag}"
+    - --n-envs
+    - "{n_envs}"
+    - --device
+    - "{device}"
     - "{headless_flag}"
     - "{allow_synth_flag}"
     - "{resume_flag}"
+    - --data-dir
+    - "{data_dir}"
     - "{extra}"
-  defaults:
-    device: cpu
-    n_envs: "1"
-    n_steps: "1"
-    batch_size: "64"
-    total_steps: "1024"
-    vecnorm_flag: ""
-    headless_flag: "--headless"
-    allow_synth_flag: ""
-    resume_flag: ""
-    extra: ""
-  allowed_flags:
+  allowed:
     - --policy
     - --net-arch
-    - --epochs
     - --batch-size
+    - --n-steps
+    - --eval-every-steps
+    - --checkpoint-every
+    - --seed
     - --sb3-verbose
     - --log-level
-    - --checkpoint-every
-    - --eval-every-steps
-    - --eval-episodes
-  forbidden_flags:
-    - --unsafe
+    - --vecnorm
+  forbidden:
+    - ';'
+    - '|'
+    - '&&'
+    - '||'
+    - '>'
+    - '<'
+  defaults:
+    algorithm: PPO
+    total_steps: "1024"
+    n_envs: "1"
+    device: cpu
+    headless_flag: --headless
+    allow_synth_flag: ""
+    resume_flag: ""
+    data_dir: ""
+    extra: ""
+
 eval_run:
   template:
     - python
@@ -56,9 +61,14 @@ eval_run:
     - "{frame}"
     - --run-id
     - "{run_id}"
-    - "{tearsheet_flag}"
-  defaults:
-    tearsheet_flag: ""
+    - --tearsheet
+  allowed: []
+  forbidden:
+    - ';'
+    - '|'
+    - '>'
+    - '<'
+
 monitor:
   template:
     - python
@@ -70,91 +80,10 @@ monitor:
     - "{frame}"
     - --run-id
     - "{run_id}"
-    - "{headless_flag}"
-    - "{tearsheet_flag}"
-  defaults:
-    headless_flag: "--headless"
-    tearsheet_flag: ""
-wfa_gate:
-  template:
-    - python
-    - -m
-    - bot_trade.eval.wfa_gate
-    - --config
-    - "{wfa_config}"
-    - --symbol
-    - "{symbol}"
-    - --frame
-    - "{frame}"
-    - --windows
-    - "{windows}"
-    - "{embargo}"
-  defaults:
-    embargo: ""
-sweeps:
-  template:
-    - python
-    - -m
-    - bot_trade.tools.sweep
-    - --symbol
-    - "{symbol}"
-    - --frame
-    - "{frame}"
-    - --grid
-    - "{grid}"
-gen_synth_data:
-  template:
-    - python
-    - -m
-    - bot_trade.tools.gen_synth_data
-    - --symbol
-    - "{symbol}"
-    - --frame
-    - "{frame}"
-    - --days
-    - "{days}"
-    - --out
-    - "{out_dir}"
-paths_doctor:
-  template:
-    - python
-    - -m
-    - bot_trade.tools.paths_doctor
-    - --symbol
-    - "{symbol}"
-    - --frame
-    - "{frame}"
-    - --strict
-export_charts:
-  template:
-    - python
-    - -m
-    - bot_trade.tools.monitor_manager
-    - --symbol
-    - "{symbol}"
-    - --frame
-    - "{frame}"
-    - --run-id
-    - "{run_id}"
-    - --no-wait
-    - "{headless_flag}"
-  defaults:
-    headless_flag: "--headless"
-live_dry_run:
-  template:
-    - python
-    - -m
-    - bot_trade.runners.live_dry_run
-    - --exchange
-    - "{exchange}"
-    - --symbol
-    - "{symbol}"
-    - --frame
-    - "{frame}"
-    - --gateway
-    - paper
-    - --duration
-    - "{duration}"
-    - --model-optional
-    - --bootstrap-price
-    - "{bootstrap_price}"
+    - --headless
+  allowed: []
+  forbidden:
+    - ';'
+    - '|'
+    - '>'
+    - '<'

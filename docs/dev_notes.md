@@ -56,3 +56,5 @@
 - RISKS: UI remains polling based; incomplete flag coverage may block advanced users.
 - MIGRATION: existing `bot_trade.ui.*` modules now shim to `bot_trade.tools.*`.
 - NEXT: queue management and richer log colouring.
+
+Panel v3 — Controls, multi-algo, WFA/tearsheet, sweeps, CI smoke (2025-09-04T06:53:28.334438)

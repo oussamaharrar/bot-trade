@@ -4,7 +4,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List
 
-import PySimpleGUI as sg
+try:
+    import PySimpleGUI as sg  # type: ignore
+except Exception:  # pragma: no cover
+    sg = None
 
 from ._headless import ensure_headless_once
 from . import whitelist, results_watcher, device_select

@@ -77,13 +77,19 @@ def walk_forward_eval(
         "avg_trade_pnl",
     ]
     aggregate: Dict[str, float | None] = {}
+    pass_ratio = 0.0
     for k in keys:
         vals = [f[k] for f in folds if f.get(k) is not None]
         aggregate[k] = float(np.mean(vals)) if vals else None
+    if folds:
+        pass_ratio = sum(1 for f in folds if (f.get("sharpe") or 0) > 0) / len(folds)
+    else:
+        pass_ratio = 0.0
     return {
         "splits": n_splits,
         "embargo": embargo,
         "folds": folds,
+        "pass_ratio": pass_ratio,
         "aggregate": aggregate,
     }
 
