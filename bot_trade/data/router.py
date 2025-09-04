@@ -63,6 +63,7 @@ class DataRouter:
             end=end,
             exchange=self.exchange,
             cache_dir=self.cache_dir,
+            raw_dir=self.raw_dir,
         )
         df = coll.load(cfg)
         if df is None or len(df) == 0:

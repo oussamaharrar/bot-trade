@@ -31,15 +31,15 @@ strategies:
 
 train:
   algorithms: ["PPO","SAC"]
-  total_steps: 3000000
+  total_steps: 10000
   continue: false
   preset: null
   net_arch_preset: mlp_m
   save_replay_buffer_every: 20000
 
 orchestrator:
-  symbols: ["BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT","SOLUSDT","DOGEUSDT","TRXUSDT","DOTUSDT","LTCUSDT"]
-  frames: ["1m","5m","15m","1h"]
+  symbols: ["BTCUSDT","ETHUSDT"]
+  frames: ["1m","5m"]
   max_concurrent: 2
   seed_grid: [0,1]
 

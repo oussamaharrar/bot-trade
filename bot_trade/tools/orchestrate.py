@@ -1,54 +1,59 @@
+"""Simple training orchestrator for multiple symbols/frames."""
+
 from __future__ import annotations
 
-"""Minimal multi-run orchestrator."""
-
-import argparse
 import itertools
 import subprocess
 from pathlib import Path
 
-import pandas as pd
-
-try:
-    import yaml  # type: ignore
-except Exception:  # pragma: no cover - optional
-    yaml = None
+import yaml
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--config", type=str, required=True)
-    args = ap.parse_args()
-    if yaml is None:
-        print("[ORCH] PyYAML not installed")
-        return 1
-    cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
-    orch = cfg.get("orchestrator", {})
-    symbols = orch.get("symbols", [])
-    frames = orch.get("frames", [])
-    algos = cfg.get("train", {}).get("algorithms", [])
-    seeds = orch.get("seed_grid", [0])
-    summary = []
-    for sym, fr, algo, seed in itertools.product(symbols, frames, algos, seeds):
+def run(cmd: list[str]) -> int:
+    print("[ORCH]", " ".join(cmd))
+    return subprocess.call(cmd)
+
+
+def main(cfg_path: str = "config/default.yaml") -> int:
+    cfg = yaml.safe_load(Path(cfg_path).read_text(encoding="utf-8"))
+    syms = cfg["orchestrator"]["symbols"]
+    frs = cfg["orchestrator"]["frames"]
+    algs = cfg["train"]["algorithms"]
+    steps = str(cfg["train"]["total_steps"])
+    for s, f, a in itertools.product(syms, frs, algs):
         cmd = [
             "python",
             "-m",
             "bot_trade.train_rl",
-            "--symbol",
-            sym,
-            "--frame",
-            fr,
+            "--data-mode",
+            cfg["data"]["mode"],
+            "--raw-dir",
+            cfg["data"]["raw_dir"],
+            "--data-source",
+            cfg["data"]["source"],
             "--algorithm",
-            algo,
-            "--seed",
-            str(seed),
+            a,
+            "--symbol",
+            s,
+            "--frame",
+            f,
+            "--total-steps",
+            steps,
+            "--headless",
         ]
-        subprocess.run(cmd, check=False)
-        summary.append({"symbol": sym, "frame": fr, "algorithm": algo, "seed": seed})
-    pd.DataFrame(summary).to_csv("orchestrate_summary.csv", index=False)
+        if cfg["data"]["mode"] == "live":
+            cmd += [
+                "--exchange",
+                cfg["data"].get("exchange", "binance"),
+                "--ccxt-symbol",
+                cfg["data"].get("ccxt_symbol", "BTC/USDT"),
+            ]
+        run(cmd)
     return 0
 
 
 if __name__ == "__main__":  # pragma: no cover
-    raise SystemExit(main())
+    from bot_trade.tools.force_utf8 import force_utf8
 
+    force_utf8()
+    raise SystemExit(main())

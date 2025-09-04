@@ -67,6 +67,9 @@ class TradingEnv(Env):
         self.symbols = tuple(sorted(self.df.index.get_level_values(0).unique()))
         self.current_symbol = self.symbol if self.symbol in self.symbols else self.symbols[0]
 
+        # writers may expose run paths
+        self.paths = getattr(writers, "paths", None)
+
         # runtime
         self.initial_balance = float(initial_balance)
         self.stop_loss = stop_loss
@@ -215,6 +218,15 @@ class TradingEnv(Env):
     # -------- Gym API --------
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None):
         super().reset(seed=seed)
+        try:
+            marker = None
+            if self.paths is not None and hasattr(self.paths, "performance_dir"):
+                marker = self.paths.performance_dir / "ai_core.marker"
+            if marker is not None and not marker.exists():
+                print("[AI-CORE_GUARD] features did not pass through ai_core. Aborting.")
+                raise SystemExit(3)
+        except Exception:
+            pass
         self.ptr = 0; self.steps = 0
         self.usdt = float(self.initial_balance); self.coin = 0.0
         self.entry_price = None; self.risk_pct = 1.0

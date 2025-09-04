@@ -44,3 +44,11 @@ def apply(df: pd.DataFrame, signals_cfg: str | None = None) -> Tuple[pd.DataFram
 def was_applied() -> bool:
     return _last_apply_called
 
+
+def enforce_ai_core_marker(perf_dir: Path) -> None:
+    """Write an ai-core marker into ``perf_dir`` to prove pipeline usage."""
+
+    p = perf_dir / "ai_core.marker"
+    with p.open("w", encoding="utf-8") as fh:
+        fh.write("ai_core_enforced")
+

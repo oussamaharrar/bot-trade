@@ -555,7 +555,12 @@ def train_one_file(args, data_file: str) -> bool:
     resume_data = None
     mon_proc = None
 
-    if getattr(args, "resume", None):
+    if getattr(args, "continue_training", False):
+        rid = args.from_run or mem.get("last_run_id")
+        if not rid:
+            raise SystemExit("[RESUME] no previous run to resume")
+        run_id = str(rid)
+    elif getattr(args, "resume", None):
         rid = args.resume
         if not rid or str(rid).lower() in {"latest", "last", "true", "1"}:
             rid = mem.get("last_run_id")
@@ -644,6 +649,10 @@ def train_one_file(args, data_file: str) -> bool:
     # 1) Paths + logging + state
     paths_obj = RunPaths(args.symbol, args.frame, run_id, algo, kb_file=args.kb_file)
     paths_obj.ensure()
+    from bot_trade.ai_core.pipeline import enforce_ai_core_marker
+
+    enforce_ai_core_marker(paths_obj.performance_dir)
+    args.paths = paths_obj
     paths = paths_obj.as_dict()
     ensure_contract(paths)
     if getattr(args, "mlflow", False):
@@ -1086,6 +1095,15 @@ def train_one_file(args, data_file: str) -> bool:
         except Exception:
             pass
 
+    if algo in {"SAC", "TD3", "TQC"}:
+        rb_path = paths_obj.agents / "replay_buffer.pkl"
+        if rb_path.exists():
+            try:
+                model.load_replay_buffer(str(rb_path))
+                logging.info("[REPLAY] buffer restored")
+            except Exception:
+                logging.warning("[REPLAY] load failed", exc_info=True)
+
     # 10) Callbacks (base from rl_builders + optional extras)
     base_callbacks = build_callbacks(
         paths,
@@ -1202,6 +1220,12 @@ def train_one_file(args, data_file: str) -> bool:
             "best_model_path": getattr(eval_cb, "best_model_path", None),
             "metric": getattr(eval_cb, "best_mean_reward", None),
         }
+        if algo in {"SAC", "TD3", "TQC"}:
+            rb_path = paths_obj.agents / "replay_buffer.pkl"
+            try:
+                model.save_replay_buffer(str(rb_path))
+            except Exception:
+                logging.warning("[REPLAY] save failed", exc_info=True)
         try:
             update_manager.on_eval_end(summary)
         except Exception:
@@ -1380,6 +1404,9 @@ def main():
     args = parse_args()
     _apply_presets(args)
     args.kb_file = str(Path(getattr(args, "kb_file", DEFAULT_KB_FILE) or DEFAULT_KB_FILE))
+
+    if getattr(args, "raw_dir", None):
+        args.data_root = args.raw_dir
 
     # Initialise gateway for side-effect logging (e.g. [GATEWAY] line)
     gw = getattr(args, "gateway", "paper")

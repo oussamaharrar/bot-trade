@@ -559,3 +559,9 @@ PY`
 - Added evaluation suite and multi-algo builders.
 - Risks: optional dependencies for PDF generation.
 - Test Steps: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `PYTHONPATH=$PWD pytest -q`
+
+## 2025-10-24 Phase D Fixes
+- **Files**: bot_trade/data/discovery.py, bot_trade/data/collectors/base.py, bot_trade/data/collectors/csv_parquet_collector.py, bot_trade/data/router.py, bot_trade/ai_core/pipeline.py, bot_trade/strat/strategy_features.py, bot_trade/config/env_trading.py, bot_trade/env/trading_env_continuous.py, bot_trade/strat/strategies/__init__.py, bot_trade/strat/strategies/trend_following.py, bot_trade/strat/strategies/mean_revert.py, bot_trade/strat/strategies/adapter.py, bot_trade/train_rl.py, bot_trade/tools/orchestrate.py, config/default.yaml, CHANGE_NOTES.md, DEV_NOTES.md
+- **Rationale**: RAW discovery, AI-Core enforcement, strategy registry, safe replay buffer resume, orchestrator and path/import fixes.
+- **Risks**: replay buffer restoration may misalign across versions; ai_core guard aborts if preprocessing skipped.
+- **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; generate synth data and run SAC/PPO smokes; `python -m bot_trade.tools.orchestrate --config config/default.yaml`

@@ -15,6 +15,7 @@ import warnings
 from pathlib import Path
 from bot_trade.data.router import DataRouter
 from bot_trade.ai_core import pipeline
+from bot_trade.ai_core.pipeline import enforce_ai_core_marker
 
 try:
     import yaml  # type: ignore
@@ -133,10 +134,15 @@ def build_features(df_like, cfg) -> Dict[str, Any]:
 def load_via_router(args) -> pd.DataFrame:
     """Route data loading and enforce ai_core pipeline."""
 
+    raw_dir = getattr(args, "raw_dir", None)
+    if not raw_dir and getattr(args, "data_dir", None):
+        raw_dir = getattr(args, "data_dir")
+        print("[DATA] --data-dir is deprecated; using as --raw-dir")
+
     router = DataRouter(
         mode=getattr(args, "data_mode", "raw"),
         source=getattr(args, "data_source", "csvparquet"),
-        raw_dir=getattr(args, "raw_dir", "data/ready"),
+        raw_dir=raw_dir or "data/ready",
         exchange=getattr(args, "exchange", None),
         cache_dir=getattr(args, "cache_dir", "data/cache"),
     )
@@ -149,6 +155,9 @@ def load_via_router(args) -> pd.DataFrame:
     )
     features, _meta = pipeline.apply(df, getattr(args, "signals_spec", None))
     assert pipeline.was_applied(), "ai_core pipeline bypass detected"
+    paths = getattr(args, "paths", None)
+    if paths is not None and hasattr(paths, "performance_dir"):
+        enforce_ai_core_marker(paths.performance_dir)
     return features
 
 FEATURE_REGISTRY: Dict[str, Callable[[Any, Dict[str, Any]], Any]] = {
