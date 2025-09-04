@@ -13,6 +13,8 @@ import pandas as pd
 from bot_trade.data.collectors.base import CollectorConfig, MarketCollector
 import warnings
 from pathlib import Path
+from bot_trade.data.router import DataRouter
+from bot_trade.ai_core import pipeline
 
 try:
     import yaml  # type: ignore
@@ -128,27 +130,26 @@ def build_features(df_like, cfg) -> Dict[str, Any]:
     return df
 
 
-def load_with_signals(source: str, cfg: CollectorConfig) -> pd.DataFrame:
-    """Load market data via a collector and apply signal pipeline."""
+def load_via_router(args) -> pd.DataFrame:
+    """Route data loading and enforce ai_core pipeline."""
 
-    from bot_trade.data.collectors.csv_parquet_collector import (
-        CSVParquetCollector,
+    router = DataRouter(
+        mode=getattr(args, "data_mode", "raw"),
+        source=getattr(args, "data_source", "csvparquet"),
+        raw_dir=getattr(args, "raw_dir", "data/ready"),
+        exchange=getattr(args, "exchange", None),
+        cache_dir=getattr(args, "cache_dir", "data/cache"),
     )
-    from bot_trade.data.collectors.ccxt_rest_collector import CCXTRestCollector
-    from bot_trade.data.collectors.ccxt_ws_collector import CCXTWSCollector
-
-    collector: MarketCollector
-    if source == "csvparquet":
-        collector = CSVParquetCollector()
-    elif source == "ccxt-rest":
-        collector = CCXTRestCollector(cfg.exchange or "binance")
-    elif source == "ccxt-ws":
-        collector = CCXTWSCollector(cfg.exchange or "binance")
-    else:  # pragma: no cover - invalid source handled by caller
-        raise ValueError(f"unknown data source: {source}")
-
-    df = collector.load(cfg)
-    return build_features(df, {"signals_spec": getattr(cfg, "signals_spec", None)})
+    df = router.load(
+        symbol=getattr(args, "symbol"),
+        frame=getattr(args, "frame"),
+        start=getattr(args, "start", None),
+        end=getattr(args, "end", None),
+        ccxt_symbol=getattr(args, "ccxt_symbol", None),
+    )
+    features, _meta = pipeline.apply(df, getattr(args, "signals_spec", None))
+    assert pipeline.was_applied(), "ai_core pipeline bypass detected"
+    return features
 
 FEATURE_REGISTRY: Dict[str, Callable[[Any, Dict[str, Any]], Any]] = {
     "baseline": build_features,

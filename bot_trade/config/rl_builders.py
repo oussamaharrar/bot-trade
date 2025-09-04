@@ -326,6 +326,12 @@ def _require_box(info: ActionSpaceInfo, name: str) -> None:
 
 def _validate_continuous_env(info: ActionSpaceInfo, args: Any, name: str) -> None:
     flag = bool(getattr(args, "continuous_env", False))
+    if name in {"SAC", "TD3", "TQC"} and info.is_discrete:
+        print(
+            "[ALGO_GUARD] SAC/TD3/TQC require continuous Box action space; use --continuous-env or switch to PPO",
+            flush=True,
+        )
+        raise SystemExit(1)
     if flag != (not info.is_discrete):
         print(
             f"[ALGO_GUARD] algorithm={name} continuous_env={flag} space={'Box' if not info.is_discrete else 'Discrete'} mismatch",

@@ -8,7 +8,7 @@ from datetime import datetime
 import pandas as pd
 import yaml
 
-from env_config import LIVE_TRADING
+from bot_trade.config.env_config import LIVE_TRADING
 from bot_trade.config.rl_paths import memory_dir
 
 CONFIG_PATH = 'config.yaml'

@@ -543,3 +543,8 @@ PY`
 - **Rationale**: provide simple control panel with runner, results watcher and command whitelist.
 - **Risks**: polling watcher may miss rapid updates; stop may not handle exotic platforms.
 - **Next steps**: add queue management and richer metrics display.
+## 2025-10-23
+- **Files**: bot_trade/data/router.py, bot_trade/ai_core/pipeline.py, bot_trade/strat/strategies/__init__.py, bot_trade/strat/strategy_features.py, bot_trade/data/collectors/ccxt_rest_collector.py, bot_trade/data/collectors/ccxt_ws_collector.py, bot_trade/config/rl_args.py, bot_trade/config/rl_builders.py, bot_trade/run_bot.py, bot_trade/utils/paths.py, bot_trade/tools/orchestrate.py, config/default.yaml, config/strategies.yml
+- **Rationale**: Phase D wiring: introduce data-mode router, enforce ai_core pipeline, add strategy registry, orchestrator stub and safety guards.
+- **Risks**: live collectors remain thin; incomplete resume paths may require future alignment.
+- **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `python -m bot_trade.train_rl --help | head -n 20`
