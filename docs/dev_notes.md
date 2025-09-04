@@ -17,3 +17,9 @@
 - WHY: consolidate improvements for stable base and ensure predictable tooling.
 - RISKS: HTTP polling may hit API limits; paths_doctor hints assume default configs.
 - NEXT: extend policies for live trading and enhance fallback resiliency.
+[2025-10-14 00:00] [Live Feed Patch] Robust polling: bad-price guards, EWMA smoothing, last-known fallback, limiter-aware backoff.
+- WHAT: added price validation with last-price fallback, EWMA smoothing and rate limiter-aware exponential backoff.
+- WHY: prevent invalid ticks from breaking runs and stabilize metrics under network limits.
+- RISKS: smoothing may lag fast markets; aggressive backoff delays recovery.
+- MIGRATION: optional --bootstrap-price seeds initial price; no other steps.
+- NEXT: tune smoothing factor and expand real exchange coverage.

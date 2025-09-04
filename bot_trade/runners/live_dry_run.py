@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import random
+import sys
 import time
 from pathlib import Path
 
@@ -40,12 +41,30 @@ def main() -> None:
         help="Run duration in seconds",
     )
     ap.add_argument("--config", default="config/live_dry_run.yaml")
+    ap.add_argument(
+        "--bootstrap-price",
+        help="Value or file containing last close to seed the feed",
+    )
     args = ap.parse_args()
     args.duration = max(int(args.duration), 1)
 
+    bootstrap_price = None
+    if args.bootstrap_price:
+        bp = Path(args.bootstrap_price)
+        if bp.exists():
+            with bp.open("r", encoding="utf-8") as fh:
+                bootstrap_price = float(fh.read().strip())
+        else:
+            bootstrap_price = float(args.bootstrap_price)
+
     cfg = _load_config(args.config)
     ecfg = cfg[args.exchange]
-    feed = LiveFeed(ecfg.get("ws"), ecfg["rest"] + ecfg["price_path"], interval=1.0)
+    feed = LiveFeed(
+        ecfg.get("ws"),
+        ecfg["rest"] + ecfg["price_path"],
+        interval=1.0,
+        bootstrap_price=bootstrap_price,
+    )
 
     class HoldPolicy:
         def action(self, _: float) -> str:
@@ -66,19 +85,29 @@ def main() -> None:
     else:
         print("[WARN] model missing, falling back to RandomPolicy")
         policy = RandomPolicy()
+    base_policy = policy
+    policy_ref = {"policy": policy}
 
     run_dir = Path("results") / args.symbol / args.frame / str(int(time.time()))
     metrics = []
 
     def on_tick(price: float) -> None:
-        action = policy.action(price)
+        action = policy_ref["policy"].action(price)
         metrics.append({"ts": time.time(), "price": price, "action": action})
         print(f"[LIVE] tick={price} action={action}")
 
     feed.stream(args.symbol, on_tick)
     start = time.time()
+    warned = False
     try:
         while time.time() - start < args.duration:
+            if feed.last_price is None:
+                if not warned and time.time() - start > 10 * feed.interval:
+                    print("[WARN] no valid price after 10 polls; using HoldPolicy")
+                    policy_ref["policy"] = HoldPolicy()
+                    warned = True
+            elif warned and isinstance(policy_ref["policy"], HoldPolicy):
+                policy_ref["policy"] = base_policy
             time.sleep(0.5)
     except KeyboardInterrupt:
         pass
@@ -86,9 +115,12 @@ def main() -> None:
         run_dir.mkdir(parents=True, exist_ok=True)
         summary = {"ticks": len(metrics)}
         write_json(run_dir / "summary.json", summary)
-        for m in metrics:
-            append_jsonl(run_dir / "risk_flags.jsonl", m)
-        # metrics.csv
+        risk_path = run_dir / "risk_flags.jsonl"
+        if metrics:
+            for m in metrics:
+                append_jsonl(risk_path, m)
+        else:
+            write_text(risk_path, "")
         csv_path = run_dir / "metrics.csv"
         if metrics:
             with csv_path.open("w", newline="", encoding="utf-8") as fh:
