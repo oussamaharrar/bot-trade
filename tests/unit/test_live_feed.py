@@ -1,5 +1,4 @@
 import time
-from typing import List
 
 import pytest
 import requests
@@ -15,67 +14,57 @@ class DummyResp:
         return self._payload
 
 
-def test_bad_price_sequence(monkeypatch):
-    seq = [
-        {"price": 10},
-        {"price": None},
-        {"price": float("nan")},
-    ]
-    calls = {"i": 0}
+def test_smoothing_and_last_price_fallback(monkeypatch):
+    seq = iter([
+        {"price": 100.0},
+        {"price": 110.0},
+        {"price": 0.0},
+    ])
 
     def fake_get(url, params=None):
-        payload = seq[min(calls["i"], len(seq) - 1)]
-        calls["i"] += 1
-        return DummyResp(payload)
+        return DummyResp(next(seq))
 
-    sleeps: List[float] = []
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
 
-    def fake_sleep(t):
-        sleeps.append(t)
-        if len(sleeps) >= 3:
-            raise RuntimeError
+    feed = LiveFeed(None, "http://test", interval=0.01, alpha=0.3)
+    monkeypatch.setattr(feed.limiter, "acquire", lambda *a, **k: None)
+
+    prices: list[float] = []
+
+    def on_tick(p: float) -> None:
+        prices.append(p)
+        if len(prices) >= 3:
+            raise SystemExit
+
+    with pytest.raises(SystemExit):
+        feed._http_loop("BTCUSDT", on_tick)
+
+    assert prices[0] == pytest.approx(100.0)
+    assert prices[1] == pytest.approx(103.0, rel=1e-3)
+    assert prices[2] == pytest.approx(105.1, rel=1e-3)
+
+
+def test_capped_backoff(monkeypatch, capsys):
+    def fake_get(url, params=None):
+        return DummyResp({})
+
+    sleep_calls = {"n": 0}
+
+    def fake_sleep(s):
+        sleep_calls["n"] += 1
+        if sleep_calls["n"] >= 7:
+            raise SystemExit
 
     monkeypatch.setattr(requests, "get", fake_get)
     monkeypatch.setattr(time, "sleep", fake_sleep)
 
-    feed = LiveFeed(None, "http://test", interval=0.1, alpha=1.0)
+    feed = LiveFeed(None, "http://test", interval=0.01)
     monkeypatch.setattr(feed.limiter, "acquire", lambda *a, **k: None)
-    prices: List[float] = []
 
-    def on_tick(p: float) -> None:
-        prices.append(p)
+    with pytest.raises(SystemExit):
+        feed._http_loop("BTCUSDT", lambda p: None)
 
-    with pytest.raises(RuntimeError):
-        feed._http_loop("BTC", on_tick)
-
-    assert prices == [10, 10, 10]
-    assert sleeps[1] < sleeps[2]
-
-
-def test_ewma_smoothing(monkeypatch):
-    seq = [{"price": 10}, {"price": 11}, {"price": 13}]
-    calls = {"i": 0}
-
-    def fake_get(url, params=None):
-        payload = seq[calls["i"]]
-        calls["i"] += 1
-        return DummyResp(payload)
-
-    def fake_sleep(t):
-        if calls["i"] >= 3:
-            raise RuntimeError
-
-    monkeypatch.setattr(requests, "get", fake_get)
-    monkeypatch.setattr(time, "sleep", fake_sleep)
-
-    feed = LiveFeed(None, "http://test", interval=0.1, alpha=0.3)
-    monkeypatch.setattr(feed.limiter, "acquire", lambda *a, **k: None)
-    prices: List[float] = []
-
-    def on_tick(p: float) -> None:
-        prices.append(p)
-
-    with pytest.raises(RuntimeError):
-        feed._http_loop("BTC", on_tick)
-
-    assert prices == pytest.approx([10, 10.3, 11.11], rel=1e-2)
+    out = capsys.readouterr().out
+    assert "bad_price" in out
+    assert "backoff_ms=2000" in out

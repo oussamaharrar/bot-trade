@@ -23,7 +23,10 @@ def _load_config(path: str) -> dict:
 
 def main() -> None:
     force_utf8()
-    ap = argparse.ArgumentParser(description="Live dry-run")
+    ap = argparse.ArgumentParser(
+        description="Live dry-run",
+        epilog="Unknown args are ignored with a warning",
+    )
     ap.add_argument("--exchange", required=True)
     ap.add_argument("--symbol", required=True)
     ap.add_argument("--frame", required=True)
@@ -43,9 +46,12 @@ def main() -> None:
     ap.add_argument("--config", default="config/live_dry_run.yaml")
     ap.add_argument(
         "--bootstrap-price",
-        help="Value or file containing last close to seed the feed",
+        help="VALUE or FILE containing last close to seed the feed",
     )
-    args = ap.parse_args()
+    ns, extras = ap.parse_known_args()
+    if extras:
+        print(f"[WARN] ignoring extras: {' '.join(extras)}")
+    args = ns
     args.duration = max(int(args.duration), 1)
 
     bootstrap_price = None
@@ -89,7 +95,25 @@ def main() -> None:
     policy_ref = {"policy": policy}
 
     run_dir = Path("results") / args.symbol / args.frame / str(int(time.time()))
+    logs_dir = run_dir / "logs"
     metrics = []
+
+    class Tee:
+        def __init__(self, *streams):
+            self.streams = streams
+
+        def write(self, data: str) -> None:  # pragma: no cover - simple tee
+            for s in self.streams:
+                s.write(data)
+
+        def flush(self) -> None:  # pragma: no cover - simple tee
+            for s in self.streams:
+                s.flush()
+
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    log_fh = (logs_dir / "run.log").open("w", encoding="utf-8")
+    orig_stdout = sys.stdout
+    sys.stdout = Tee(sys.stdout, log_fh)
 
     def on_tick(price: float) -> None:
         action = policy_ref["policy"].action(price)
@@ -112,6 +136,8 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        sys.stdout = orig_stdout
+        log_fh.close()
         run_dir.mkdir(parents=True, exist_ok=True)
         summary = {"ticks": len(metrics)}
         write_json(run_dir / "summary.json", summary)

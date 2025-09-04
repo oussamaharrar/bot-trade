@@ -11,7 +11,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
-      - run: ruff check bot_trade/backtest bot_trade/eval bot_trade/runners bot_trade/tools --fix
+      - run: ruff check bot_trade/backtest bot_trade/eval bot_trade/runners bot_trade/tools tests/unit --fix
       - run: python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')
-      - run: PYTHONPATH=. pytest -q tests/unit/test_rate_limit.py tests/unit/test_sandbox_gateway.py tests/unit/test_execution_layer.py tests/unit/test_time_splits.py tests/unit/test_gates.py
-      - run: python -m bot_trade.tools.paths_doctor --strict
+      - run: PYTHONPATH=. pytest -q
+      - run: PYTHONPATH=. python -m bot_trade.tools.paths_doctor --symbol BTCUSDT --frame 1m --strict

@@ -103,16 +103,9 @@ class ExecutionLayer:
         )
 
         print(
-            "FILL",
-            f"side={order.side.upper()}",
-            f"qty={filled_qty}",
-            f"px={fill_price}",
-            f"fee={fee}",
-            f"maker={int(order.is_maker)}",
-            f"min_fee={int(min_applied)}",
-            f"slip_bps={slippage_bps}",
-            f"latency_ms={latency_ms}",
-            f"ts={ts}",
+            f"FILL side={order.side} qty={filled_qty} px={fill_price} fee={fee} "
+            f"maker={int(order.is_maker)} min_fee={int(min_applied)} "
+            f"slip_bps={slippage_bps} latency_ms={latency_ms} ts={ts}"
         )
 
         return ExecutionResult(
