@@ -19,10 +19,13 @@ class Fill:
 
     side: str
     qty: float
-    price: float
+    px: float
     fee: float
+    is_maker: bool
+    min_fee_applied: bool
     slippage_bps: float
     latency_ms: int
+    ts: float
 
 
 @dataclass(slots=True)

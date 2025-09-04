@@ -18,6 +18,16 @@ Notes:
 from __future__ import annotations
 
 import datetime as dt
+import pathlib
+import sys
+
+if __package__ is None or __package__ == "":
+    sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
+
+# Allow legacy --max-steps flag
+for i, arg in enumerate(sys.argv):
+    if arg == "--max-steps":
+        sys.argv[i] = "--total-steps"
 import json
 import logging
 import math
