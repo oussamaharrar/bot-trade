@@ -1,0 +1,8 @@
+binance:
+  rest: https://testnet.binance.vision
+  price_path: /api/v3/ticker/price
+  ws: wss://testnet.binance.vision/ws
+bybit:
+  rest: https://api-testnet.bybit.com
+  price_path: /v5/market/tickers
+  ws: wss://stream-testnet.bybit.com/realtime
