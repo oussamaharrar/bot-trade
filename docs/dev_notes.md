@@ -40,3 +40,8 @@
 - WHY: enable desktop orchestration of training, tools, and live runs.
 - RISKS: limited real-trading coverage; minimal log/error handling.
 - NEXT: enrich controls, metrics charts, and sandbox safety tests.
+[2025-10-17 00:00] UI Panel v0 MVP → v1 Controls —
+- WHAT: expanded panel with dev-notes preview, tee_path runner API and safer stop_process_tree.
+- WHY: improve traceability and reliability for multi-run orchestration.
+- RISKS: stop handling may miss zombie children on exotic platforms.
+- NEXT: surface metrics charts and sandbox key validation.

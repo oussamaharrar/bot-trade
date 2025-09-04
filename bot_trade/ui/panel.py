@@ -17,6 +17,7 @@ from .whitelist import build_command, load_whitelist
 CONFIG_PATH = Path(__file__).with_name("panel_config.yaml")
 WHITELIST_PATH = Path(__file__).with_name("whitelist.yaml")
 RESULTS_DIR = Path("results")
+DEV_NOTES_PATH = Path(__file__).resolve().parents[2] / "docs" / "dev_notes.md"
 
 
 # ---------------------------------------------------------------------------
@@ -35,6 +36,26 @@ def save_config(cfg: Dict) -> None:
     with open(tmp, "w", encoding="utf-8") as fh:
         yaml.safe_dump(cfg, fh)
     os.replace(tmp, CONFIG_PATH)
+
+
+def read_latest_note(path: Path = DEV_NOTES_PATH) -> str:
+    """Return the last entry from docs/dev_notes.md if present."""
+    if not path.exists():
+        return ""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    blocks: List[str] = []
+    buf: List[str] = []
+    for line in lines:
+        if line.startswith("[") and "]" in line:
+            if buf:
+                blocks.append("\n".join(buf))
+            buf = [line]
+        else:
+            if buf:
+                buf.append(line)
+    if buf:
+        blocks.append("\n".join(buf))
+    return blocks[-1] if blocks else ""
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +78,7 @@ class Panel:
         self.log_buffers: Dict[str, List[str]] = {}
         self.active_log: str | None = None
         self.whitelist = load_whitelist(WHITELIST_PATH)
+        self.latest_note = read_latest_note()
 
         gpu_available = detect_gpu()
         device_opts = ["auto", "cpu"] + (["cuda"] if gpu_available else [])
@@ -148,6 +170,8 @@ class Panel:
         config_layout = [
             [sg.Text(f"GPU available: {'yes' if gpu_available else 'no'}")],
             env_checks,
+            [sg.Text("Latest Dev Note:" )],
+            [sg.Multiline(self.latest_note, size=(60, 6), disabled=True, key="dev_note_box")],
             [sg.Button("Reset to defaults", key="cfg_reset")],
         ]
 
@@ -207,7 +231,7 @@ class Panel:
                 self.window["cmd_preview"].update(" ".join(cmd))
                 run_id = str(int(time.time()))
                 log_path = RESULTS_DIR / values["symbol"] / values["frame"] / run_id / "logs" / "train.log"
-                pid = runner.start_command(cmd, run_id=run_id, tee_to=str(log_path), log_queue=self.log_queue)
+                pid = runner.start_command(cmd, run_id=run_id, tee_path=str(log_path), log_queue=self.log_queue)
                 self.cfg.update({
                     "symbol": values["symbol"],
                     "frame": values["frame"],
@@ -255,7 +279,7 @@ class Panel:
                     continue
                 run_id = f"tool-{name}-{int(time.time())}"
                 log_path = RESULTS_DIR / run_id / "logs" / f"{name}.log"
-                runner.start_command(cmd, run_id=run_id, tee_to=str(log_path), log_queue=self.log_queue)
+                runner.start_command(cmd, run_id=run_id, tee_path=str(log_path), log_queue=self.log_queue)
                 self._refresh_runs()
 
             if event == "cfg_reset":
