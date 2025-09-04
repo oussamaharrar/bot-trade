@@ -29,3 +29,9 @@
 - RISKS: stricter CI may fail on legacy branches; log parsing tools must handle new format.
 - MIGRATION: rerun quickstart to regenerate results; update any custom parsers for new logs.
 - NEXT: broaden exchange coverage and integrate real order execution.
+[2025-10-16 00:00] [Final Cutover] live_sandbox execution + safety guards + RC checklist.
+- WHAT: enabled sandbox live orders with strict flags, key checks, order/fill persistence, paths doctor sandbox checks, docs update, VERSION 0.1-rc.
+- WHY: finalize testnet execution path and prepare release candidate.
+- RISKS: limited testnet coverage; misconfigured endpoints may hit mainnet.
+- MIGRATION: export testnet API keys, run live_dry_run with --gateway sandbox --i-understand-testnet, regenerate results.
+- NEXT: expand exchange adapters and refine PnL tracking.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from bot_trade.tools.force_utf8 import force_utf8
@@ -22,6 +23,9 @@ def _remediation(symbol: str, frame: str) -> None:
         "Then: python -m bot_trade.eval.eval_run --run-dir "
         f"results/{symbol}/{frame}/latest --tearsheet-html"
     )
+    print(
+        "For sandbox runs ensure orders.jsonl and executions.jsonl exist in the run dir"
+    )
 
 
 def _check_run(run: Path, symbol: str, frame: str) -> bool:
@@ -30,6 +34,19 @@ def _check_run(run: Path, symbol: str, frame: str) -> bool:
         if not (run / name).exists():
             print(f"[PATHS] missing {name} in {run}")
             ok = False
+    gateway = "paper"
+    summary_path = run / "summary.json"
+    if summary_path.exists():
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            gateway = summary.get("gateway", "paper")
+        except Exception:
+            pass
+    if gateway == "sandbox":
+        for name in {"orders.jsonl", "executions.jsonl"}:
+            if not (run / name).exists():
+                print(f"[PATHS] missing {name} in {run}")
+                ok = False
     charts = run / "charts"
     if not charts.exists() or not any(charts.glob("*.png")):
         print(f"[PATHS] missing charts/*.png in {run}")

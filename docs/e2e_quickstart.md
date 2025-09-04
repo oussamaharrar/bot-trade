@@ -27,3 +27,15 @@
    python -m bot_trade.tools.paths_doctor --symbol BTCUSDT --frame 1m --strict
    ```
    If the live run only produced HoldPolicy ticks, paths_doctor may hint about missing live charts.
+
+## Sandbox Live
+
+Run against exchange testnets with safety guards:
+
+```bash
+export BINANCE_API_KEY=...; export BINANCE_API_SECRET=...
+python -m bot_trade.runners.live_dry_run --exchange binance --symbol BTCUSDT --frame 1m \
+  --gateway sandbox --duration 120 --i-understand-testnet --max-orders 30 --max-notional 200
+```
+
+Expect `orders.jsonl` and `executions.jsonl` alongside summary and metrics.

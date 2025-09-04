@@ -73,10 +73,15 @@ def retry(
 ) -> Dict[str, int]:
     """Retry helper with exponential backoff and jitter."""
     attempt = 0
+    had_retry = False
     while True:
         resp = func()
-        if not is_retryable(resp) or attempt >= max_attempts - 1:
+        retryable = is_retryable(resp)
+        if not retryable or attempt >= max_attempts - 1:
+            if had_retry and not retryable:
+                print("RLIMIT_CLEAR")
             return resp
+        had_retry = True
         sleep = base_delay * (2 ** attempt) + random.random() * 0.1
         print(f"RLIMIT_SLEEP={sleep:.2f}s")
         time.sleep(sleep)
