@@ -8,11 +8,10 @@ removal. Missing optional fields are filled with ``NaN``.
 """
 
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
-from .base import MarketCollector
+from .base import CollectorConfig, MarketCollector
 
 
 class CSVParquetCollector(MarketCollector):
@@ -28,19 +27,15 @@ class CSVParquetCollector(MarketCollector):
             raise ValueError(f"Unsupported extension: {path.suffix}")
         return df
 
-    def load(
-        self,
-        symbol: str,
-        frame: str,
-        start: Optional[str] = None,
-        end: Optional[str] = None,
-    ) -> pd.DataFrame:
-        pattern = f"{symbol}-{frame}"
+    def load(self, cfg: CollectorConfig) -> pd.DataFrame:
+        pattern = f"{cfg.symbol}-{cfg.frame}"
         files = sorted(self.root.glob(f"**/{pattern}*.parquet"))
         if not files:
             files = sorted(self.root.glob(f"**/{pattern}*.csv"))
         if not files:
-            raise FileNotFoundError(f"no files for {symbol=} {frame=} in {self.root}")
+            raise FileNotFoundError(
+                f"no files for symbol={cfg.symbol} frame={cfg.frame} in {self.root}"
+            )
         dfs: list[pd.DataFrame] = []
         for fp in files:
             df = self._read_file(fp)
@@ -54,10 +49,10 @@ class CSVParquetCollector(MarketCollector):
             df.rename(columns={"index": "datetime"}, inplace=True)
         df.sort_values("datetime", inplace=True)
         df.drop_duplicates(subset=["datetime"], inplace=True)
-        if start:
-            df = df[df["datetime"] >= pd.to_datetime(start, utc=True)]
-        if end:
-            df = df[df["datetime"] <= pd.to_datetime(end, utc=True)]
+        if cfg.start:
+            df = df[df["datetime"] >= pd.to_datetime(cfg.start, utc=True)]
+        if cfg.end:
+            df = df[df["datetime"] <= pd.to_datetime(cfg.end, utc=True)]
         df.set_index("datetime", inplace=True)
         required = ["open", "high", "low", "close", "volume"]
         for col in required:

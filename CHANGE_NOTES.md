@@ -533,6 +533,11 @@ PY`
 - **Rationale**: introduce pluggable market data collectors, YAML-driven signal pipeline, and expose data-source and advanced TD3/TQC CLI flags with clearer TQC dependency guidance.
 - **Risks**: ccxt dependency optional; mis-specified signal configs may lead to empty feature frames.
 - **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `python -m bot_trade.train_rl --help | head -n 60`
+## 2025-10-22
+- **Files**: bot_trade/data/collectors/base.py, bot_trade/data/collectors/csv_parquet_collector.py, bot_trade/data/collectors/ccxt_rest_collector.py, bot_trade/data/collectors/ccxt_ws_collector.py, bot_trade/strat/strategy_features.py, bot_trade/config/rl_args.py, bot_trade/live/gateway_base.py, bot_trade/live/paper_gateway.py, bot_trade/live/ccxt_adapter.py, bot_trade/live/execution_bridge.py, bot_trade/live/reconcile.py, config/live.yml, DEV_NOTES.md, CHANGE_NOTES.md
+- **Rationale**: scaffold live execution bridge with collector config dataclass, REST/WS collectors, initial gateway interfaces, and CLI flags for execution modes.
+- **Risks**: live modules are thin wrappers; ws collector defers to REST; further reconciliation and error handling pending.
+- **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py' 2>/dev/null)`; `python -m bot_trade.train_rl --help | head -n 60`
 ## 2025-09-04 UI Panel foundation
 - **Files**: `bot_trade/ui/*`, `docs/ui_panel.md`, tests under `tests/ui`.
 - **Rationale**: provide simple control panel with runner, results watcher and command whitelist.

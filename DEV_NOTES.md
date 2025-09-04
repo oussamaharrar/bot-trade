@@ -317,6 +317,12 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: ccxt availability is optional; misconfigured specs may yield empty features.
 - Migration steps: invoke training with `--data-source csvparquet --signals-spec config/signals.yml`; install `ccxt` for live fetching.
 - Next actions: wire collectors into training loops and expand indicator coverage.
+## Developer Notes — 2025-10-22 (Live bridge scaffolding)
+- What: introduced CollectorConfig dataclass, REST/WS collectors with basic wrappers, initial live execution scaffolding with gateway base, paper/ccxt adapters, and CLI flags for data source and modes.
+- Why: prep ground for unified execution bridge and real-time data plumbing.
+- Risks: bridge functions are minimal; ws collector falls back to REST without buffering.
+- Migration steps: supply `--data-source` and `--mode` flags; populate `config/live.yml` for paper/sandbox.
+- Next actions: flesh out reconciliation, risk registry wiring, and robust ccxt adapter.
 ## Developer Notes — 2025-09-04 (UI Panel foundation)
 - What: added PySimpleGUI control panel under `bot_trade.ui` with runner, results watcher, whitelist and config.
 - Why: provide desktop orchestration for training and tooling.

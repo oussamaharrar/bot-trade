@@ -7,22 +7,29 @@ Collectors are simple classes exposing a ``load`` method returning a pandas
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from dataclasses import dataclass
+from typing import Optional, Dict, Any
 
 import pandas as pd
+
+
+@dataclass
+class CollectorConfig:
+    """Runtime configuration for market collectors."""
+
+    symbol: str
+    frame: str
+    start: Optional[str] = None
+    end: Optional[str] = None
+    exchange: Optional[str] = None
+    cache_dir: Optional[str] = None
 
 
 class MarketCollector(ABC):
     """Base class for market data collectors."""
 
     @abstractmethod
-    def load(
-        self,
-        symbol: str,
-        frame: str,
-        start: Optional[str] = None,
-        end: Optional[str] = None,
-    ) -> pd.DataFrame:
+    def load(self, cfg: CollectorConfig) -> pd.DataFrame:
         """Return a dataframe indexed by UTC timestamps.
 
         Implementations must return at least the columns ``open``, ``high``,

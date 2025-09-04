@@ -157,12 +157,12 @@ def parse_args():
     ap.add_argument("--gateway", type=str, default="paper", help="Execution gateway (paper|sandbox|ccxt)")
     ap.add_argument(
         "--data-source",
-        choices=["csvparquet", "ccxt"],
+        choices=["csvparquet", "ccxt-rest", "ccxt-ws"],
         default="csvparquet",
         help="Market data source",
     )
     ap.add_argument("--exchange", type=str, help="ccxt exchange id, e.g., binance")
-    ap.add_argument("--ccxt-symbol", type=str, help="ccxt symbol, e.g., BTC/USDT")
+    ap.add_argument("--ccxt-symbol", type=str, help='e.g., "BTC/USDT"')
     ap.add_argument(
         "--signals-spec",
         type=str,
@@ -171,6 +171,16 @@ def parse_args():
     )
     ap.add_argument("--start", type=str, help="Start datetime (UTC) for data fetch")
     ap.add_argument("--end", type=str, help="End datetime (UTC) for data fetch")
+    ap.add_argument(
+        "--mode",
+        choices=["train", "paper", "sandbox"],
+        default="train",
+        help="Execution mode",
+    )
+    ap.add_argument("--live-spec", type=str, default="config/live.yml")
+    ap.add_argument("--paper-log-orders", action="store_true")
+    ap.add_argument("--paper-log-fills", action="store_true")
+    ap.add_argument("--reconcile-every", type=int, default=60)
     ap.add_argument("--policy", type=str, default="MlpPolicy")
     ap.add_argument("--device", type=str, default=None)
     ap.add_argument("--n-envs", type=int, default=0)
