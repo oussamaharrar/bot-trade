@@ -2,13 +2,13 @@
 
 1. Generate tiny synthetic data:
    ```bash
-   python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --days 3 --out data_ready
+   python -m bot_trade.tools.gen_synth_data --symbol BTCUSDT --frame 1m --days 1 --out data_ready
    ```
 2. Train a small model:
    ```bash
    python bot_trade/train_rl.py --config config/train_btcusdt_1m.yaml --max-steps 4000 --seed 7 --data-dir data_ready
    ```
-3. Evaluate the latest run and produce a tearsheet:
+3. Evaluate the latest run and produce a tearsheet (PDF optional):
    ```bash
    python -m bot_trade.eval.eval_run --run-dir results/BTCUSDT/1m/latest --tearsheet-html
    ```
@@ -19,8 +19,7 @@
 5. Optional live dry run with model fallback and bootstrap price:
    ```bash
    python -m bot_trade.runners.live_dry_run --exchange binance --symbol BTCUSDT --frame 1m \
-     --gateway paper --model results/BTCUSDT/1m/latest/artifacts/best_model.zip --duration 90 \
-     --bootstrap-price 27000 --model-optional
+     --gateway paper --duration 90 --model-optional --bootstrap-price 27000
    ```
    The feed applies EWMA smoothing and exponential backoff when network limits hit.
 6. Verify paths:

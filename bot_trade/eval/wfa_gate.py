@@ -30,7 +30,10 @@ def run_windows(n: int) -> list[Metrics]:
 
 def main() -> None:
     force_utf8()
-    ap = argparse.ArgumentParser(description="WFA gate")
+    ap = argparse.ArgumentParser(
+        description="WFA gate",
+        epilog="Unknown args are ignored with a warning",
+    )
     ap.add_argument("--config", required=True)
     ap.add_argument("--symbol", required=True)
     ap.add_argument("--frame", required=True)

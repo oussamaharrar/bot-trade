@@ -23,3 +23,9 @@
 - RISKS: smoothing may lag fast markets; aggressive backoff delays recovery.
 - MIGRATION: optional --bootstrap-price seeds initial price; no other steps.
 - NEXT: tune smoothing factor and expand real exchange coverage.
+[2025-10-15 00:00] [Final Merge] Import live tests, unify logs, tighten CI order, quickstart polish.
+- WHAT: merged live feed/runner tests, standardized LIVE/FILL logs, documented E2E commands and CLI flags, tightened CI to lint, compile, test, and validate paths.
+- WHY: ensure reproducible end-to-end workflow and grep-friendly logging for final release.
+- RISKS: stricter CI may fail on legacy branches; log parsing tools must handle new format.
+- MIGRATION: rerun quickstart to regenerate results; update any custom parsers for new logs.
+- NEXT: broaden exchange coverage and integrate real order execution.
