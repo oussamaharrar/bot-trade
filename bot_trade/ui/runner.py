@@ -39,7 +39,7 @@ def start_command(
     env: Optional[Dict[str, str]] = None,
     cwd: Optional[str] = None,
     run_id: Optional[str] = None,
-    tee_to: Optional[str] = None,
+    tee_path: Optional[str] = None,
     log_queue: Optional[Any] = None,
     meta: Optional[Dict[str, Any]] = None,
 ) -> int:
@@ -50,7 +50,7 @@ def start_command(
         env: Environment variables to override.
         cwd: Working directory.
         run_id: Identifier for the run.
-        tee_to: Path to log file.
+        tee_path: Path to log file.
         log_queue: Optional queue to push log lines.
         meta: Additional metadata to store.
 
@@ -71,7 +71,7 @@ def start_command(
     )
     pid = proc.pid
     run_id = run_id or str(pid)
-    log_path = tee_to or os.path.join("results", run_id, "logs", "run.log")
+    log_path = tee_path or os.path.join("results", run_id, "logs", "run.log")
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     log_fh = open(log_path, "a", encoding="utf-8", buffering=1)
 
@@ -99,7 +99,7 @@ def start_command(
     return pid
 
 
-def stop_process(pid: int, graceful_timeout: float = 5.0) -> Dict[str, Any]:
+def stop_process_tree(pid: int, graceful_timeout: float = 5.0) -> Dict[str, Any]:
     """Terminate a process tree safely."""
     with _runs_lock:
         info = _runs.get(pid)
@@ -126,6 +126,11 @@ def stop_process(pid: int, graceful_timeout: float = 5.0) -> Dict[str, Any]:
         with _runs_lock:
             _runs.pop(pid, None)
     return {"stopped": True, "reason": reason}
+
+
+# Backwards compatible alias
+def stop_process(pid: int, graceful_timeout: float = 5.0) -> Dict[str, Any]:  # pragma: no cover - alias
+    return stop_process_tree(pid, graceful_timeout)
 
 
 def get_run(pid: int) -> Optional[RunInfo]:
