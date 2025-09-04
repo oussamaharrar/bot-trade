@@ -83,8 +83,12 @@ def main() -> None:
     write_png(out_dir / "charts" / "wfa_overview.png", fig)
 
     run_dir = Path("results") / args.symbol / args.frame / "latest"
+    run_dir.mkdir(parents=True, exist_ok=True)
     if pass_ratio >= req_ratio:
-        write_json(run_dir / "promotion.json", {"pass_ratio": pass_ratio, "profile": args.profile})
+        write_json(
+            run_dir / "promotion.json",
+            {"pass_ratio": pass_ratio, "profile": args.profile},
+        )
         kb_path = Path("memory/Knowlogy/kb.jsonl")
         if kb_path.exists():
             append_jsonl(

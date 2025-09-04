@@ -37,7 +37,9 @@ def generate(symbol: str, frame: str, out_dir: Path, days: int = 90) -> Path:
     write_parquet_atomic(dest, df)
     gaps = detect_gaps(df, frame)
     dups = detect_duplicates(df)
-    print(f"[DATA] file={dest} rows={len(df)} gaps={gaps} dups={dups}")
+    print(
+        f"[DATA] out_dir={sub} file={dest} rows={len(df)} gaps={gaps} dups={dups}"
+    )
     return dest
 
 

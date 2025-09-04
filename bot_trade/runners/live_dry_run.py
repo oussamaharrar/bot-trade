@@ -47,18 +47,31 @@ def main() -> None:
     ecfg = cfg[args.exchange]
     feed = LiveFeed(ecfg.get("ws"), ecfg["rest"] + ecfg["price_path"], interval=1.0)
 
+    class HoldPolicy:
+        def action(self, _: float) -> str:
+            return "hold"
+
+    class RandomPolicy:
+        def __init__(self) -> None:
+            self.rng = random.Random()
+
+        def action(self, _: float) -> str:
+            return self.rng.choice(["buy", "sell", "hold"])
+
+    policy: object
     if args.model and Path(args.model).exists():
-        pass  # placeholder for model loading
+        policy = HoldPolicy()  # placeholder for real model policy
     elif not args.model_optional:
         raise SystemExit("model required")
     else:
-        print("[WARN] model missing, falling back to random policy")
+        print("[WARN] model missing, falling back to RandomPolicy")
+        policy = RandomPolicy()
 
     run_dir = Path("results") / args.symbol / args.frame / str(int(time.time()))
     metrics = []
 
     def on_tick(price: float) -> None:
-        action = random.choice(["buy", "sell", "hold"])
+        action = policy.action(price)
         metrics.append({"ts": time.time(), "price": price, "action": action})
         print(f"[LIVE] tick={price} action={action}")
 

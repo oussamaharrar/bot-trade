@@ -12,3 +12,8 @@
 - Expanded Fill model and execution logs with maker/min-fee fields; seed persisted in meta.
 - Risks: strict path checks may flag custom layouts; random fills still simplistic.
 - Next: broaden real-exchange coverage and refine walk-forward metrics.
+[2025-10-13 00:00] [V3 Base] Merge V1/V2 deltas + live feed fallback + paths_doctor tightening + fill log standardization.
+- WHAT: merged variant features, added HTTP polling fallback with rate limiting, tightened paths_doctor checks, standardized fill logs.
+- WHY: consolidate improvements for stable base and ensure predictable tooling.
+- RISKS: HTTP polling may hit API limits; paths_doctor hints assume default configs.
+- NEXT: extend policies for live trading and enhance fallback resiliency.
