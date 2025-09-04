@@ -329,3 +329,9 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: limited validation; polling watcher; stop may miss exotic child trees.
 - Migration steps: launch via `python -m bot_trade.ui.panel_gui` and ensure commands conform to whitelist.
 - Next actions: queueing, GPU slot caps and richer metrics display.
+## Developer Notes — 2025-10-18 (UI Panel v2)
+- WHAT: introduced commands registry, device selector, runner/job helpers and structured results watcher.
+- WHY: foundation for full control panel with safe template-based commands.
+- RISKS: minimal UI coverage; pending job persistence.
+- MIGRATION: use `bot_trade.tools.panel_gui` and import runners from `bot_trade.tools`.
+- NEXT: flesh out remaining tabs and queue limits.

@@ -1,0 +1,7 @@
+defaults:
+  train:
+    symbol: BTCUSDT
+    frame: 1m
+    total_steps: 1024
+    n_envs: 1
+    device: cpu

@@ -1,18 +1,26 @@
-# UI Control Panel
+# Panel v2 — Quick Tour
 
-Minimal PySimpleGUI interface to manage training runs and tools.
+Cross-platform PySimpleGUI control panel to orchestrate training, evaluation and
+auxiliary tools. Commands are constructed from a strict whitelist registry and
+executed via the safe runner with tee logging and process-tree termination.
 
 ## Usage
 
-```
-python -m bot_trade.ui.panel_gui
+```bash
+python -m bot_trade.tools.panel_gui
 ```
 
-The panel validates commands against a strict whitelist and spawns them
-via `ui.runner`. Results are tailed by `ui.results_watcher`.
+Tabs:
+- **Train** – launch RL training with device selection and optional flags.
+- **Eval / WFA** – export charts or run walk-forward analysis for a given run.
+- **Live** – spawn a paper live-dry-run against supported exchanges.
+- **Tools** – helpers like synthetic data generation or paths doctor.
+- **Jobs** – view active jobs, stop them and tail their logs.
+- **Logs** – live tail with colour markers for `[DEBUG_EXPORT]`, `[CHARTS]`, `[POSTRUN]` and `[EVAL]`.
+- **Config** – persist last selections and preview latest developer note.
 
 ## Safety Notes
 
-- Only predefined commands may run.
-- Process trees are terminated on Stop.
-- Logs are written UTF-8 to the `tee` files.
+- All commands are expanded from `commands_registry` templates; unknown flags are rejected.
+- Runner writes UTF‑8 tee logs and stops the whole process tree on request.
+- Results watcher parses structured events only inside the run directory.
