@@ -310,3 +310,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: aggressive risk rules may freeze trading early; config schema changes require updated YAMLs; thresholds are naive.
 - Migration steps: supply `config/adaptive.yml` and `config/risk.yml` as needed, ensure `--continuous-env` for TD3/TQC, and review new logs under `performance/`.
 - Next actions: refine regime features, add unit tests for risk callbacks, and tune default rule thresholds.
+
+## Developer Notes — 2025-10-21 (Signals collectors & CLI flags)
+- What: added pluggable market collectors (CSV/Parquet and ccxt), signal pipeline builder, `config/signals.yml`, and exposed data-source and advanced TD3/TQC flags.
+- Why: prepare for real-time data and richer feature engineering while enabling algorithm tuning from the CLI.
+- Risks: ccxt availability is optional; misconfigured specs may yield empty features.
+- Migration steps: invoke training with `--data-source csvparquet --signals-spec config/signals.yml`; install `ccxt` for live fetching.
+- Next actions: wire collectors into training loops and expand indicator coverage.

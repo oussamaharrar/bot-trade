@@ -548,7 +548,7 @@ def build_tqc(env, args, seed):
     try:
         from sb3_contrib import TQC
     except Exception:
-        print("[ALGO_GUARD] algorithm=TQC unavailable (missing sb3-contrib). Aborting.")
+        print("[ALGO] TQC requires sb3_contrib; try: pip install sb3-contrib==2.2.1")
         raise SystemExit(1)
     pk, pk_keys = _policy_kwargs_from_args(args)
     pk = pk.copy()
