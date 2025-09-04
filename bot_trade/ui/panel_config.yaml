@@ -1,9 +1,12 @@
-symbol: BTCUSDT
-frame: 1h
-preset: default
-algorithm: PPO
-max_steps: 1000
-seed: 42
-data_dir: data
-device: auto
-n_envs: 1
+symbols: [BTCUSDT]
+frames: [1m]
+devices: [cpu]
+max_parallel_runs: 1
+defaults:
+  train_rl:
+    total_steps: 100
+    n_envs: 1
+    device: cpu
+    headless: true
+    resume_auto: false
+    allow_synth: false

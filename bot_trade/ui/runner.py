@@ -1,138 +1,103 @@
+from __future__ import annotations
+
+"""Subprocess runner with tee logging and safe process-tree termination."""
+
 import os
+import signal
 import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
-import psutil
+from pathlib import Path
+from typing import Dict, List, Optional
 
 
 @dataclass
-class RunInfo:
-    """Metadata about a running command."""
-    run_id: str
-    cmd: List[str]
+class ProcessHandle:
     process: subprocess.Popen
-    log_file: str
+    pid: int
+    pgroup: Optional[int]
     start_ts: float
-    device: Optional[str] = None
-    status: str = "running"
-    run_dir: Optional[str] = None
-    meta: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, str] = field(default_factory=dict)
+    tee_path: Optional[Path] = None
 
 
-_runs: Dict[int, RunInfo] = {}
-_runs_lock = threading.Lock()
+_HANDLES: List[ProcessHandle] = []
 
 
-def _reader(pipe, log_fh, run_id: str, queue: Optional[Any], source: str) -> None:
-    with pipe:
-        for line in iter(pipe.readline, ''):
-            log_fh.write(line)
-            log_fh.flush()
-            if queue is not None:
-                queue.put({"run_id": run_id, "source": source, "line": line.rstrip('\n')})
+def _tee_output(proc: subprocess.Popen, tee_path: Path) -> None:
+    with tee_path.open("a", encoding="utf-8") as fh:
+        for line in proc.stdout:  # type: ignore[attr-defined]
+            text = line.decode("utf-8", "replace")
+            fh.write(text)
+            fh.flush()
 
 
 def start_command(
-    cmd: List[str],
-    env: Optional[Dict[str, str]] = None,
-    cwd: Optional[str] = None,
-    run_id: Optional[str] = None,
-    tee_path: Optional[str] = None,
-    log_queue: Optional[Any] = None,
-    meta: Optional[Dict[str, Any]] = None,
-) -> int:
-    """Start a subprocess command and tee output.
-
-    Args:
-        cmd: Command list for subprocess.
-        env: Environment variables to override.
-        cwd: Working directory.
-        run_id: Identifier for the run.
-        tee_path: Path to log file.
-        log_queue: Optional queue to push log lines.
-        meta: Additional metadata to store.
-
-    Returns:
-        PID of started process.
-    """
-    env_full = os.environ.copy()
-    if env:
-        env_full.update(env)
+    cmd: List[str], *, cwd: Optional[Path] = None, env: Optional[Dict[str, str]] = None,
+    tee_path: Optional[Path] = None, metadata: Dict[str, str] | None = None
+) -> ProcessHandle:
+    """Launch *cmd* and return handle."""
+    meta = metadata or {}
+    if tee_path:
+        tee_path.parent.mkdir(parents=True, exist_ok=True)
+    creationflags = 0
+    preexec_fn = None
+    if os.name == "nt":
+        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+    else:  # posix
+        preexec_fn = os.setsid  # type: ignore[assignment]
     proc = subprocess.Popen(
         cmd,
-        cwd=cwd,
-        env=env_full,
+        cwd=str(cwd) if cwd else None,
+        env=env,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
+        stderr=subprocess.STDOUT,
+        text=False,
+        preexec_fn=preexec_fn,
+        creationflags=creationflags,
     )
-    pid = proc.pid
-    run_id = run_id or str(pid)
-    log_path = tee_path or os.path.join("results", run_id, "logs", "run.log")
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    log_fh = open(log_path, "a", encoding="utf-8", buffering=1)
-
-    threading.Thread(target=_reader, args=(proc.stdout, log_fh, run_id, log_queue, "stdout"), daemon=True).start()
-    threading.Thread(target=_reader, args=(proc.stderr, log_fh, run_id, log_queue, "stderr"), daemon=True).start()
-
-    def _waiter() -> None:
-        proc.wait()
-        log_fh.close()
-        if log_queue is not None:
-            log_queue.put({"run_id": run_id, "event": "exit", "returncode": proc.returncode})
-
-    threading.Thread(target=_waiter, daemon=True).start()
-
-    info = RunInfo(
-        run_id=run_id,
-        cmd=cmd,
-        process=proc,
-        log_file=log_path,
-        start_ts=time.time(),
-        meta=meta or {},
-    )
-    with _runs_lock:
-        _runs[pid] = info
-    return pid
+    pgroup = os.getpgid(proc.pid) if os.name != "nt" else None
+    handle = ProcessHandle(proc, proc.pid, pgroup, time.time(), meta, tee_path)
+    _HANDLES.append(handle)
+    if tee_path:
+        t = threading.Thread(target=_tee_output, args=(proc, tee_path), daemon=True)
+        t.start()
+    return handle
 
 
-def stop_process_tree(pid: int, graceful_timeout: float = 5.0) -> Dict[str, Any]:
-    """Terminate a process tree safely."""
-    with _runs_lock:
-        info = _runs.get(pid)
-    if not info:
-        return {"stopped": False, "reason": "unknown pid"}
-    proc = info.process
+def stop_process_tree(handle: ProcessHandle, grace_sec: int = 10) -> int:
+    """Terminate process tree for *handle* and return returncode."""
+    proc = handle.process
     if proc.poll() is not None:
-        return {"stopped": True, "reason": "already exited"}
-
-    reason = "terminated"
+        return proc.returncode or 0
     try:
-        ps_proc = psutil.Process(pid)
-        children = ps_proc.children(recursive=True)
-        ps_proc.terminate()
-        for child in children:
-            child.terminate()
-        gone, alive = psutil.wait_procs([ps_proc] + children, timeout=graceful_timeout)
-        for p in alive:
-            p.kill()
-            reason = "killed"
-    except psutil.NoSuchProcess:
-        reason = "no such process"
-    finally:
-        with _runs_lock:
-            _runs.pop(pid, None)
-    return {"stopped": True, "reason": reason}
+        if os.name == "nt":
+            proc.send_signal(signal.CTRL_BREAK_EVENT)  # type: ignore[attr-defined]
+        else:
+            os.killpg(handle.pgroup or proc.pid, signal.SIGTERM)
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=grace_sec)
+    except subprocess.TimeoutExpired:
+        try:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                os.killpg(handle.pgroup or proc.pid, signal.SIGKILL)
+        except Exception:
+            pass
+        proc.wait(timeout=grace_sec)
+    return proc.returncode or 0
 
 
-# Backwards compatible alias
-def stop_process(pid: int, graceful_timeout: float = 5.0) -> Dict[str, Any]:  # pragma: no cover - alias
-    return stop_process_tree(pid, graceful_timeout)
-
-
-def get_run(pid: int) -> Optional[RunInfo]:
-    with _runs_lock:
-        return _runs.get(pid)
+def list_processes() -> List[ProcessHandle]:
+    """Return running process handles."""
+    alive: List[ProcessHandle] = []
+    for h in list(_HANDLES):
+        if h.process.poll() is None:
+            alive.append(h)
+        else:
+            _HANDLES.remove(h)
+    return alive

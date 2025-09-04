@@ -533,3 +533,8 @@ PY`
 - **Rationale**: introduce pluggable market data collectors, YAML-driven signal pipeline, and expose data-source and advanced TD3/TQC CLI flags with clearer TQC dependency guidance.
 - **Risks**: ccxt dependency optional; mis-specified signal configs may lead to empty feature frames.
 - **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `python -m bot_trade.train_rl --help | head -n 60`
+## 2025-09-04 UI Panel foundation
+- **Files**: `bot_trade/ui/*`, `docs/ui_panel.md`, tests under `tests/ui`.
+- **Rationale**: provide simple control panel with runner, results watcher and command whitelist.
+- **Risks**: polling watcher may miss rapid updates; stop may not handle exotic platforms.
+- **Next steps**: add queue management and richer metrics display.
