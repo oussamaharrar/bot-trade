@@ -23,6 +23,7 @@ class CollectorConfig:
     end: Optional[str] = None
     exchange: Optional[str] = None
     cache_dir: Optional[str] = None
+    raw_dir: str = "data/ready"
 
 
 class MarketCollector(ABC):

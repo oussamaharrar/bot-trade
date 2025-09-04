@@ -349,3 +349,10 @@ that direct execution (`python tools/export_charts.py`) still works if needed.
 - Risks: registry may miss required flags; CUDA info requires torch.
 - Migration steps: import panel from `bot_trade.tools.ui_panel`; adjust custom commands to use registry YAML; ensure torch installed for GPU listing.
 - Next actions: implement job queue persistence and richer event wiring.
+
+## Developer Notes — 2025-10-24 (Phase D Fixes)
+- What changed: Added raw discovery helpers, enforced ai_core marker, introduced modular strategy registry with adapters, replay buffer resume, orchestrator and config updates.
+- Why: finalize Phase D plumbing for consistent data loading, feature verification and multi-run automation.
+- Risks: replay buffer loading may fail on incompatible models; ai_core guard stops runs without preprocessing.
+- Migration steps: supply `--raw-dir` for data location, ensure feature pipeline creates marker, pass `--continue` to reuse replay buffer.
+- Next actions: harden orchestrator concurrency and expand strategy composition in env loop.

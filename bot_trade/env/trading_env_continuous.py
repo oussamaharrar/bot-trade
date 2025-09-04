@@ -212,3 +212,7 @@ class TradingEnvContinuous(TradingEnv):
         truncated = self.steps >= self.max_steps or self.ptr >= self._symbol_len()
         obs = self._make_obs()
         return obs, float(reward), bool(terminated), bool(truncated), info
+
+    def reset(self, *, seed: int | None = None, options=None):  # type: ignore[override]
+        obs, info = super().reset(seed=seed, options=options)
+        return obs, info
