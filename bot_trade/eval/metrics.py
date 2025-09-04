@@ -137,6 +137,16 @@ def turnover(trades_df: 'pd.DataFrame') -> float:
     return float(delta / avg_exposure)
 
 
+
+def exposure(positions_df: "pd.DataFrame") -> float:
+    import pandas as pd
+    if positions_df is None or positions_df.empty or "position" not in positions_df:
+        return 0.0
+    pos = pd.to_numeric(positions_df["position"], errors="coerce").dropna().abs()
+    if pos.empty:
+        return 0.0
+    return float(pos.mean())
+
 def slippage_proxy(trades_df: 'pd.DataFrame') -> Optional[float]:
     import pandas as pd
     import numpy as np

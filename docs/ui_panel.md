@@ -35,3 +35,7 @@ events. Settings persist across sessions.
 - All commands are expanded from `commands_registry` templates; unknown flags are rejected.
 - Runner writes UTF‑8 tee logs and stops the whole process tree on request.
 - Results watcher parses structured events only inside the run directory.
+
+### Panel v3
+
+Panel v3 introduces a lightweight job queue with device pinning and a live log tail. Presets from `config/presets/training.yml` allow one-click command filling while the whitelist keeps unsafe flags out.

@@ -1,19 +1,18 @@
 from __future__ import annotations
-"""Command registry loaded from YAML templates."""
 
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Mapping, Sequence
-import shlex
 import yaml
 
 
 @dataclass
 class CommandTemplate:
     template: Sequence[str]
-    allowed_flags: Sequence[str] | None = None
+    allowed: Sequence[str] | None = None
     defaults: Mapping[str, str] | None = None
-    forbidden_flags: Sequence[str] | None = None
+    forbidden: Sequence[str] | None = None
 
 
 def _load_registry() -> Dict[str, CommandTemplate]:
@@ -23,9 +22,9 @@ def _load_registry() -> Dict[str, CommandTemplate]:
     for name, entry in data.items():
         reg[name] = CommandTemplate(
             template=entry.get("template", []),
-            allowed_flags=entry.get("allowed_flags"),
+            allowed=entry.get("allowed"),
             defaults=entry.get("defaults"),
-            forbidden_flags=entry.get("forbidden_flags"),
+            forbidden=entry.get("forbidden"),
         )
     return reg
 
@@ -42,11 +41,7 @@ def _validate_value(name: str, value: object) -> str:
     return s
 
 
-def build_command(
-    name: str,
-    params: Mapping[str, object],
-    extra_flags: Sequence[str] | None = None,
-) -> List[str]:
+def build_command(name: str, params: Mapping[str, object], extra_flags: Sequence[str] | None = None) -> List[str]:
     if name not in REGISTRY:
         raise KeyError(name)
     ct = REGISTRY[name]
@@ -71,8 +66,8 @@ def build_command(
             result.append(tok)
     flags: List[str] = []
     if extra_flags:
-        allowed = set(ct.allowed_flags or [])
-        forbidden = set(ct.forbidden_flags or [])
+        allowed = set(ct.allowed or [])
+        forbidden = set(ct.forbidden or [])
         for flg in extra_flags:
             parts = shlex.split(flg)
             for part in parts:

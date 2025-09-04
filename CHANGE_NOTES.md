@@ -554,3 +554,8 @@ PY`
 - **Rationale**: introduce YAML-based commands registry, device enumeration API, UI panel entrypoint and runner wrappers with event parsing.
 - **Risks**: YAML templates may omit flags; GPU enumeration relies on torch availability.
 - **Test Steps**: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `PYTHONPATH=$PWD pytest -q`
+
+## 2025-09-04 Panel v3
+- Added evaluation suite and multi-algo builders.
+- Risks: optional dependencies for PDF generation.
+- Test Steps: `python -m py_compile $(git ls-files 'bot_trade/**/*.py' 'bot_trade/*.py')`; `PYTHONPATH=$PWD pytest -q`
