@@ -1,0 +1,9 @@
+symbol: BTCUSDT
+frame: 1h
+preset: default
+algorithm: PPO
+max_steps: 1000
+seed: 42
+data_dir: data
+device: auto
+n_envs: 1

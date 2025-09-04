@@ -35,3 +35,8 @@
 - RISKS: limited testnet coverage; misconfigured endpoints may hit mainnet.
 - MIGRATION: export testnet API keys, run live_dry_run with --gateway sandbox --i-understand-testnet, regenerate results.
 - NEXT: expand exchange adapters and refine PnL tracking.
+[2025-09-04 00:00] UI Panel: v0 MVP —
+- WHAT: added PySimpleGUI control panel with runner, results watcher, whitelist, defaults and docs.
+- WHY: enable desktop orchestration of training, tools, and live runs.
+- RISKS: limited real-trading coverage; minimal log/error handling.
+- NEXT: enrich controls, metrics charts, and sandbox safety tests.
